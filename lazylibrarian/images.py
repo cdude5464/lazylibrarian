@@ -258,6 +258,36 @@ def get_author_images():
     return msg
 
 
+def _author_image_files(icrawlerdir):
+    if not os.path.exists(icrawlerdir):
+        return []
+    return [
+        os.path.join(icrawlerdir, name)
+        for name in sorted(os.listdir(icrawlerdir))
+        if path_isfile(os.path.join(icrawlerdir, name))
+    ]
+
+
+def _usable_author_image(filename):
+    if not PILImage:
+        return True, ''
+    try:
+        with PILImage.open(filename) as img:
+            width, height = img.size
+    except Exception as e:
+        return False, f"unreadable image: {type(e).__name__} {str(e)}"
+
+    if width < 80 or height < 80:
+        return False, f"too small: {width}x{height}"
+
+    ratio = height / float(width)
+    if ratio > 1.40:
+        return False, f"book-cover shaped: {width}x{height}"
+    if width / float(height) > 2.40:
+        return False, f"banner shaped: {width}x{height}"
+    return True, ''
+
+
 def get_book_covers():
     """ Try to get a cover image for all books """
 
@@ -648,32 +678,41 @@ def get_author_image(authorid=None, refresh=False, max_num=1):
         safeparams = quote_plus(make_utf8bytes(f"author {authorname}")[0])
         icrawlerdir = os.path.join(cachedir, 'icrawler', authorid)
         rmtree(icrawlerdir, ignore_errors=True)
-        crawler_name = 'google'
-        gc = GoogleImageCrawler(storage={'root_dir': icrawlerdir})
-        gc.crawl(keyword=safeparams, max_num=int(max_num))
-        if os.path.exists(icrawlerdir):
-            res = len(os.listdir(icrawlerdir))
+        if max_num == 1:
+            for crawler_name, crawler_class in [('google', GoogleImageCrawler), ('bing', BingImageCrawler)]:
+                rmtree(icrawlerdir, ignore_errors=True)
+                crawler = crawler_class(storage={'root_dir': icrawlerdir})
+                crawler.crawl(keyword=safeparams, max_num=5)
+                images = _author_image_files(icrawlerdir)
+                logger.debug(f"{crawler_name} found {len(images)} {plural(len(images), 'image')}")
+                for img in images:
+                    usable, reason = _usable_author_image(img)
+                    if not usable:
+                        logger.debug(f"Skipping {crawler_name} author image for {authorname}: {reason}")
+                        continue
+                    coverlink, success, _ = cache_img(ImageType.AUTHOR, img_id(), img, refresh=refresh)
+                    if success:
+                        logger.debug(f"Cached {crawler_name} image for {authorname}")
+                        rmtree(icrawlerdir, ignore_errors=True)
+                        return coverlink
+                logger.debug(f"No usable {crawler_name} image found for {authorname}")
+            rmtree(icrawlerdir, ignore_errors=True)
         else:
-            # nothing from google, try bing
-            crawler_name = 'bing'
-            bc = BingImageCrawler(storage={'root_dir': icrawlerdir})
-            bc.crawl(keyword=safeparams, max_num=int(max_num))
+            crawler_name = 'google'
+            gc = GoogleImageCrawler(storage={'root_dir': icrawlerdir})
+            gc.crawl(keyword=safeparams, max_num=int(max_num))
             if os.path.exists(icrawlerdir):
                 res = len(os.listdir(icrawlerdir))
             else:
-                res = 0
-        logger.debug(f"{crawler_name} found {res} {plural(res, 'image')}")
-        if max_num == 1:
-            if res:
-                img = os.path.join(icrawlerdir, os.listdir(icrawlerdir)[0])
-                coverlink, success, _ = cache_img(ImageType.AUTHOR, img_id(), img, refresh=refresh)
-                if success:
-                    logger.debug(f"Cached {crawler_name} image for {authorname}")
-                    return coverlink
-            else:
-                logger.debug(f"No images found for {authorname}")
-            rmtree(icrawlerdir, ignore_errors=True)
-        else:
+                # nothing from google, try bing
+                crawler_name = 'bing'
+                bc = BingImageCrawler(storage={'root_dir': icrawlerdir})
+                bc.crawl(keyword=safeparams, max_num=int(max_num))
+                if os.path.exists(icrawlerdir):
+                    res = len(os.listdir(icrawlerdir))
+                else:
+                    res = 0
+            logger.debug(f"{crawler_name} found {res} {plural(res, 'image')}")
             return icrawlerdir
     elif not PIL:
         logger.debug("PIL not installed, not looking for author image")

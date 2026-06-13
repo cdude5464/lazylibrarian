@@ -50,6 +50,11 @@ from lazylibrarian.formatter import (
     thread_name,
 )
 
+try:
+    from PIL import Image as PILImage
+except Exception:
+    PILImage = None
+
 
 class ImageType(Enum):
     """ Types of images we cache in separate dirs """
@@ -58,6 +63,38 @@ class ImageType(Enum):
     MAG = 'magazine'
     COMIC = 'comic'
     TEST = 'test'
+
+
+def _usable_author_cache_image(filename):
+    if not PILImage or not path_isfile(filename):
+        return True, ''
+    try:
+        with PILImage.open(filename) as img:
+            width, height = img.size
+    except Exception as e:
+        return False, f"unreadable author image: {type(e).__name__} {str(e)}"
+
+    if width < 80 or height < 80:
+        return False, f"author image too small: {width}x{height}"
+    ratio = height / float(width)
+    if ratio > 1.40:
+        return False, f"author image looks like a book cover: {width}x{height}"
+    if width / float(height) > 2.40:
+        return False, f"author image looks like a banner: {width}x{height}"
+    return True, ''
+
+
+def _reject_bad_author_cache_image(img_type, cachefile, logger):
+    if img_type != ImageType.AUTHOR:
+        return None
+    usable, reason = _usable_author_cache_image(cachefile)
+    if usable:
+        return None
+    try:
+        remove_file(cachefile)
+    except Exception as e:
+        logger.debug(f"Unable to remove rejected author image {cachefile}: {type(e).__name__} {str(e)}")
+    return reason
 
 
 service_blocked = ['goodreads', 'librarything', 'googleapis', 'openlibrary', 'hardcover', 'dnb', 'ISBN']
@@ -131,18 +168,18 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         else:
             timeout = CONFIG.get_int('HTTP_TIMEOUT')
 
-    payload = {}
+    request_kwargs = {}
     if timeout:
-        payload["timeout"] = timeout
+        request_kwargs["timeout"] = timeout
     if proxies:
-        payload["proxies"] = proxies
+        request_kwargs["proxies"] = proxies
     verify = False
     if url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
         verify = True
         if CONFIG['SSL_CERTS']:
             verify = CONFIG['SSL_CERTS']
     try:
-        r = requests.get(url, verify=verify, params=payload, headers=headers)
+        r = requests.get(url, verify=verify, headers=headers, **request_kwargs)
     except requests.exceptions.TooManyRedirects as e:
         # This is to work around an oddity (bug??) with verified https goodreads requests
         # Goodreads sometimes redirects back to the same page in a loop using code 301,
@@ -154,7 +191,7 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
             return f"TooManyRedirects {str(e)}", False
         logger.debug(f"Retrying - got TooManyRedirects on {url}")
         try:
-            r = requests.get(url, verify=False, params=payload, headers=headers)
+            r = requests.get(url, verify=False, headers=headers, **request_kwargs)
             logger.debug(f"TooManyRedirects retry status code {r.status_code}")
         except Exception as e:
             return f"Exception {type(e).__name__}: {str(e)}", False
@@ -164,7 +201,7 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
             return f"Timeout {str(e)}", False
         logger.debug(f"fetch_url: retrying - got timeout on {url}")
         try:
-            r = requests.get(url, verify=verify, params=payload, headers=headers)
+            r = requests.get(url, verify=verify, headers=headers, **request_kwargs)
         except Exception as e:
             return f"Exception {type(e).__name__}: {str(e)}", False
     except Exception as e:
@@ -232,6 +269,10 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
     link = f'cache/{img_type.value}/{img_id}.jpg'
     if path_isfile(cachefile):
         if not refresh:  # overwrite any cached image
+            rejected = _reject_bad_author_cache_image(img_type, cachefile, logger)
+            if rejected:
+                logger.debug(f"Rejected existing cached author image {cachefile}: {rejected}")
+                return rejected, False, True
             cachelogger = logging.getLogger('special.cache')
             cachelogger.debug(f"Cached {img_type.name} image exists {cachefile}")
             return link, True, True
@@ -243,6 +284,10 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
             try:
                 with open(syspath(cachefile), 'wb') as img:
                     img.write(result)
+                rejected = _reject_bad_author_cache_image(img_type, cachefile, logger)
+                if rejected:
+                    logger.debug(f"Rejected cached author image from {img_url}: {rejected}")
+                    return rejected, False, False
                 return link, True, False
             except Exception as e:
                 logger.error(f"{type(e).__name__} writing image to {cachefile}, {str(e)}")
@@ -256,6 +301,10 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
     if path_isfile(img_url):
         try:
             shutil.copyfile(img_url, cachefile)
+            rejected = _reject_bad_author_cache_image(img_type, cachefile, logger)
+            if rejected:
+                logger.debug(f"Rejected cached author image from {img_url}: {rejected}")
+                return rejected, False, had_cache
             return link, True, had_cache
         except Exception as e:
             logger.error(f"{type(e).__name__} copying image to {cachefile}, {str(e)}")

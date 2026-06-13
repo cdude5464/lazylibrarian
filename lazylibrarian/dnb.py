@@ -20,7 +20,7 @@ import requests
 # The new library is recently updated and uses Lang
 try:
     from iso639 import Lang
-except ModuleNotFoundError:
+except (ImportError, ModuleNotFoundError):
     Lang = None
 try:
     from iso639 import languages

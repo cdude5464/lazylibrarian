@@ -1013,12 +1013,19 @@ def library_scan(startdir=None, library='eBook', authid=None, remove=True):
                                             f"Metadata bookid [{bookid}] not found in database, title matches "
                                             f"{match['BookID']}")
                                         mtype = match['Status']
-                                        # update stored bookid to match preferred (owned) book
-                                        db.action('PRAGMA foreign_keys = OFF')
-                                        for table in ['books', 'member', 'wanted', 'failedsearch', 'genrebooks', 'bookauthors']:
-                                            cmd = f"UPDATE {table} SET BookID=? WHERE BookID=?"
-                                            db.action(cmd, (bookid, match['BookID']))
-                                        db.action('PRAGMA foreign_keys = ON')
+                                        if bookid:
+                                            # update stored bookid to match preferred (owned) book
+                                            db.action('PRAGMA foreign_keys = OFF')
+                                            for table in ['books', 'member', 'wanted', 'failedsearch', 'genrebooks',
+                                                          'bookauthors']:
+                                                cmd = f"UPDATE {table} SET BookID=? WHERE BookID=?"
+                                                db.action(cmd, (bookid, match['BookID']))
+                                            db.action('PRAGMA foreign_keys = ON')
+                                        else:
+                                            logger.warning(
+                                                f"Metadata bookid missing for {book} by {author}; keeping existing "
+                                                f"BookID {match['BookID']}")
+                                            bookid = match['BookID']
 
                                 if not match:
                                     # Try and find in database under author and bookname

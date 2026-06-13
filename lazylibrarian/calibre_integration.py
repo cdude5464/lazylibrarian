@@ -30,6 +30,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import traceback
 
@@ -50,10 +51,125 @@ from lazylibrarian.filesystem import (
     setperm,
     syspath,
 )
-from lazylibrarian.formatter import make_unicode, unaccented
+from lazylibrarian.formatter import make_unicode, now, unaccented
 from lazylibrarian.images import create_mag_cover
 from lazylibrarian.magazinescan import create_id, format_issue_filename, get_dateparts
 from lazylibrarian.metadata_opf import create_comic_opf, create_mag_opf, create_opf
+
+
+
+def _enhance_cover_before_calibre(bookid, data, logger):
+    """Best-effort high-resolution cover selection before Calibre import."""
+    helper = "/config/scripts/ll_cover_quality.py"
+    if not bookid or not os.path.isfile(helper):
+        return data
+    params = [
+        "python3",
+        helper,
+        "--book-id",
+        str(bookid),
+        "--apply",
+        "--no-calibre",
+        "--include-unowned",
+        "--only-low",
+        "--max-bing",
+        "5",
+        "--quiet",
+        "--backup-root",
+        "/config/cover-quality-backups/import-time",
+    ]
+    try:
+        result = subprocess.run(
+            params,
+            cwd="/app/lazylibrarian",
+            timeout=60,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode:
+            logger.warning(f"Cover quality helper exited {result.returncode}: {result.stderr[-300:]}")
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Cover quality helper timed out for {bookid}")
+    except Exception as exc:
+        logger.warning(f"Cover quality helper failed for {bookid}: {type(exc).__name__} {exc}")
+
+    db = database.DBConnection()
+    try:
+        refreshed = db.match(
+            "SELECT AuthorName,BookID,BookName,BookDesc,BookIsbn,BookImg,BookDate,BookLang,"
+            "BookPub,BookRate,Requester,AudioRequester,BookGenre,Narrator from books,authors "
+            "WHERE BookID=? and books.AuthorID = authors.AuthorID",
+            (bookid,),
+        )
+        if refreshed:
+            return refreshed
+    except Exception as exc:
+        logger.debug(f"Unable to reload cover metadata for {bookid}: {type(exc).__name__} {exc}")
+    finally:
+        db.close()
+    return data
+
+
+def _record_calibre_ebook_file(bookid, newbookfile, logger):
+    """Persist the canonical Calibre file path after a successful ebook import."""
+    if not bookid or not newbookfile:
+        return
+    db = database.DBConnection()
+    try:
+        db.action(
+            "UPDATE books SET BookFile=?, BookLibrary=?, Status=? WHERE BookID=?",
+            (newbookfile, now(), CONFIG["FOUND_STATUS"], bookid),
+        )
+        logger.debug(f"Linked BookID {bookid} to Calibre ebook file {newbookfile}")
+    finally:
+        db.close()
+    _refresh_author_totals_for_book(bookid, logger)
+
+
+def _refresh_author_totals_for_book(bookid, logger):
+    """Refresh LL's cached author counters after direct ebook status repair."""
+    if not bookid:
+        return
+    db = database.DBConnection()
+    try:
+        row = db.match("SELECT AuthorID FROM books WHERE BookID=?", (bookid,))
+    finally:
+        db.close()
+    if not row:
+        return
+    try:
+        from lazylibrarian.importer import update_totals
+
+        update_totals(row["AuthorID"])
+    except Exception as exc:
+        logger.warning(
+            f"Unable to refresh author totals for BookID {bookid}: {type(exc).__name__} {exc}"
+        )
+
+
+def _record_existing_calibre_ebook_file(bookid, logger):
+    """Mark an LL row Have when Calibre reports a duplicate with a verified existing file."""
+    if not bookid:
+        return False
+    db = database.DBConnection()
+    try:
+        row = db.match("SELECT BookFile FROM books WHERE BookID=?", (bookid,))
+        if not row:
+            return False
+        bookfile = row["BookFile"]
+        if not bookfile or not path_isfile(bookfile):
+            return False
+        db.action(
+            "UPDATE books SET Status=?, BookLibrary=CASE WHEN BookLibrary IS NULL OR BookLibrary='' THEN ? "
+            "ELSE BookLibrary END WHERE BookID=?",
+            (CONFIG["FOUND_STATUS"], now(), bookid),
+        )
+        logger.debug(f"Marked BookID {bookid} Have using existing Calibre ebook file {bookfile}")
+    finally:
+        db.close()
+    _refresh_author_totals_for_book(bookid, logger)
+    return True
 
 
 def send_to_calibre(booktype, global_name, folder, data):
@@ -200,16 +316,15 @@ def send_to_calibre(booktype, global_name, folder, data):
         if rc:
             return False, f"calibredb rc {rc} from {CONFIG['IMP_CALIBREDB']}", folder
         if booktype == "ebook" and (" --duplicates" in res or " --duplicates" in err):
-            logger.warning(
-                f'Calibre failed to import {authorname} {bookname}, already exists, marking book as "Have"'
-            )
-            db = database.DBConnection()
-            try:
-                control_value_dict = {"BookID": bookid}
-                new_value_dict = {"Status": "Have"}
-                db.upsert("books", new_value_dict, control_value_dict)
-            finally:
-                db.close()
+            if _record_existing_calibre_ebook_file(bookid, logger):
+                logger.warning(
+                    f"Calibre duplicate for {authorname} {bookname}; existing LazyLibrarian BookFile verified"
+                )
+            else:
+                logger.warning(
+                    f"Calibre failed to import {authorname} {bookname}, already exists; "
+                    "leaving LazyLibrarian row unchanged"
+                )
             return True, "", folder
         # Answer should look like "Added book ids : bookID" (string may be translated!)
         try:
@@ -260,6 +375,7 @@ def send_to_calibre(booktype, global_name, folder, data):
             else:
                 opfpath = ""
                 if booktype in ["ebook", "audiobook"]:
+                    data = _enhance_cover_before_calibre(bookid, data, logger)
                     lazylibrarian.postprocess.process_img(
                         folder, bookid, data["BookImg"], global_name, ImageType.BOOK
                     )
@@ -465,6 +581,8 @@ def send_to_calibre(booktype, global_name, folder, data):
         newbookfile = book_file(target_dir, booktype=booktype, config=CONFIG)
         # should we be setting permissions on calibres directories and files?
         if newbookfile:
+            if booktype == "ebook":
+                _record_calibre_ebook_file(bookid, newbookfile, logger)
             setperm(target_dir)
             if booktype in ["magazine", "comic"]:
                 try:

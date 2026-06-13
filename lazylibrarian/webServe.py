@@ -4036,9 +4036,13 @@ class WebInterface:
                 bookid_key = itm[2]
                 break
 
-        cmd = (f"SELECT BookFile,AudioFile,AuthorName,BookName from books,authors WHERE books.{bookid_key}=? or "
-               "BookID=? and books.AuthorID = authors.AuthorID")
-        bookdata = db.match(cmd, (bookid, bookid))
+        matched_book = find_book_by_any_id(db, bookid, preferred_key=bookid_key)
+        if matched_book:
+            bookid = matched_book['BookID']
+
+        cmd = ("SELECT BookFile,AudioFile,AuthorName,BookName from books,authors WHERE "
+               "books.BookID=? and books.AuthorID = authors.AuthorID")
+        bookdata = db.match(cmd, (bookid,))
         db.close()
         if not bookdata:
             logger.warning(f'Missing bookid: {bookid}')
@@ -4693,32 +4697,77 @@ class WebInterface:
     @require_auth()
     @cherrypy.tools.json_out()
     def mark_results_ajax(self, **args):
+        self.check_permitted(lazylibrarian.perm_search)
         action = args.get('action', 'unknown action')
         redirect = args.get('redirect', '')
         passed = 0
         failed = 0
 
-        for arg in ['action']:
+        for arg in ['action', 'redirect']:
             args.pop(arg, None)
 
         this_source = lazylibrarian.INFOSOURCES[CONFIG['BOOK_API']]
         api = this_source['api']
         api = api()
-        ids = set(args.keys())
         if action in ['AddBook', 'AddAudio', 'AddBoth']:
             wantbook = "Wanted" if action in ['AddBook', 'AddBoth'] else 'Skipped'
             wantaudio = "Wanted" if action in ['AddAudio', 'AddBoth'] else 'Skipped'
-            for itm in ids:
+            existing_wantbook = "Wanted" if action in ['AddBook', 'AddBoth'] else None
+            existing_wantaudio = "Wanted" if action in ['AddAudio', 'AddBoth'] else None
+            provider_bookid_key = configured_bookid_key()
+            for itm, result_value in args.items():
+                if isinstance(result_value, list):
+                    result_value = result_value[0] if result_value else ''
+                result_author_name = ''
+                result_title = ''
+                if result_value and result_value != 'on':
+                    parts = str(result_value).split('|', 2)
+                    result_author_id = parts[0] if parts else ''
+                    result_author_name = parts[1] if len(parts) > 1 else ''
+                    result_title = parts[2] if len(parts) > 2 else ''
+                else:
+                    result_author_id = ''
+                match = update_existing_book_status(itm, existing_wantbook, existing_wantaudio,
+                                                    preferred_key=provider_bookid_key)
+                if match:
+                    passed += 1
+                    continue
+                author_existed = _author_exists(result_author_id)
+                if _add_search_result_book_to_db(
+                    itm, wantbook, wantaudio, title=result_title, authorname=result_author_name,
+                    reason=f"Added by user bulk search-result fallback {wantbook}:{wantaudio}"
+                ):
+                    passed += 1
+                    continue
                 if api.add_bookid_to_db(itm, wantbook, wantaudio,
                                         f"Added by User from resultlist {wantbook}:{wantaudio}"):
-                    passed += 1
+                    match = resolve_book_by_any_id(itm, preferred_key=provider_bookid_key)
+                    if match:
+                        passed += 1
+                    else:
+                        _cleanup_empty_new_author(result_author_id, author_existed)
+                        failed += 1
                 else:
+                    _cleanup_empty_new_author(result_author_id, author_existed)
                     failed += 1
         elif action in ['AddAuthor']:
             books = bool(CONFIG['NEWAUTHOR_STATUS'] != 'Ignored') or bool(CONFIG['NEWAUTHOR_AUDIO'] != 'Ignored')
-            for itm in ids:
-                if add_author_to_db(refresh=False, authorid=itm, addbooks=books,
-                                    reason=f"User add_author_id {itm}"):
+            for itm, author_value in args.items():
+                if isinstance(author_value, list):
+                    author_value = author_value[0] if author_value else ''
+                author_id = ''
+                author_name = ''
+                if author_value and author_value != 'on':
+                    if '|' in author_value:
+                        author_id, author_name = author_value.split('|', 1)
+                    else:
+                        author_id = author_value
+                author_name = unquote_plus(author_name)
+                if author_id and add_author_to_db(refresh=False, authorid=author_id, addbooks=books,
+                                                  reason=f"User add_author_id {author_id}"):
+                    passed += 1
+                elif author_name and add_author_name_to_db(author_name, refresh=False, addbooks=books,
+                                                           reason=f"User add_author {author_name}"):
                     passed += 1
                 else:
                     failed += 1
@@ -8706,11 +8755,11 @@ class WebInterface:
         elif source in ["books", "audio"]:
             if CONFIG.use_any():
                 if 'SEARCHALLBOOKS' not in [n.name for n in list(threading.enumerate())]:
-                    schedule_job(SchedulerCommand.STOP, "search_book")
-                    schedule_job(SchedulerCommand.STARTNOW, "search_book")
-                if CONFIG.use_rss():
-                    schedule_job(SchedulerCommand.STOP, "search_rss_book")
-                    schedule_job(SchedulerCommand.STARTNOW, "search_rss_book")
+                    lazylibrarian.STOPTHREADS = False
+                    logger.debug("Starting manual search_book backlog thread")
+                    threading.Thread(target=search_book, name='SEARCHALLBOOKS', args=[]).start()
+                else:
+                    logger.debug("SEARCHALLBOOKS is already running")
             else:
                 logger.warning('Search called but no download providers set')
 

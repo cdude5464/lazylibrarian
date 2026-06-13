@@ -349,6 +349,32 @@
             });
         }
 
+        try {
+          var searchNotice = sessionStorage.getItem('llSearchInitiated');
+          if (searchNotice) {
+            sessionStorage.removeItem('llSearchInitiated');
+            $.notify({
+                icon: "images/ll48.png",
+                title: '<strong>Search</strong>',
+                message: '<div>' + searchNotice + '</div>'
+            },{
+                icon_type: 'image',
+                type: 'info',
+                delay: 5000
+              });
+          }
+        } catch (e) {}
+
+        $(document).on('click',
+          'a#forcesearch[href^="force_search?source=books"], ' +
+          'a#forcesearch[href^="force_search?source=audio"], ' +
+          'a[href^="search_for_book?"]',
+          function() {
+            try {
+              sessionStorage.setItem('llSearchInitiated', 'Search initiated.');
+            } catch (e) {}
+          });
+
         $('#ignoreTelemetry').click(function() {
             createCookie("ignoreTelemetry", true, 14);
             location.reload(true);

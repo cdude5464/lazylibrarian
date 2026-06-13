@@ -45,7 +45,7 @@ from lazylibrarian import (
     transmission,
     utorrent,
 )
-from lazylibrarian.annas import annas_download, block_annas
+from lazylibrarian.annas import annas_download
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.common import get_user_agent, proxy_list
@@ -77,6 +77,38 @@ from lazylibrarian.telemetry import record_usage_data
 from lib.bencode import bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
+
+
+def _reject_word_tokens(value):
+    return set(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_text(value):
+    return ' '.join(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_matches(word, result_title, author='', title=''):
+    word = (word or '').strip().lower()
+    if not word:
+        return False
+    word_text = _reject_word_text(word)
+    word_tokens = set(word_text.split())
+    if len(word_tokens) == 1:
+        word = next(iter(word_tokens))
+        result_words = _reject_word_tokens(result_title)
+        if word not in result_words:
+            return False
+        return word not in _reject_word_tokens(author) and word not in _reject_word_tokens(title)
+    if not word_text:
+        return False
+    result_text = f" {_reject_word_text(result_title)} "
+    author_text = f" {_reject_word_text(author)} "
+    title_text = f" {_reject_word_text(title)} "
+    return (
+        f" {word_text} " in result_text
+        and f" {word_text} " not in author_text
+        and f" {word_text} " not in title_text
+    )
 
 
 def use_label(source, library):
@@ -348,12 +380,13 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         return False, ''
 
     if provider == 'annas':
+        if BLOCKHANDLER.is_blocked(provider):
+            return False, "provider is already blocked"
+
         count = TIMERS['ANNA_REMAINING']
         dl_limit = CONFIG.get_int('ANNA_DLLIMIT')
         if dl_limit and count <= 0:
-            TIMERS['ANNA_REMAINING'] = 0
-            block_annas(dl_limit)
-            return False, f"Download limit {dl_limit} reached"
+            logger.info("Anna remaining-download counter is zero; checking Anna before blocking")
 
         title, extn = splitext(dl_title)
         folder = ''
@@ -369,13 +402,13 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             elif library == 'AudioBook':
                 db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
             if auxinfo:  # magazine issue
-                cmd = ("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?, completed=? "
+                cmd = ("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?, completed=?, dlresult=NULL "
                        "WHERE NZBUrl=?")
                 db.action(cmd, (source, dl_url, int(time.time()), dl_url))
             else:
-                cmd = ("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?, completed=? "
-                       "WHERE BookID=? and NZBProv=?")
-                db.action(cmd, (source, dl_url, int(time.time()), bookid, provider))
+                cmd = ("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?, completed=?, dlresult=NULL "
+                       "WHERE NZBUrl=?")
+                db.action(cmd, (source, dl_url, int(time.time()), dl_url))
 
             record_usage_data(f'Download/Direct/{provider}/Success')
             db.close()
@@ -387,8 +420,8 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             db.action(cmd, (fname, source, dl_url, int(time.time()), dl_url))
         else:
             cmd = ("UPDATE wanted SET status='Failed', dlresult=?, Source=?, DownloadID=?, completed=? "
-                   "WHERE BookID=? and NZBProv=?")
-            db.action(cmd, (fname, source, dl_url, int(time.time()), bookid, provider))
+                   "WHERE NZBUrl=?")
+            db.action(cmd, (fname, source, dl_url, int(time.time()), dl_url))
         record_usage_data(f'Download/Direct/{provider}/Failed')
         db.close()
         return False, fname
@@ -643,7 +676,8 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
     return False, res
 
 
-def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', label='', provider=''):
+def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', label='', provider='',
+                  requested_author='', requested_title=''):
     logger = logging.getLogger(__name__)
     logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
     download_id = False
@@ -980,6 +1014,16 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
     if download_id:
         db = database.DBConnection()
         try:
+            if bookid and (not requested_title or not requested_author):
+                bookdata = db.match(
+                    "SELECT BookName,AuthorName FROM books,authors "
+                    "WHERE books.AuthorID=authors.AuthorID AND BookID=?",
+                    (bookid,))
+                if bookdata:
+                    if not requested_title:
+                        requested_title = bookdata['BookName']
+                    if not requested_author:
+                        requested_author = bookdata['AuthorName']
             if tor_title:
                 if make_unicode(download_id).upper() in make_unicode(tor_title).upper():
                     logger.warning(f"{source}: name contains hash, probably unresolved magnet")
@@ -1001,19 +1045,25 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                         reject_list = []
 
                     rejected = False
-                    lower_title = tor_title.lower()
                     for word in reject_list:
-                        if word in lower_title:
+                        if _reject_word_matches(word, tor_title, requested_author, requested_title):
                             rejected = f"Rejecting torrent name {tor_title}, contains {word}"
                             logger.debug(rejected)
                             break
                     if not rejected:
-                        rejected = check_contents(source, download_id, library, tor_title)
+                        rejected = check_contents(source, download_id, library, tor_title,
+                                                  requested_author=requested_author,
+                                                  requested_title=requested_title)
                     if rejected:
-                        db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?",
-                                  (rejected, full_url))
-                        if CONFIG.get_bool('DEL_FAILED'):
+                        db.action("UPDATE wanted SET status='Failed',DLResult=? "
+                                  "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                                  (rejected, full_url, bookid, library))
+                        try:
                             delete_task(source, download_id, True)
+                        except Exception as e:
+                            logger.warning(f"Unable to delete rejected torrent {download_id}: {type(e).__name__} {e}")
+                        finally:
+                            db.close()
                         return False, rejected
                     logger.debug(f"{source} setting torrent name to [{tor_title}]")
                     db.action('UPDATE wanted SET NZBtitle=? WHERE NZBurl=?', (tor_title, full_url))

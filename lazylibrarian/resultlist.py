@@ -14,6 +14,7 @@
 #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
 
 import logging
+import re
 import traceback
 
 from rapidfuzz import fuzz
@@ -31,6 +32,137 @@ from lazylibrarian.formatter import check_int, get_list, now, replace_all, unacc
 from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
 from lazylibrarian.providers import get_searchterm
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
+
+
+_AUDIOBOOK_FORMAT_TAGS = (
+    r'mp3|m4a|m4b|aac|flac|ogg|opus|wav|wma|'
+    r'64|96|128|192|256|320|kbps|kbit|vbr|cbr|variable|'
+    r'unabridged|abridged'
+)
+
+
+def _audiobook_failed_title_key(title):
+    """Normalize volatile audiobook result labels for failed-source comparison."""
+    title = unaccented(title or '', only_ascii=False).lower()
+    title = re.sub(rf'\[({_AUDIOBOOK_FORMAT_TAGS})[^\]]*\]', ' ', title)
+    title = re.sub(rf'\(({_AUDIOBOOK_FORMAT_TAGS})[^\)]*\)', ' ', title)
+    title = replace_all(title, {'...': ' ', '.': ' ', '&': ' ', '=': ' ', '?': ' ', '$': 's', '+': ' ',
+                                '"': ' ', ',': ' ', '*': ' ', ':': ' ', ';': ' ', '\'': ' ',
+                                '!': ' ', '-': ' ', '_': ' ', '#': ' ', '(': ' ', ')': ' ',
+                                '[': ' ', ']': ' '})
+    return ' '.join(title.split())
+
+
+def _reject_word_tokens(value):
+    return set(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_text(value):
+    return ' '.join(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_matches(word, result_title, author, title):
+    word = (word or '').strip().lower()
+    if not word:
+        return False
+    word_text = _reject_word_text(word)
+    word_tokens = set(word_text.split())
+    if len(word_tokens) == 1:
+        word = next(iter(word_tokens))
+        result_words = _reject_word_tokens(result_title)
+        if word not in result_words:
+            return False
+        return word not in _reject_word_tokens(author) and word not in _reject_word_tokens(title)
+    if not word_text:
+        return False
+    result_text = f" {_reject_word_text(result_title)} "
+    author_text = f" {_reject_word_text(author)} "
+    title_text = f" {_reject_word_text(title)} "
+    return (
+        f" {word_text} " in result_text
+        and f" {word_text} " not in author_text
+        and f" {word_text} " not in title_text
+    )
+
+
+def _audiobook_failed_source_retryable(row):
+    """Return True for failures that should not permanently blacklist a source."""
+    if not row:
+        return False
+    if hasattr(row, 'get'):
+        result = row.get('DLResult') or ''
+    else:
+        result = row['DLResult'] if 'DLResult' in row.keys() else ''
+    result = result.lower()
+    return (
+        'stalled incomplete audiobook source' in result
+        or ('m4b conversion failed:' in result and 'not an all-mp3 payload' in result)
+        or ('m4b conversion failed:' in result and 'm4b output has' in result and 'chapters, expected' in result)
+    )
+
+
+def _failed_source_retryable(row, auxinfo, author='', title=''):
+    """Return True when a failed wanted row should not permanently suppress the same source."""
+    if not row:
+        return False
+    if hasattr(row, 'get'):
+        provider = (row.get('NZBprov') or '').lower()
+        status = row.get('Status') or ''
+        result = row.get('DLResult') or ''
+    else:
+        provider = row['NZBprov'].lower() if 'NZBprov' in row.keys() and row['NZBprov'] else ''
+        status = row['Status'] if 'Status' in row.keys() else ''
+        result = row['DLResult'] if 'DLResult' in row.keys() else ''
+    if status != 'Failed':
+        return False
+    result = result.lower()
+    if provider == 'annas' and (
+            'fast-download limit reached' in result
+            or 'rate limited' in result
+            or 'download limit' in result
+            or 'error status: 429' in result
+            or 'error status: 409' in result):
+        return True
+    failed_reject = re.search(r'\bcontains\s+(.+?)\s*$', result)
+    if failed_reject and not _reject_word_matches(failed_reject.group(1), result, author, title):
+        return True
+    return auxinfo == 'AudioBook' and _audiobook_failed_source_retryable(row)
+
+
+def _audiobook_size_matches(stored_size, result_size):
+    """Compare processed-source sizes in MB, failing closed when size evidence is absent."""
+    try:
+        stored = float(stored_size)
+        current = round(float(check_int(result_size, 1000)) / 1048576, 2)
+    except (TypeError, ValueError):
+        return True
+    if stored <= 0 or current <= 0:
+        return True
+    return abs(stored - current) <= max(1.0, max(stored, current) * 0.01)
+
+
+def _audiobook_failed_source_blocks_result(db, bookid, auxinfo, result_title, result_size):
+    """Return the failed wanted row that blocks a known-bad audiobook source."""
+    if auxinfo != 'AudioBook':
+        return None
+    failed_titles = db.select("SELECT NZBtitle,NZBprov,DLResult,NZBsize from wanted "
+                              "WHERE BookID=? and AuxInfo=? "
+                              "and Status='Failed' "
+                              "and (DLResult like '%single-file MP3%' "
+                              "or DLResult like 'Rejected stalled audiobook torrent%' "
+                              "or DLResult like 'Rejected % audiobook source before transfer' "
+                              "or DLResult like 'Rejected repeated previously failed audiobook source%' "
+                              "or DLResult like 'M4B conversion failed:%')",
+                              (bookid, auxinfo))
+    result_title_key = _audiobook_failed_title_key(result_title)
+    for failed_title in failed_titles:
+        if _audiobook_failed_source_retryable(failed_title):
+            continue
+        if result_title_key and result_title_key == _audiobook_failed_title_key(
+                failed_title['NZBtitle']) and _audiobook_size_matches(
+                failed_title['NZBsize'], result_size):
+            return failed_title
+    return None
 
 
 def process_result_list(resultlist, book, searchtype, source):
@@ -139,17 +271,40 @@ def find_best_result(resultlist, book, searchtype, source):
                     args += (res['tor_title'],)
                 blacklisted = db.match(cmd, args)
                 if blacklisted:
-                    logger.debug(f"Rejecting {res[prefix + 'title']}, url blacklisted (Failed) at "
-                                 f"{blacklisted['NZBprov']}")
-                    rejected = True
+                    if _failed_source_retryable(blacklisted, auxinfo, author, title):
+                        logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous failure was "
+                                     f"retryable at {blacklisted['NZBprov']}")
+                    else:
+                        logger.debug(f"Rejecting {res[prefix + 'title']}, url blacklisted (Failed) at "
+                                     f"{blacklisted['NZBprov']}")
+                        rejected = True
                 if not rejected:
                     blacklisted = db.match("SELECT * from wanted WHERE NZBprov=? and NZBtitle=? "
                                            "and Status='Failed'",
                                            (res[f"{prefix}prov"], res[f"{prefix}title"]))
                     if blacklisted:
-                        logger.debug(f"Rejecting {res[prefix + 'title']}, title blacklisted (Failed) at "
-                                     f"{blacklisted['NZBprov']}")
+                        if _failed_source_retryable(blacklisted, auxinfo, author, title):
+                            logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous title failure was "
+                                         f"retryable at {blacklisted['NZBprov']}")
+                        else:
+                            logger.debug(f"Rejecting {res[prefix + 'title']}, title blacklisted (Failed) at "
+                                         f"{blacklisted['NZBprov']}")
+                            rejected = True
+                if not rejected and auxinfo == 'AudioBook':
+                    failed_title = _audiobook_failed_source_blocks_result(
+                        db, book['bookid'], auxinfo, res[f"{prefix}title"], res[f"{prefix}size"])
+                    if failed_title:
+                        logger.debug(f"Rejecting {res[prefix + 'title']}, normalized audiobook title "
+                                     f"blacklisted (Failed audiobook source) at {failed_title['NZBprov']}")
                         rejected = True
+
+            if not rejected and auxinfo == 'AudioBook':
+                failed_title = _audiobook_failed_source_blocks_result(
+                    db, book['bookid'], auxinfo, res[f"{prefix}title"], res[f"{prefix}size"])
+                if failed_title:
+                    logger.debug(f"Rejecting {res[prefix + 'title']}, normalized audiobook title "
+                                 f"blacklisted (Helper-rejected audiobook source) at {failed_title['NZBprov']}")
+                    rejected = True
 
             if not rejected and CONFIG.get_bool('BLACKLIST_PROCESSED'):
                 cmd = "SELECT * from wanted WHERE NZBurl=?"
@@ -159,16 +314,39 @@ def find_best_result(resultlist, book, searchtype, source):
                     args += (res['tor_title'],)
                 blacklisted = db.match(cmd, args)
                 if blacklisted:
-                    logger.debug(f"Rejecting {res[prefix + 'title']}, url blacklisted ({blacklisted['Status']}) "
-                                 f"at {blacklisted['NZBprov']}")
-                    rejected = True
+                    if _failed_source_retryable(blacklisted, auxinfo, author, title):
+                        logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous processed-list match "
+                                     f"was retryable at {blacklisted['NZBprov']}")
+                    else:
+                        logger.debug(f"Rejecting {res[prefix + 'title']}, url blacklisted ({blacklisted['Status']}) "
+                                     f"at {blacklisted['NZBprov']}")
+                        rejected = True
                 if not rejected:
                     blacklisted = db.match('SELECT * from wanted WHERE NZBprov=? and NZBtitle=?',
                                            (res[f"{prefix}prov"], res[f"{prefix}title"]))
                     if blacklisted:
-                        logger.debug(f"Rejecting {res[prefix + 'title']}, title blacklisted ({blacklisted['Status']}) "
-                                     f"at {blacklisted['NZBprov']}")
-                        rejected = True
+                        if _failed_source_retryable(blacklisted, auxinfo, author, title):
+                            logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous processed-list title "
+                                         f"match was retryable at {blacklisted['NZBprov']}")
+                        else:
+                            logger.debug(
+                                f"Rejecting {res[prefix + 'title']}, title blacklisted ({blacklisted['Status']}) "
+                                f"at {blacklisted['NZBprov']}")
+                            rejected = True
+                if not rejected and auxinfo == 'AudioBook':
+                    processed_titles = db.select("SELECT NZBtitle,NZBprov,Status,NZBsize from wanted WHERE BookID=? "
+                                                 "and AuxInfo=? and NZBprov=? and Status='Processed'",
+                                                 (book['bookid'], auxinfo, res[f"{prefix}prov"]))
+                    result_title_key = _audiobook_failed_title_key(res[f"{prefix}title"])
+                    for processed_title in processed_titles:
+                        if result_title_key and result_title_key == _audiobook_failed_title_key(
+                                processed_title['NZBtitle']) and _audiobook_size_matches(
+                                processed_title['NZBsize'], res[f"{prefix}size"]):
+                            logger.debug(f"Rejecting {res[prefix + 'title']}, normalized audiobook title "
+                                         f"blacklisted (Processed audiobook source) at "
+                                         f"{processed_title['NZBprov']}")
+                            rejected = True
+                            break
 
             if not rejected and source == 'rss':
                 if searchtype in ['book', 'shortbook'] and 'E' not in res['types']:
@@ -210,8 +388,7 @@ def find_best_result(resultlist, book, searchtype, source):
 
             if not rejected:
                 for word in reject_list:
-                    if word in get_list(result_title.lower()) and word not in get_list(author.lower()) \
-                            and word not in get_list(title.lower()):
+                    if _reject_word_matches(word, result_title, author, title):
                         rejected = True
                         logger.debug(f"Rejecting {result_title}, contains {word}")
                         break
@@ -367,7 +544,8 @@ def download_result(match, book):
         elif new_value_dict['NZBmode'] in ["torznab", "torrent", "magnet"]:
             snatch, res = tor_dl_method(new_value_dict["BookID"], new_value_dict["NZBtitle"],
                                         control_value_dict["NZBurl"], new_value_dict["AuxInfo"], label,
-                                        new_value_dict['NZBprov'])
+                                        new_value_dict['NZBprov'], book.get('authorName', ''),
+                                        book.get('bookName', ''))
         elif new_value_dict['NZBmode'] == 'nzb':
             snatch, res = nzb_dl_method(new_value_dict["BookID"], new_value_dict["NZBtitle"],
                                         control_value_dict["NZBurl"], new_value_dict["AuxInfo"], label)

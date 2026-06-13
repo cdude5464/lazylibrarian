@@ -19,13 +19,13 @@ import re
 import sys
 import time
 from dataclasses import dataclass
-from datetime import UTC, datetime
 from enum import Enum
 from html import unescape as html_unescape
 from urllib.parse import urljoin, urlparse
 
 from bs4 import BeautifulSoup, Tag
 from requests import get
+from requests.exceptions import RequestException
 
 import lazylibrarian
 from lazylibrarian import database
@@ -37,6 +37,7 @@ from lazylibrarian.formatter import check_int, get_list, md5_utf8, plural, sanit
 py310 = sys.version_info >= (3, 10)
 
 WIKIPEDIA_URL = "https://en.wikipedia.org/wiki/Anna%27s_Archive"
+ANNA_HTTP_TIMEOUT = (10, 60)
 
 @dataclass(**({"slots": True} if py310 else {}))
 class FileInfo:
@@ -192,7 +193,7 @@ def html_parser(url: str, params: dict = None) -> BeautifulSoup:
     if not params:
         params = {}
     params = dict(filter(lambda i: i[1], params.items()))
-    response = get(url, params=params)
+    response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT)
     if response.status_code >= 400:
         raise HTTPFailedError(f"server returned http status {response.status_code}")
     html = response.text.replace("<!--", "").replace("-->", "")
@@ -363,22 +364,30 @@ def annas_download(md5, folder, title, extn, domain_index=0):
     downloadlogger = logging.getLogger('special.dlcomms')
     params = {'md5': md5, 'key': CONFIG['ANNA_KEY'], 'domain_index': domain_index}
     annas_hosts = get_list(CONFIG['ANNA_HOST'])
-    if not annas_hosts:
-        return False, "No Annas hosts found"
     response = None
-    url = None
+    last_error = ''
     for host in annas_hosts:
         prefix = ''
         if not host.startswith('http'):
             prefix = "https://"
         url = urljoin(prefix + host, '/dyn/api/fast_download.json')
-        response = get(url, params=params)
+        try:
+            response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT)
+        except RequestException as e:
+            last_error = f"{type(e).__name__}: {str(e)[:200]}"
+            downloadlogger.warning(f"Failed to request Anna fast download from {host}: {last_error}")
+            continue
         if str(response.status_code).startswith('2'):
             annas_hosts_prefer(annas_hosts, host)
             break
         downloadlogger.debug(f"Failed to download from {host}: {response.status_code}")
 
-    if response and str(response.status_code).startswith('2'):
+    if response is None:
+        errmsg = f"Anna fast download request failed for all configured hosts: {last_error or 'no response'}"
+        logger.error(errmsg)
+        return False, errmsg
+
+    if str(response.status_code).startswith('2'):
         max_domain_index = check_int(CONFIG['ANNA_MAX_SERVERS'], 0) - 1 # Server indexes are 0-based
         res = response.json()
         downloadlogger.debug(res)
@@ -386,13 +395,13 @@ def annas_download(md5, folder, title, extn, domain_index=0):
         CONFIG.set_int('ANNA_DLLIMIT', counters['downloads_per_day'])
         lazylibrarian.TIMERS['ANNA_REMAINING'] = counters['downloads_left']
         if counters['downloads_left'] == 0:
-            msg = f"Download limit reached ({counters})"
-            block_annas(counters['downloads_per_day'])
+            msg = f"Download limit ({counters['downloads_per_day']}) reached"
+            block_annas(counters['downloads_per_day'], reason=msg)
             return False, msg
         url = res['download_url']
         if url and url.startswith('http'):
             try:
-                r = get(url)
+                r = get(url, timeout=ANNA_HTTP_TIMEOUT)
                 if not str(r.status_code).startswith('2'):
                     msg = f"Got a {r.status_code} response for {url}"
                     if domain_index < max_domain_index:
@@ -418,19 +427,34 @@ def annas_download(md5, folder, title, extn, domain_index=0):
                 with open(dest_filename, 'wb') as f:
                     f.write(filedata)
                 logger.debug(f"Data written to file {dest_filename}")
-                lazylibrarian.TIMERS['ANNA_REMAINING'] = counters['downloads_left'] - 1
-                logger.info(f"Anna {lazylibrarian.TIMERS['ANNA_REMAINING']} remaining "
-                            f"of {counters['downloads_per_day']}")
+                if counters['downloads_left'] == 1:
+                    # just used the last download
+                    lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
+                    block_annas(counters['downloads_per_day'])
+                else:
+                    lazylibrarian.TIMERS['ANNA_REMAINING'] = counters['downloads_left'] - 1
+                    logger.info(f"Anna {lazylibrarian.TIMERS['ANNA_REMAINING']} remaining "
+                                f"of {counters['downloads_per_day']}")
                 return True, dest_filename
-            except Exception as e:
-                logger.debug(str(e))
+            except RequestException as e:
+                msg = f"Anna direct download request failed: {type(e).__name__}: {str(e)[:200]}"
+                logger.warning(msg)
                 if domain_index < max_domain_index:
                     return annas_download(md5, folder, title, extn, domain_index + 1)
+                return False, msg
+            except Exception as e:
+                msg = f"Anna direct download failed: {type(e).__name__}: {str(e)[:200]}"
+                logger.warning(msg)
+                if domain_index < max_domain_index:
+                    return annas_download(md5, folder, title, extn, domain_index + 1)
+                return False, msg
         errmsg = f"Invalid url: {url} {res['error']}"
         logger.error(errmsg)
         return False, errmsg
-    if response.status_code == 409:
-        errmsg = f"Error Status: {response.status_code} Over your daily limit."
+    if response.status_code in (409, 429):
+        errmsg = (f"Error Status: {response.status_code} Anna fast-download limit reached or rate limited.")
+        lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
+        block_annas(CONFIG.get_int('ANNA_DLLIMIT'), reason=errmsg)
     else:
         downloadlogger.debug(url)
         downloadlogger.debug(str(params))
@@ -453,6 +477,19 @@ def anna_search(book=None, searchtype='ebook', test=False):
         if test:
             return False
         return [], "provider is already blocked"
+    dl_limit = CONFIG.get_int('ANNA_DLLIMIT')
+    if dl_limit and not test:
+        recent_rate_limit = anna_recent_rate_limit()
+        grabs, _ = anna_grabs()
+        if recent_rate_limit:
+            lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
+            block_annas(dl_limit, reason="Anna fast-download limit reached or rate limited",
+                        oldest=recent_rate_limit)
+            return [], ''
+        if grabs >= dl_limit:
+            lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
+            block_annas(dl_limit)
+            return [], ''
 
     cache = True
     cachelogger = logging.getLogger('special.cache')
@@ -540,26 +577,17 @@ def anna_search(book=None, searchtype='ebook', test=False):
     return results, ''
 
 
-def block_annas(dl_limit=0):
-    logger = logging.getLogger(__name__)
-    grabs, oldest = anna_grabs()
-    if dl_limit and grabs >= dl_limit:
-        old_datestr = datetime.fromtimestamp(oldest, UTC).strftime('%Y-%m-%d %H:%M:%S')
-        # rolling delay if limit reached
-        resume = oldest + (18 * 60 * 60)
-        if resume > time.time():
-            delay = time.time() - resume
-        else:
-            # default delay if our grab was too old (it wasn't us)
-            delay = (30 * 60)
-
-        logger.debug(f"Grabs: {grabs}, Oldest: {old_datestr}, Limit: {dl_limit}, Delay: {delay}")
-        res = f"Reached Daily download limit ({grabs}/{dl_limit})"
-        BLOCKHANDLER.block_provider("annas", res, delay=delay)
+def block_annas(dl_limit=0, reason=None, oldest=None):
+    grabs, oldest_success = anna_grabs()
+    if oldest is None:
+        oldest = oldest_success
+    # rolling 18hr delay if limit reached
+    if oldest:
+        delay = oldest + 18 * 60 * 60 - time.time()
     else:
-        # we haven't grabbed enough, someone else is also using annas, wait 30 mins...
-        res = f"Anna reports 0 left of {dl_limit}"
-        BLOCKHANDLER.block_provider("annas", res, delay=30 * 60)
+        delay = 18 * 60 * 60
+    res = reason or f"Reached Daily download limit ({grabs}/{dl_limit})"
+    BLOCKHANDLER.block_provider("annas", res, delay=max(delay, 60))
 
 
 def anna_grabs() -> tuple[int, int]:
@@ -567,13 +595,37 @@ def anna_grabs() -> tuple[int, int]:
     # so although we can count how many we downloaded, normally we ask anna and use their counter
     # If we are over limit we try to use our datestamp to find out when the counter will reset
     db = database.DBConnection()
-    eighteen_hours_ago = time.time() - (18 * 60 * 60)
-    grabs = db.select("SELECT completed from wanted WHERE nzbprov='annas' and completed > ? order by completed",
+    eighteen_hours_ago = time.time() - 18 * 60 * 60
+    grabs = db.select("SELECT completed from wanted WHERE nzbprov='annas' and completed > ? "
+                      "and Status in ('Snatched', 'Processed') order by completed",
                       (eighteen_hours_ago,))
     db.close()
     if grabs:
         return len(grabs), int(grabs[0]['completed'])
     return 0, 0
+
+
+def anna_recent_rate_limit() -> int:
+    db = database.DBConnection()
+    eighteen_hours_ago = time.time() - 18 * 60 * 60
+    latest_success = db.match("SELECT max(completed) as completed from wanted WHERE nzbprov='annas' "
+                              "and Status in ('Snatched', 'Processed') and completed > ?",
+                              (eighteen_hours_ago,))
+    since = eighteen_hours_ago
+    if latest_success and latest_success['completed']:
+        since = max(since, float(latest_success['completed']))
+    limited = db.match("SELECT max(completed) as completed from wanted WHERE nzbprov='annas' "
+                       "and Status='Failed' and completed > ? "
+                       "and (DLResult like '%fast-download limit reached%' "
+                       "or DLResult like '%rate limited%' "
+                       "or DLResult like '%Download limit%' "
+                       "or DLResult like 'Error Status: 429%' "
+                       "or DLResult like 'Error Status: 409%')",
+                       (since,))
+    db.close()
+    if limited and limited['completed']:
+        return int(limited['completed'])
+    return 0
 
 
 def fetch_annas_archive_domains():

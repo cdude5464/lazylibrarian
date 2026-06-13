@@ -56,6 +56,7 @@ from lazylibrarian import (
 )
 from lazylibrarian.auth import AuthController, require_auth
 from lazylibrarian.blockhandler import BLOCKHANDLER
+from lazylibrarian.bookdict import add_bookdict_to_db
 from lazylibrarian.bookrename import name_vars
 from lazylibrarian.bookwork import add_series_members, delete_empty_series, set_series
 from lazylibrarian.cache import ImageType, cache_img
@@ -187,7 +188,264 @@ api_sources = []
 for item in lazylibrarian.INFOSOURCES.keys():
     # source, authorid, bookid
     info_source = lazylibrarian.INFOSOURCES[item]
-    api_sources.append([info_source, info_source['author_key'], info_source['book_key']])
+    api_sources.append([item, info_source['author_key'], info_source['book_key']])
+
+
+def configured_bookid_key():
+    return lazylibrarian.INFOSOURCES.get(CONFIG['BOOK_API'], {}).get('book_key') or 'BookID'
+
+
+def bookid_lookup_keys(preferred_key=None):
+    keys = [preferred_key, 'BookID', configured_bookid_key()]
+    allowed = {'BookID', 'gr_id', 'gb_id', 'ol_id', 'hc_id', 'dnb_id'}
+    result = []
+    for key in keys:
+        if key in allowed and key not in result:
+            result.append(key)
+    return result
+
+
+def submitted_bookid_preferred_key(bookid):
+    key = configured_bookid_key()
+    if key != 'BookID' and bookid and str(bookid).isdigit():
+        return key
+    return 'BookID'
+
+
+def find_book_by_any_id(db, bookid, preferred_key=None):
+    if not bookid:
+        return None
+    for key in bookid_lookup_keys(preferred_key):
+        rows = db.select(f"SELECT BookID, AuthorID, Status, AudioStatus from books WHERE {key}=?", (bookid,))
+        if len(rows) == 1:
+            return rows[0]
+        if len(rows) > 1:
+            logging.getLogger(__name__).warning(
+                f"Ambiguous add/search lookup for {key}={bookid}; refusing to choose between {len(rows)} books")
+            return None
+    return None
+
+
+def resolve_book_by_any_id(bookid, preferred_key=None):
+    db = database.DBConnection()
+    try:
+        return find_book_by_any_id(db, bookid, preferred_key=preferred_key)
+    finally:
+        db.close()
+
+
+def update_existing_book_status(bookid, ebook_status=None, audio_status=None, preferred_key=None):
+    updates = {}
+    if ebook_status is not None:
+        updates['Status'] = ebook_status
+    if audio_status is not None:
+        updates['AudioStatus'] = audio_status
+    if not updates:
+        return None
+    db = database.DBConnection()
+    try:
+        match = find_book_by_any_id(db, bookid, preferred_key=preferred_key)
+        if not match:
+            return None
+        db.upsert("books", updates, {'BookID': match['BookID']})
+        author_id = match['AuthorID']
+        real_bookid = match['BookID']
+    finally:
+        db.close()
+    update_totals(author_id)
+    return {'BookID': real_bookid, 'AuthorID': author_id}
+
+
+def info_source_enabled(source):
+    enabled_key = lazylibrarian.INFOSOURCES[source]['enabled']
+    try:
+        return CONFIG.get_bool(enabled_key)
+    except Exception:
+        return False
+
+
+def _search_result_is_safe_match(result, bookid=None, title=None, authorname=None, exact_bookid=False):
+    if not result:
+        return False
+    if exact_bookid and bookid and str(result.get('bookid')) != str(bookid):
+        return False
+    if title:
+        title_score = fuzz.token_set_ratio(result.get('bookname') or '', title)
+        if title_score < 90:
+            return False
+    if authorname:
+        author_score = fuzz.token_set_ratio(result.get('authorname') or '', authorname)
+        if author_score < 85:
+            return False
+    return True
+
+
+def _author_exists(authorid):
+    if not authorid:
+        return False
+    db = database.DBConnection()
+    try:
+        return bool(db.match("SELECT AuthorID FROM authors WHERE AuthorID=?", (authorid,)))
+    finally:
+        db.close()
+
+
+def _cleanup_empty_new_author(authorid, existed):
+    if existed or not authorid:
+        return
+    logger = logging.getLogger(__name__)
+    db = database.DBConnection()
+    try:
+        linked = db.match("SELECT count(*) as count FROM bookauthors WHERE AuthorID=?", (authorid,))
+        legacy = db.match("SELECT count(*) as count FROM books WHERE AuthorID=?", (authorid,))
+        if (linked and linked['count']) or (legacy and legacy['count']):
+            return
+        db.action("DELETE FROM authors WHERE AuthorID=?", (authorid,))
+        logger.info(f"Removed empty author row after failed Add Book attempt: {authorid}")
+    finally:
+        db.close()
+
+
+def _ensure_search_result_author(book, title=None, authorname=None, reason=None):
+    logger = logging.getLogger(__name__)
+    candidate_id = str(book.get('authorid') or '').strip()
+    candidate_name = (book.get('authorname') or authorname or '').strip()
+    source = book.get('source')
+    source_author_key = lazylibrarian.INFOSOURCES.get(source, {}).get('author_key')
+    source_author_id = candidate_id
+
+    db = database.DBConnection()
+    try:
+        if candidate_id:
+            match = db.match("SELECT AuthorID FROM authors WHERE AuthorID=?", (candidate_id,))
+            if match:
+                return match['AuthorID']
+            if source_author_key in ['gr_id', 'ol_id', 'hc_id']:
+                match = db.match(f"SELECT AuthorID FROM authors WHERE {source_author_key}=?", (candidate_id,))
+                if match:
+                    return match['AuthorID']
+        if candidate_name:
+            match = db.match("SELECT AuthorID FROM authors WHERE AuthorName=? COLLATE NOCASE", (candidate_name,))
+            if match:
+                return match['AuthorID']
+
+        if not candidate_name:
+            logger.warning(
+                f"Unable to add search-result book [{title or book.get('bookname')}] because author "
+                f"[{candidate_id}:] could not be resolved")
+            return None
+
+        if not candidate_id:
+            candidate_id = md5_utf8(candidate_name)
+
+        author_values = {
+            'AuthorName': candidate_name,
+            'AuthorImg': 'images/nophoto.png',
+            'DateAdded': today(),
+            'Status': 'Paused',
+            'Updated': int(time.time()),
+            'Reason': reason or f"Adding author for search-result book {title or book.get('bookname')}",
+        }
+        if source_author_id and source_author_key in ['gr_id', 'ol_id', 'hc_id']:
+            author_values[source_author_key] = source_author_id
+        db.upsert("authors", author_values, {'AuthorID': candidate_id})
+        logger.info(
+            f"Added minimal author row for search-result book [{title or book.get('bookname')}]: "
+            f"{candidate_id} [{candidate_name}]")
+        return candidate_id
+    finally:
+        db.close()
+
+
+def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None, authorname=None, reason=None):
+    logger = logging.getLogger(__name__)
+    title = unquote_plus(title or '').strip()
+    authorname = unquote_plus(authorname or '').strip()
+    if not title:
+        return None
+
+    sources = [CONFIG['BOOK_API']]
+    for source in ['GoogleBooks', 'OpenLibrary', 'HardCover']:
+        if source != CONFIG['BOOK_API'] and source in lazylibrarian.INFOSOURCES and info_source_enabled(source):
+            sources.append(source)
+
+    for source in sources:
+        try:
+            results = search_for(f"{authorname} {title}".strip(), source)
+        except Exception as e:
+            logger.warning(f"Unable to search {source} fallback for {title}: {type(e).__name__} {str(e)}")
+            continue
+        if not results:
+            continue
+
+        match = None
+        if source == CONFIG['BOOK_API'] and bookid:
+            exact = [r for r in results if str(r.get('bookid')) == str(bookid)]
+            if not exact:
+                logger.warning(f"Unable to find exact {source} search-result fallback for {bookid}: {title}")
+                continue
+            match = exact[0]
+            if not _search_result_is_safe_match(match, bookid, title, authorname, exact_bookid=True):
+                logger.warning(f"Refusing unsafe {source} search-result add for {bookid}: {title}")
+                continue
+        else:
+            candidates = sorted(results, key=lambda x: (x.get('highest_fuzz', 0), x.get('bookrate_count', 0)),
+                                reverse=True)
+            for result in candidates:
+                if _search_result_is_safe_match(result, title=title, authorname=authorname):
+                    match = result
+                    break
+        if not match:
+            continue
+
+        book = dict(match)
+        book.setdefault('contributors', [])
+        book.setdefault('series', [])
+        author_id = _ensure_search_result_author(book, title=title, authorname=authorname, reason=reason)
+        if not author_id:
+            continue
+        book['authorid'] = author_id
+        book['status'] = ebook_status
+        book['audiostatus'] = audio_status
+        book['reason'] = reason or f"Added by user from {source} search result"
+        db = database.DBConnection()
+        try:
+            source_key = lazylibrarian.INFOSOURCES.get(source, {}).get('book_key')
+            if source_key:
+                existing = db.match(f"SELECT BookID,AuthorID FROM books WHERE {source_key}=?", (book['bookid'],))
+                if existing:
+                    updates = {}
+                    if ebook_status is not None:
+                        updates['Status'] = ebook_status
+                    if audio_status is not None:
+                        updates['AudioStatus'] = audio_status
+                    if updates:
+                        db.upsert("books", updates, {'BookID': existing['BookID']})
+                    update_totals(existing['AuthorID'])
+                    return {'BookID': existing['BookID'], 'AuthorID': existing['AuthorID']}
+            existing = db.match(
+                "SELECT BookID,AuthorID FROM books WHERE AuthorID=? AND BookName=? COLLATE NOCASE",
+                (book['authorid'], book['bookname']))
+            if existing:
+                updates = {}
+                if ebook_status is not None:
+                    updates['Status'] = ebook_status
+                if audio_status is not None:
+                    updates['AudioStatus'] = audio_status
+                if source_key and source_key != 'BookID':
+                    updates[source_key] = book['bookid']
+                if updates:
+                    db.upsert("books", updates, {'BookID': existing['BookID']})
+                update_totals(existing['AuthorID'])
+                return {'BookID': existing['BookID'], 'AuthorID': existing['AuthorID']}
+        finally:
+            db.close()
+        if add_bookdict_to_db(book):
+            update_totals(book['authorid'])
+            return {'BookID': book['bookid'], 'AuthorID': book['authorid']}
+
+    logger.warning(f"Unable to add search-result book [{title}] by [{authorname}]")
+    return None
 
 
 def clear_mako_cache(userid=0):
@@ -3361,53 +3619,84 @@ class WebInterface:
 
     @cherrypy.expose
     @require_auth()
-    def add_book(self, bookid=None, authorid=None, library=None):
+    def add_book(self, bookid=None, authorid=None, library=None, title=None, authorname=None):
+        logger = logging.getLogger(__name__)
         self.check_permitted(lazylibrarian.perm_search)
         TELEMETRY.record_usage_data()
         if library == 'eBook':
             ebook_status = "Wanted"
             audio_status = "Skipped"
+            existing_ebook_status = "Wanted"
+            existing_audio_status = None
         elif library == 'AudioBook':
             audio_status = "Wanted"
             ebook_status = "Skipped"
+            existing_ebook_status = None
+            existing_audio_status = "Wanted"
         elif library == 'Both':
             audio_status = "Wanted"
             ebook_status = "Wanted"
+            existing_ebook_status = "Wanted"
+            existing_audio_status = "Wanted"
         else:
             if CONFIG.get_bool('AUDIO_TAB'):
                 audio_status = "Wanted"
+                existing_audio_status = "Wanted"
             else:
                 audio_status = "Skipped"
+                existing_audio_status = None
             if CONFIG.get_bool('EBOOK_TAB'):
                 ebook_status = "Wanted"
+                existing_ebook_status = "Wanted"
             else:
                 ebook_status = "Skipped"
+                existing_ebook_status = None
 
         author_id = ''
-        db = database.DBConnection()
-        match = db.match('SELECT AuthorID from books WHERE BookID=?', (bookid,))
-        if not match and authorid:
-            _ = add_author_to_db(None, False, authorid, False, f'WebServer add_book {bookid}')
-            match = db.match('SELECT AuthorID from books WHERE BookID=?', (bookid,))
+        real_bookid = bookid
+        provider_bookid_key = configured_bookid_key()
+        author_existed = _author_exists(authorid)
+        match = update_existing_book_status(bookid, existing_ebook_status, existing_audio_status,
+                                            preferred_key=provider_bookid_key)
         if match:
-            db.upsert("books", {'Status': ebook_status, 'AudioStatus': audio_status},
-                      {'BookID': bookid})
+            real_bookid = match['BookID']
             author_id = match['AuthorID']
-            update_totals(author_id)
         else:
+            if title:
+                match = _add_search_result_book_to_db(
+                    bookid, ebook_status, audio_status, title=title, authorname=authorname,
+                    reason=f"Added by user search-result fallback from {CONFIG['BOOK_API']} {bookid}")
+                if match:
+                    real_bookid = match['BookID']
+                    author_id = match['AuthorID']
             this_source = lazylibrarian.INFOSOURCES[CONFIG['BOOK_API']]
             api = this_source['api']
             api = api()
-            t = threading.Thread(target=api.add_bookid_to_db,
-                                 name=f"{this_source['src']}-BOOK",
-                                 args=[bookid, ebook_status, audio_status, "Added by user"])
-            t.start()
-            t.join(timeout=10)  # 10 s to add book before redirect
-        db.close()
+            if not match:
+                t = threading.Thread(target=api.add_bookid_to_db,
+                                     name=f"{this_source['src']}-BOOK",
+                                     args=[bookid, ebook_status, audio_status, "Added by user"])
+                t.start()
+                t.join(timeout=10)  # 10 s to add book before redirect
+                provider_add_timed_out = t.is_alive()
+                if provider_add_timed_out:
+                    logger.warning(f"Timed out waiting for {CONFIG['BOOK_API']} to add {bookid}; skipping cleanup")
+                match = resolve_book_by_any_id(bookid, preferred_key=provider_bookid_key)
+                real_bookid = match['BookID'] if match else bookid
+                if match:
+                    real_bookid = match['BookID']
+                    author_id = match['AuthorID']
+                elif not provider_add_timed_out:
+                    _cleanup_empty_new_author(authorid, author_existed)
 
-        if CONFIG.get_bool('IMP_AUTOSEARCH'):
-            books = [{"bookid": bookid}]
-            self.start_book_search(books)
+        user_requested_search = (
+            ebook_status == 'Wanted' or audio_status == 'Wanted' or
+            existing_ebook_status == 'Wanted' or existing_audio_status == 'Wanted'
+        )
+        if author_id and (CONFIG.get_bool('IMP_AUTOSEARCH') or user_requested_search):
+            books = [{"bookid": real_bookid}]
+            search_library = library if library in ['eBook', 'AudioBook'] else None
+            self.start_book_search(books, library=search_library, force=user_requested_search)
 
         if author_id:
             raise cherrypy.HTTPRedirect(f"author_page?authorid={author_id}")
@@ -3444,16 +3733,18 @@ class WebInterface:
     def search_for_book(self, bookid=None, library=None):
         TELEMETRY.record_usage_data()
         author_id = ''
+        real_bookid = bookid
         db = database.DBConnection()
         try:
-            bookdata = db.match('SELECT AuthorID from books WHERE BookID=?', (bookid,))
+            bookdata = find_book_by_any_id(db, bookid, preferred_key=submitted_bookid_preferred_key(bookid))
         finally:
             db.close()
         if bookdata:
             author_id = bookdata["AuthorID"]
+            real_bookid = bookdata["BookID"]
 
             # start searchthreads
-            books = [{"bookid": bookid}]
+            books = [{"bookid": real_bookid}]
             self.start_book_search(books, library=library, force=True)
 
         if author_id:

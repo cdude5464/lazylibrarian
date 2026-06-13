@@ -1,6 +1,7 @@
 <%inherit file="base.html"/>
 <%!
     import lazylibrarian
+    from urllib.parse import quote_plus
     from lazylibrarian.config2 import CONFIG
 %>
 <%def name="headerIncludes()">
@@ -97,6 +98,7 @@
                     value3 = value
                     destination2 = "#"
                     destination3 = "#"
+                    add_context = "&title=" + quote_plus(result.get('bookname') or '') + "&authorname=" + quote_plus(result.get('authorname') or '')
 
                     if value == "Loading":
                         value2 = value
@@ -125,6 +127,7 @@
                             destination2 = "add_book?library=eBook&bookid="+result['bookid']
                             if result['authorid']:
                                 destination2 = destination2 + "&authorid="+result['authorid']
+                            destination2 = destination2 + add_context
                             value2 = "Add Book"
                             but_class2 = "btn-success"
                         else:
@@ -144,6 +147,7 @@
                             destination3 = "add_book?library=AudioBook&bookid="+result['bookid']
                             if result['authorid']:
                                 destination3 = destination3 + "&authorid="+result['authorid']
+                            destination3 = destination3 + add_context
                             value3 = "Add Audio"
                             but_class3 = "btn-success"
                         else:
@@ -153,12 +157,14 @@
                         destination2 = "add_book?library=eBook&bookid="+result['bookid']
                         if result['authorid']:
                             destination2 = destination2 + "&authorid="+result['authorid']
+                        destination2 = destination2 + add_context
                         value2 = "Add Book"
                         but_class2 = "btn-success"
 
                         destination3 = "add_book?library=AudioBook&bookid="+result['bookid']
                         if result['authorid']:
                             destination3 = destination3 + "&authorid="+result['authorid']
+                        destination3 = destination3 + add_context
                         value3 = "Add Audio"
                         but_class3 = "btn-success"
 
@@ -172,7 +178,7 @@
                         but_class3 = "btn-info hidden"
                     %>
 <tr>
-  <td class="select text-center"><input type="checkbox" name="${result['bookid']}" /></td>
+  <td class="select text-center"><input type="checkbox" name="${result['bookid']}" value="${result['authorid']}|${quote_plus(result.get('authorname') or '')}|${quote_plus(result.get('bookname') or '')}" /></td>
   <td class="bookart text-center"><a href="${result['bookimg']}" target="_blank" rel="noreferrer"><img src="${result['bookimg']}" alt="Cover" width=200></a></td>
   <td class="authorname">${result['authorname']}</td>
   <td class="bookname"><a href="${result['booklink']}" target="_blank" rel="noreferrer">${result['bookname']}</a></td>

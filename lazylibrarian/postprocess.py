@@ -395,12 +395,14 @@ class BookState:
 
         if self.source and self.download_id:
             general_folder = get_download_folder(self.source, self.download_id)
+            download_name = get_download_name(self.download_title, self.source, self.download_id)
             res = None
-            if self.source == 'DIRECT':
+            if general_folder is None and self.source == 'DIRECT':
                 res = db.match("SELECT NZBprov,NZBtitle,NZBurl from wanted where source='DIRECT' and DownloadID=?", (self.download_id, ))
-                download_name = res['NZBtitle']
-            else:
-                download_name = get_download_name(self.download_title, self.source, self.download_id)
+                # These download into first download_dir
+                if res and (res['NZBprov'] in ['annas', 'zlibrary', 'soulseek']
+                            or res['NZBprov'].startswith('libgen')):
+                    general_folder = get_directory('Download')
             # For usenet clients (SABnzbd, NZBGet), the storage field already contains
             # the complete download path including the folder name
             if self.source in ("SABNZBD", "NZBGET") and general_folder:
@@ -411,12 +413,9 @@ class BookState:
             elif res and res['NZBprov'] == 'soulseek':
                 try:
                     soulseek = json.loads(res['NZBurl'].split('^')[1].replace('\\','/'))
-                    self.download_folder = os.path.join(get_directory('Download'), soulseek.get("name", '').rsplit('/', 1)[1])
+                    self.download_folder = os.path.join(general_folder, soulseek.get("name", '').rsplit('/', 1)[1])
                 except (KeyError, IndexError):
                     self.download_folder = general_folder
-            elif res and (res['NZBprov'] in ['annas', 'zlibrary'] or res['NZBprov'].startswith('libgen')):
-                # these download into first download directory
-                self.download_folder = get_directory('Download')
             # For torrent clients, combine base folder with download name
             elif general_folder and download_name:
                 self.download_folder = os.path.join(general_folder, download_name)
@@ -662,6 +661,31 @@ def _update_download_status(
     return "Processed"
 
 
+def _requested_context_for_content_check(db, book_id):
+    if not book_id or book_id == "unknown":
+        return "", ""
+
+    book = db.match(
+        "SELECT b.BookName, group_concat(a.AuthorName, '; ') as AuthorName "
+        "FROM books b "
+        "LEFT JOIN bookauthors ba ON ba.BookID=b.BookID "
+        "LEFT JOIN authors a ON a.AuthorID=ba.AuthorID "
+        "WHERE b.BookID=? GROUP BY b.BookID",
+        (book_id,))
+    if book and book["BookName"] and book["AuthorName"]:
+        return book["AuthorName"] or "", book["BookName"] or ""
+    book_title = book["BookName"] if book and book["BookName"] else ""
+
+    book = db.match(
+        "SELECT BookName,AuthorName FROM books,authors "
+        "WHERE books.AuthorID=authors.AuthorID AND BookID=?",
+        (book_id,))
+    if book:
+        return book["AuthorName"] or "", book["BookName"] or ""
+
+    return "", book_title
+
+
 def _get_ready_from_snatched(db, snatched_list: list[dict]):
     """
     Filter snatched books to find those ready for processing.
@@ -697,6 +721,7 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
         source = book_row["Source"]
         download_id = book_row["DownloadID"]
         download_url = book_row["NZBurl"]
+        requested_author, requested_title = _requested_context_for_content_check(db, book_id)
         download_name = get_download_name(title, source, download_id)
 
         if download_name and download_name != title:
@@ -712,7 +737,9 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
             )
             title = download_name
 
-        rejected = check_contents(source, download_id, book_type_str, title)
+        rejected = check_contents(source, download_id, book_type_str, title,
+                                  requested_author=requested_author,
+                                  requested_title=requested_title)
         if rejected:
             logger.debug(f"Rejected: {title} BookID: {book_id} DownloadID: {download_id}")
 
@@ -728,8 +755,10 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
                     db.action(cmd, (book_id,))
                 # use downloadid as identifier as bookid is not unique for magazine issues
                 db.action(
-                    "UPDATE wanted SET Status='Failed',DLResult=? WHERE DownloadID=?",
-                    (rejected, download_id),
+                    "UPDATE wanted SET Status='Failed',DLResult=? "
+                    "WHERE DownloadID=? AND Source=? AND BookID=? AND AuxInfo=? "
+                    "AND NZBurl=? AND Status='Snatched'",
+                    (rejected, download_id, source, book_id, book_row["AuxInfo"], download_url),
                 )
                 logger.info(
                     f"STATUS: {title} [Snatched -> Failed] Content rejected: {rejected}"
@@ -1661,12 +1690,11 @@ def _process_matched_directory(
     logger.debug(f"download_dir: {download_dir}")
     logger.debug(f"download_title: {book_state.download_title}")
 
-    if candidate_ptr and candidate_ptr.rstrip(os.sep) == get_directory('Download').rstrip(os.sep):
-        download_dir = candidate_ptr
+    if candidate_ptr and candidate_ptr.rstrip(os.sep) == download_dir.rstrip(os.sep):
         candidate_ptr = os.path.join(candidate_ptr, book_state.download_title)
         book_state.update_candidate(candidate_ptr)
 
-    if path_isfile(candidate_ptr):
+    if not path_isdir(candidate_ptr):
         # It's a single file - check if it's in download root
         file_dir = os.path.dirname(candidate_ptr)
 
@@ -1681,7 +1709,7 @@ def _process_matched_directory(
             while fname_prefix and fname_prefix[-1] in "_.  ":
                 fname_prefix = fname_prefix[:-1]
 
-            # Determine if we should copy or move or link
+            # Determine if we should copy or move
             if CONFIG.get_bool("DESTINATION_COPY") or (
                 book_state.is_torrent() and CONFIG.get_bool("KEEP_SEEDING")
             ):
@@ -1691,14 +1719,12 @@ def _process_matched_directory(
 
             # Create isolated .unpack directory
             targetdir = os.path.join(download_dir, f"{md5_utf8(fname_prefix)[-8:]}.unpack")
-            try:
-                os.makedirs(targetdir, exist_ok=True)
-            except Exception as e:
-                return False, f"Failed to create isolation directory {targetdir}: {e}"
+            if not make_dirs(targetdir, new=True):
+                return False, f"Failed to create isolation directory {targetdir}"
 
             # Selectively transfer ONLY files matching this book's name
             cnt = _transfer_matching_files(
-                file_dir, targetdir, fname_prefix, copy=copy_files
+                download_dir, targetdir, fname_prefix, copy=copy_files
             )
 
             if cnt:
@@ -1714,15 +1740,15 @@ def _process_matched_directory(
                 contextlib.suppress(OSError)
             return False, "Failed to isolate file to subdirectory"
 
+        if not path_isfile(candidate_ptr):
+            return False, f"Folder {book_state.candidate_ptr} is not found"
+
         # File not in root - update candidate_ptr to parent directory
         # process_destination expects a directory, not a file
         parent_dir = os.path.dirname(book_state.candidate_ptr or "")
         book_state.update_candidate(parent_dir)
         logger.debug(f"Updated candidate from file to parent directory: {parent_dir}")
         return True, ""
-
-    if not path_isdir(book_state.candidate_ptr):
-        return False, f"Folder {book_state.candidate_ptr} is not found"
 
     logger.debug(
         f"Found folder ({round(match_percent, 2)}%) [{book_state.candidate_ptr}] "
@@ -2806,12 +2832,13 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
     # Thread safety check - prevent concurrent execution
     count = 0
     logger.debug("Attempt to run POSTPROCESSOR")
+    active_names = {"POSTPROCESSOR", "POSTPROCESS"}
     for name in [t.name for t in threading.enumerate()]:
-        if name == "POSTPROCESSOR":
+        if name in active_names:
             count += 1
 
     incoming_threadname = thread_name()
-    if incoming_threadname == "POSTPROCESSOR":
+    if incoming_threadname in active_names:
         count -= 1
 
     if count:
@@ -3670,7 +3697,7 @@ def _find_preferred_book_file(
 def _handle_magazine_comic_metadata(
     book_type: str,
     book_path: str,
-    book_filename: str,
+    book_file: str,
     bookid: str,
     issueid: str,
     title: str,
@@ -3737,7 +3764,7 @@ def _handle_magazine_comic_metadata(
             )
             if entry:
                 _, _ = create_mag_opf(
-                    book_filename,
+                    book_file,
                     title,
                     issuedate,
                     issueid,

@@ -41,6 +41,7 @@ Key Functions:
 
 import logging
 import os
+import re
 import time
 import traceback
 
@@ -64,7 +65,39 @@ from lazylibrarian.formatter import check_int, get_list, unaccented
 from lazylibrarian.telemetry import TELEMETRY
 
 
-def check_contents(source, downloadid, booktype, title):
+def _reject_word_tokens(value):
+    return set(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_text(value):
+    return ' '.join(re.findall(r'[a-z0-9]+', unaccented(value or '', only_ascii=False).lower()))
+
+
+def _reject_word_matches(word, result_title, author='', title=''):
+    word = (word or '').strip().lower()
+    if not word:
+        return False
+    word_text = _reject_word_text(word)
+    word_tokens = set(word_text.split())
+    if len(word_tokens) == 1:
+        word = next(iter(word_tokens))
+        result_words = _reject_word_tokens(result_title)
+        if word not in result_words:
+            return False
+        return word not in _reject_word_tokens(author) and word not in _reject_word_tokens(title)
+    if not word_text:
+        return False
+    result_text = f" {_reject_word_text(result_title)} "
+    author_text = f" {_reject_word_text(author)} "
+    title_text = f" {_reject_word_text(title)} "
+    return (
+        f" {word_text} " in result_text
+        and f" {word_text} " not in author_text
+        and f" {word_text} " not in title_text
+    )
+
+
+def check_contents(source, downloadid, booktype, title, requested_author='', requested_title=''):
     """Check contents list of a download against various reject criteria
     name, size, filetype, banned words
     Return empty string if ok, or error message if rejected
@@ -135,13 +168,13 @@ def check_contents(source, downloadid, booktype, title):
                 break
 
             if not rejected and banlist:
-                wordlist = get_list(
-                    fname.lower().replace(os.sep, " ").replace(".", " ")
-                )
-                for word in wordlist:
-                    if word in banlist:
+                for word in banlist:
+                    if _reject_word_matches(word, fname, requested_author, requested_title):
                         rejected = f"{fname} contains {word}"
-                        logger.warning(f"{rejected}. Rejecting download")
+                        logger.warning(
+                            f"{rejected}. Rejecting download "
+                            f"(requested author={requested_author or 'unknown'}, "
+                            f"requested title={requested_title or 'unknown'})")
                         break
 
             # only check size on right types of file

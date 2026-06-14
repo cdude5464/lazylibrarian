@@ -205,6 +205,52 @@ def bookid_lookup_keys(preferred_key=None):
     return result
 
 
+def _status_updates(ebook_status=None, audio_status=None):
+    updates = {}
+    if ebook_status is not None:
+        updates['Status'] = ebook_status
+    if audio_status is not None:
+        updates['AudioStatus'] = audio_status
+    return updates
+
+
+def _search_add_would_unignore(row, ebook_status=None, audio_status=None):
+    return (
+        (ebook_status is not None and row['Status'] == 'Ignored' and ebook_status != 'Ignored') or
+        (audio_status is not None and row['AudioStatus'] == 'Ignored' and audio_status != 'Ignored')
+    )
+
+
+def _normalize_duplicate_title(title):
+    title = unaccented(title or '', only_ascii=False).casefold()
+    title = re.sub(r'[^\w]+', ' ', title, flags=re.UNICODE)
+    return re.sub(r'\s+', ' ', title).strip()
+
+
+def _book_row_title_match(row, title):
+    return _normalize_duplicate_title(row['BookName']) == _normalize_duplicate_title(title)
+
+
+def _book_row_title_conflicts(row, title):
+    if _book_row_title_match(row, title):
+        return False
+    existing = _normalize_duplicate_title(row['BookName'])
+    candidate = _normalize_duplicate_title(title)
+    if not existing or not candidate:
+        return False
+    if len(existing) >= 4 and (candidate.startswith(existing + ' ') or existing.startswith(candidate + ' ')):
+        return True
+    return fuzz.token_set_ratio(existing, candidate) >= 90
+
+
+def _blocked_add_result(reason):
+    return {'blocked': True, 'reason': reason}
+
+
+def _is_blocked_add_result(result):
+    return bool(isinstance(result, dict) and result.get('blocked'))
+
+
 def submitted_bookid_preferred_key(bookid):
     key = configured_bookid_key()
     if key != 'BookID' and bookid and str(bookid).isdigit():
@@ -212,16 +258,54 @@ def submitted_bookid_preferred_key(bookid):
     return 'BookID'
 
 
-def find_book_by_any_id(db, bookid, preferred_key=None):
+def _select_existing_book_row(rows, lookup, ebook_status=None, audio_status=None, title=None, authorid=None,
+                              allow_ignored=True):
+    logger = logging.getLogger(__name__)
+    candidates = list(rows)
+    if not candidates:
+        return None
+
+    if not allow_ignored:
+        allowed = [
+            row for row in candidates
+            if not _search_add_would_unignore(row, ebook_status=ebook_status, audio_status=audio_status)
+        ]
+        if not allowed:
+            logger.warning(f"Refusing to update ignored duplicate search-result match for {lookup}")
+            return None
+        candidates = allowed
+
+    if title:
+        title_matches = [row for row in candidates if _book_row_title_match(row, title)]
+        if title_matches:
+            candidates = title_matches
+
+    if authorid:
+        author_matches = [row for row in candidates if str(row['AuthorID']) == str(authorid)]
+        if author_matches:
+            candidates = author_matches
+
+    if len(candidates) == 1:
+        return candidates[0]
+
+    logger.warning(
+        f"Ambiguous add/search lookup for {lookup}; refusing to choose between {len(candidates)} books")
+    return None
+
+
+def find_book_by_any_id(db, bookid, preferred_key=None, ebook_status=None, audio_status=None, title=None,
+                        authorid=None, allow_ignored=True):
     if not bookid:
         return None
     for key in bookid_lookup_keys(preferred_key):
-        rows = db.select(f"SELECT BookID, AuthorID, Status, AudioStatus from books WHERE {key}=?", (bookid,))
-        if len(rows) == 1:
-            return rows[0]
-        if len(rows) > 1:
-            logging.getLogger(__name__).warning(
-                f"Ambiguous add/search lookup for {key}={bookid}; refusing to choose between {len(rows)} books")
+        rows = db.select(
+            f"SELECT BookID, AuthorID, BookName, Status, AudioStatus from books WHERE {key}=?", (bookid,))
+        match = _select_existing_book_row(
+            rows, f"{key}={bookid}", ebook_status=ebook_status, audio_status=audio_status,
+            title=title, authorid=authorid, allow_ignored=allow_ignored)
+        if match:
+            return match
+        if rows:
             return None
     return None
 
@@ -235,16 +319,14 @@ def resolve_book_by_any_id(bookid, preferred_key=None):
 
 
 def update_existing_book_status(bookid, ebook_status=None, audio_status=None, preferred_key=None):
-    updates = {}
-    if ebook_status is not None:
-        updates['Status'] = ebook_status
-    if audio_status is not None:
-        updates['AudioStatus'] = audio_status
+    updates = _status_updates(ebook_status=ebook_status, audio_status=audio_status)
     if not updates:
         return None
     db = database.DBConnection()
     try:
-        match = find_book_by_any_id(db, bookid, preferred_key=preferred_key)
+        match = find_book_by_any_id(
+            db, bookid, preferred_key=preferred_key, ebook_status=ebook_status,
+            audio_status=audio_status, allow_ignored=False)
         if not match:
             return None
         db.upsert("books", updates, {'BookID': match['BookID']})
@@ -258,6 +340,8 @@ def update_existing_book_status(bookid, ebook_status=None, audio_status=None, pr
 
 def info_source_enabled(source):
     enabled_key = lazylibrarian.INFOSOURCES[source]['enabled']
+    if enabled_key in ['GB_API', 'GR_API']:
+        return bool(CONFIG[enabled_key])
     try:
         return CONFIG.get_bool(enabled_key)
     except Exception:
@@ -357,7 +441,45 @@ def _ensure_search_result_author(book, title=None, authorname=None, reason=None)
         db.close()
 
 
-def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None, authorname=None, reason=None):
+def _update_existing_search_result_book(db, existing, source_key, source_bookid, ebook_status=None,
+                                        audio_status=None):
+    updates = _status_updates(ebook_status=ebook_status, audio_status=audio_status)
+    if source_key and source_key != 'BookID' and source_bookid:
+        updates[source_key] = source_bookid
+    if updates:
+        db.upsert("books", updates, {'BookID': existing['BookID']})
+    update_totals(existing['AuthorID'])
+    return {'BookID': existing['BookID'], 'AuthorID': existing['AuthorID']}
+
+
+def _find_existing_author_title_match(db, authorid, title, ebook_status=None, audio_status=None):
+    logger = logging.getLogger(__name__)
+    rows = db.select(
+        "SELECT BookID,AuthorID,BookName,Status,AudioStatus FROM books WHERE AuthorID=?",
+        (authorid,))
+    if not rows:
+        return None
+
+    exact = [row for row in rows if _book_row_title_match(row, title)]
+    if exact:
+        existing = _select_existing_book_row(
+            exact, f"AuthorID={authorid} title={title}", ebook_status=ebook_status,
+            audio_status=audio_status, title=title, authorid=authorid, allow_ignored=False)
+        if existing:
+            return existing
+        return _blocked_add_result('ambiguous or ignored exact title match')
+
+    conflicts = [row for row in rows if _book_row_title_conflicts(row, title)]
+    if conflicts:
+        logger.warning(
+            f"Refusing to insert possible duplicate search-result title [{title}] for author [{authorid}]")
+        return _blocked_add_result('possible duplicate title')
+
+    return None
+
+
+def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None, authorname=None, reason=None,
+                                  existing_ebook_status=None, existing_audio_status=None):
     logger = logging.getLogger(__name__)
     title = unquote_plus(title or '').strip()
     authorname = unquote_plus(authorname or '').strip()
@@ -412,32 +534,28 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
         try:
             source_key = lazylibrarian.INFOSOURCES.get(source, {}).get('book_key')
             if source_key:
-                existing = db.match(f"SELECT BookID,AuthorID FROM books WHERE {source_key}=?", (book['bookid'],))
+                rows = db.select(
+                    f"SELECT BookID,AuthorID,BookName,Status,AudioStatus FROM books WHERE {source_key}=?",
+                    (book['bookid'],))
+                existing = _select_existing_book_row(
+                    rows, f"{source_key}={book['bookid']}", ebook_status=existing_ebook_status,
+                    audio_status=existing_audio_status, title=book['bookname'], authorid=book['authorid'],
+                    allow_ignored=False)
                 if existing:
-                    updates = {}
-                    if ebook_status is not None:
-                        updates['Status'] = ebook_status
-                    if audio_status is not None:
-                        updates['AudioStatus'] = audio_status
-                    if updates:
-                        db.upsert("books", updates, {'BookID': existing['BookID']})
-                    update_totals(existing['AuthorID'])
-                    return {'BookID': existing['BookID'], 'AuthorID': existing['AuthorID']}
-            existing = db.match(
-                "SELECT BookID,AuthorID FROM books WHERE AuthorID=? AND BookName=? COLLATE NOCASE",
-                (book['authorid'], book['bookname']))
+                    return _update_existing_search_result_book(
+                        db, existing, source_key, book['bookid'], ebook_status=existing_ebook_status,
+                        audio_status=existing_audio_status)
+                if rows:
+                    return _blocked_add_result(f"ambiguous or ignored {source_key} match")
+            existing = _find_existing_author_title_match(
+                db, book['authorid'], book['bookname'], ebook_status=existing_ebook_status,
+                audio_status=existing_audio_status)
+            if _is_blocked_add_result(existing):
+                return existing
             if existing:
-                updates = {}
-                if ebook_status is not None:
-                    updates['Status'] = ebook_status
-                if audio_status is not None:
-                    updates['AudioStatus'] = audio_status
-                if source_key and source_key != 'BookID':
-                    updates[source_key] = book['bookid']
-                if updates:
-                    db.upsert("books", updates, {'BookID': existing['BookID']})
-                update_totals(existing['AuthorID'])
-                return {'BookID': existing['BookID'], 'AuthorID': existing['AuthorID']}
+                return _update_existing_search_result_book(
+                    db, existing, source_key, book['bookid'], ebook_status=existing_ebook_status,
+                    audio_status=existing_audio_status)
         finally:
             db.close()
         if add_bookdict_to_db(book):
@@ -3665,10 +3783,15 @@ class WebInterface:
             if title:
                 match = _add_search_result_book_to_db(
                     bookid, ebook_status, audio_status, title=title, authorname=authorname,
-                    reason=f"Added by user search-result fallback from {CONFIG['BOOK_API']} {bookid}")
+                    reason=f"Added by user search-result fallback from {CONFIG['BOOK_API']} {bookid}",
+                    existing_ebook_status=existing_ebook_status, existing_audio_status=existing_audio_status)
                 if match:
-                    real_bookid = match['BookID']
-                    author_id = match['AuthorID']
+                    if _is_blocked_add_result(match):
+                        logger.warning(f"Blocked Add Book for {bookid}: {match['reason']}")
+                        _cleanup_empty_new_author(authorid, author_existed)
+                    else:
+                        real_bookid = match['BookID']
+                        author_id = match['AuthorID']
             this_source = lazylibrarian.INFOSOURCES[CONFIG['BOOK_API']]
             api = this_source['api']
             api = api()
@@ -4733,10 +4856,17 @@ class WebInterface:
                     passed += 1
                     continue
                 author_existed = _author_exists(result_author_id)
-                if _add_search_result_book_to_db(
+                match = _add_search_result_book_to_db(
                     itm, wantbook, wantaudio, title=result_title, authorname=result_author_name,
-                    reason=f"Added by user bulk search-result fallback {wantbook}:{wantaudio}"
-                ):
+                    reason=f"Added by user bulk search-result fallback {wantbook}:{wantaudio}",
+                    existing_ebook_status=existing_wantbook, existing_audio_status=existing_wantaudio
+                )
+                if _is_blocked_add_result(match):
+                    logger.warning(f"Blocked bulk Add Book for {itm}: {match['reason']}")
+                    _cleanup_empty_new_author(result_author_id, author_existed)
+                    failed += 1
+                    continue
+                if match:
                     passed += 1
                     continue
                 if api.add_bookid_to_db(itm, wantbook, wantaudio,

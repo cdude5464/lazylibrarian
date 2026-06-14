@@ -506,7 +506,7 @@ class XMLCacheRequest(CacheRequest):
                         self.logger.error(f"Cached {len(result)} bytes {filename}.err")
                 except Exception as e:
                     self.logger.error(f"Exception {e} writing {filename}.err")
-            return '', False
+            return None, False
         return source, True
 
 

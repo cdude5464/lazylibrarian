@@ -155,6 +155,8 @@ class BookState:
 
     # Processing state - mutable as we search for matches
     candidate_ptr: str | None = None
+    candidate_match_kind: str = ""
+    candidate_matched_file: str = ""
     skipped_reason: str | None = None
 
     # Failure tracking - populated during processing
@@ -237,7 +239,7 @@ class BookState:
 
         return should_delay, seconds_elapsed
 
-    def update_candidate(self, new_path: str) -> None:
+    def update_candidate(self, new_path: str, match_kind: str | None = None) -> None:
         """
         Update the candidate pointer to a new location.
 
@@ -246,8 +248,12 @@ class BookState:
 
         Args:
             new_path: New path to set as candidate
+            match_kind: Optional provenance label for how this candidate matched
         """
         self.candidate_ptr = new_path
+        if match_kind is not None:
+            self.candidate_match_kind = match_kind
+            self.candidate_matched_file = ""
 
     def mark_skipped(self, reason: str) -> None:
         """
@@ -789,6 +795,31 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
     return books_to_process
 
 
+def _delete_failed_task_if_unused(
+    db,
+    book_state: BookState,
+    logger: logging.Logger,
+) -> bool:
+    if not book_state.source or not book_state.download_id:
+        return False
+
+    active_sibling = db.match(
+        "SELECT BookID,NZBtitle,Status FROM wanted "
+        "WHERE DownloadID=? AND COALESCE(Source,'')=? "
+        "AND Status IN ('Snatched','Seeding')",
+        (book_state.download_id, book_state.source or ""),
+    )
+    if active_sibling:
+        logger.warning(
+            f"Not deleting failed task {book_state.download_id} from {book_state.source}: "
+            f"still referenced by active wanted row for {active_sibling['BookID']}"
+        )
+        return False
+
+    delete_task(book_state.source, book_state.download_id, True)
+    return True
+
+
 def _normalize_title(title: str) -> str:
     # remove accents and convert not-ascii apostrophes
     new_title = str(unaccented(title, only_ascii=False))
@@ -1121,6 +1152,199 @@ def _calculate_fuzzy_match(title1: str, title2: str, fuzzlogger: logging.Logger=
     return match_fuzz
 
 
+def _candidate_match_titles(book_state: BookState) -> list[str]:
+    """Return normalized titles that can identify a downloaded candidate."""
+    titles = []
+    for title in [book_state.download_title, book_state.book_title]:
+        normalized = _normalize_title(title)
+        if normalized and normalized not in titles:
+            titles.append(normalized)
+    return titles
+
+
+def _best_candidate_match(
+    book_state: BookState,
+    normalized_candidate: str,
+    fuzzlogger: logging.Logger,
+) -> tuple[float, str]:
+    """Compare a candidate name against release title and requested book title."""
+    best_percent = 0
+    best_title = ""
+    for target_title in _candidate_match_titles(book_state):
+        match_percent = _calculate_fuzzy_match(
+            target_title, normalized_candidate, fuzzlogger
+        )
+        fuzzlogger.debug(
+            f"{round(match_percent, 2)}% match {target_title} : {normalized_candidate}"
+        )
+        if match_percent > best_percent:
+            best_percent = match_percent
+            best_title = target_title
+    return best_percent, best_title
+
+
+def _file_name_matches_book_state(
+    book_state: BookState,
+    filepath: str,
+    match_threshold: float,
+    fuzzlogger: logging.Logger,
+) -> tuple[bool, float]:
+    filename_stem, _ = _tokenize_file(os.path.basename(filepath))
+    normalized_candidate = _normalize_title(filename_stem)
+    candidate_tokens = set(normalized_candidate.split())
+    best_percent = 0
+    for target_title in _candidate_match_titles(book_state):
+        target_tokens = set(target_title.split())
+        extra_tokens = candidate_tokens - target_tokens
+        if extra_tokens:
+            fuzzlogger.debug(
+                f"Rejected file candidate {normalized_candidate}: "
+                f"extra tokens {sorted(extra_tokens)} not in {target_title}"
+            )
+            continue
+        match_percent = _calculate_fuzzy_match(
+            target_title, normalized_candidate, fuzzlogger
+        )
+        fuzzlogger.debug(
+            f"{round(match_percent, 2)}% file match {target_title} : {normalized_candidate}"
+        )
+        if match_percent > best_percent:
+            best_percent = match_percent
+    return best_percent >= match_threshold, best_percent
+
+
+def _is_helper_job_parent(directory: str, download_id: str) -> bool:
+    if not directory or not download_id:
+        return False
+    basename = os.path.basename(directory.rstrip(os.sep)).lower()
+    return basename == f"lazylibrarian-{download_id}".lower()
+
+
+def _requires_inner_ebook_match(book_state: BookState, download_dir: str) -> bool:
+    return (
+        book_state.get_book_type_enum() == BookType.EBOOK
+        and book_state.candidate_match_kind == "directory_name"
+        and _is_helper_job_parent(download_dir, book_state.download_id)
+    )
+
+
+def _requires_matched_file_isolation(book_state: BookState, download_dir: str) -> bool:
+    return (
+        book_state.get_book_type_enum() == BookType.EBOOK
+        and book_state.candidate_match_kind == "inner_file_name"
+        and _is_helper_job_parent(download_dir, book_state.download_id)
+    )
+
+
+def _ebook_files_in_directory(directory: str, recurse: bool = False) -> list[str]:
+    ebook_files = []
+    if recurse:
+        for dirpath, _, files in os.walk(directory):
+            for item in sorted(files):
+                if CONFIG.is_valid_booktype(item, booktype=BookType.EBOOK.value):
+                    ebook_files.append(os.path.join(dirpath, item))
+    else:
+        for item in sorted(listdir(directory)):
+            if CONFIG.is_valid_booktype(item, booktype=BookType.EBOOK.value):
+                ebook_files.append(os.path.join(directory, item))
+    return ebook_files
+
+
+def _inner_ebook_match_failure(
+    book_state: BookState,
+    download_dir: str,
+    candidate_dir: str,
+    fuzzlogger: logging.Logger,
+    recurse: bool = False,
+) -> str:
+    if not _requires_inner_ebook_match(book_state, download_dir):
+        return ""
+
+    ebook_files = _ebook_files_in_directory(candidate_dir, recurse=recurse)
+    if not ebook_files:
+        return ""
+    best_file = ""
+    best_match_percent = 0
+    best_matching_file = ""
+    best_matching_percent = 0
+    for filepath in ebook_files:
+        file_matched, file_match_percent = _file_name_matches_book_state(
+            book_state,
+            filepath,
+            CONFIG.get_int("DLOAD_RATIO"),
+            fuzzlogger,
+        )
+        if file_matched and file_match_percent > best_matching_percent:
+            best_matching_percent = file_match_percent
+            best_matching_file = filepath
+        if file_match_percent > best_match_percent:
+            best_match_percent = file_match_percent
+            best_file = filepath
+
+    if best_matching_file:
+        book_state.candidate_matched_file = best_matching_file
+        return ""
+
+    return (
+        f"Matched release folder but contained ebook "
+        f"{os.path.basename(best_file)} did not match requested book "
+        f"(best: {round(best_match_percent, 2)}%)"
+    )
+
+
+def _isolate_matched_ebook_file(
+    book_state: BookState,
+    download_dir: str,
+    logger: logging.Logger,
+) -> tuple[bool, str]:
+    matched_file = book_state.candidate_matched_file
+    if not matched_file:
+        return True, ""
+
+    source_dir = os.path.dirname(matched_file)
+    fname = os.path.basename(matched_file)
+    fname_prefix = os.path.splitext(fname)[0].rstrip("_.  ")
+    targetdir = os.path.join(download_dir, f"{md5_utf8(fname_prefix)[-8:]}.unpack")
+
+    if not make_dirs(targetdir, new=True):
+        return False, f"Failed to create isolation directory {targetdir}"
+
+    copy_files = CONFIG.get_bool("DESTINATION_COPY") or (
+        book_state.is_torrent() and CONFIG.get_bool("KEEP_SEEDING")
+    )
+    cnt = 0
+    valid_extensions = CONFIG.get_all_types_list()
+    for item in listdir(source_dir):
+        item_stem, _ = _tokenize_file(item)
+        if item_stem != fname_prefix:
+            continue
+        if not (
+            is_valid_type(item, extensions=valid_extensions)
+            or _is_metadata_file(item)
+        ):
+            continue
+
+        srcfile = os.path.join(source_dir, item)
+        dstfile = os.path.join(targetdir, item)
+        if copy_files:
+            dstfile = safe_copy(srcfile, dstfile)
+        else:
+            dstfile = safe_move(srcfile, dstfile)
+        setperm(dstfile)
+        cnt += 1
+
+    if cnt:
+        book_state.update_candidate(targetdir, "isolated_inner_file")
+        logger.debug(f"Isolated matched ebook {fname} to {targetdir}")
+        return True, ""
+
+    try:
+        os.rmdir(targetdir)
+    except OSError:
+        contextlib.suppress(OSError)
+    return False, f"Failed to isolate matched ebook {fname}"
+
+
 def _find_matching_subdir(
     directory: str,
     target_title: str,
@@ -1230,6 +1454,31 @@ def _find_matching_file_in_directory(
                 return os.path.join(directory, str(f)), match_percent
 
     return "", 0
+
+
+def _find_matching_file_for_book_state(
+    directory: str,
+    book_state: BookState,
+    match_threshold: float,
+    fuzzlogger: logging.Logger,
+) -> "tuple[str, float]":
+    best_match_path = ""
+    best_match_percent = 0
+    for item in sorted(listdir(directory)):
+        item_path = os.path.join(directory, item)
+        if not _is_valid_media_file(item, book_type="ebook", include_archives=True):
+            continue
+        file_matched, file_match_percent = _file_name_matches_book_state(
+            book_state,
+            item_path,
+            match_threshold,
+            fuzzlogger,
+        )
+        if file_matched and file_match_percent > best_match_percent:
+            best_match_path = item_path
+            best_match_percent = file_match_percent
+
+    return best_match_path, best_match_percent
 
 
 def _create_and_cache_cover(
@@ -1578,7 +1827,7 @@ def _try_match_candidate_file(
     Returns:
         Tuple of (is_match, match_percent)
     """
-    book_state.update_candidate(os.path.join(download_dir, candidate_file))
+    book_state.update_candidate(os.path.join(download_dir, candidate_file), "")
 
     fuzzlogger.debug(f"Checking candidate {candidate_file}")
     filename_stem, extn = _tokenize_file(candidate_file)
@@ -1588,16 +1837,17 @@ def _try_match_candidate_file(
         logger.debug(f"Skipping {candidate_file}, extension not considered")
         return False, 0
 
-    # Fuzzy match the candidate filename
+    # Fuzzy match the candidate filename against both release name and DB title.
     normalized_candidate = _normalize_title(filename_stem)
-    match_percent = _calculate_fuzzy_match(
-        book_state.download_title, normalized_candidate, fuzzlogger
+    match_percent, _ = _best_candidate_match(
+        book_state, normalized_candidate, fuzzlogger
     )
     is_match = match_percent >= match_threshold
-
-    fuzzlogger.debug(
-        f"{round(match_percent, 2)}% match {book_state.download_title} : {normalized_candidate}"
-    )
+    if is_match:
+        if path_isdir(book_state.candidate_ptr or ""):
+            book_state.candidate_match_kind = "directory_name"
+        else:
+            book_state.candidate_match_kind = "file_name"
 
     # If no match and it's a directory, drill down to find the right book
     if not is_match and path_isdir(book_state.candidate_ptr or ""):
@@ -1633,20 +1883,21 @@ def _try_match_candidate_file(
                 f"Found matching subdirectory: {os.path.basename(matched_subdir)}"
             )
             book_state.update_candidate(matched_subdir)
+            book_state.candidate_match_kind = "inner_subdir_name"
             is_match = True
             match_percent = subdir_match_percent
         else:
             # Try 2: Match files at root level (for collections with files in one directory)
-            matched_file, file_match_percent = _find_matching_file_in_directory(
+            matched_file, file_match_percent = _find_matching_file_for_book_state(
                 book_state.candidate_ptr or "",
-                search_title,
+                book_state,
                 match_threshold,
                 fuzzlogger,
             )
 
             if matched_file:
                 logger.debug(f"Found matching file: {os.path.basename(matched_file)}")
-                book_state.update_candidate(matched_file)
+                book_state.update_candidate(matched_file, "inner_file_name")
                 is_match = True
                 match_percent = file_match_percent
 
@@ -1743,6 +1994,10 @@ def _process_matched_directory(
         if not path_isfile(candidate_ptr):
             return False, f"Folder {book_state.candidate_ptr} is not found"
 
+        if _requires_matched_file_isolation(book_state, download_dir):
+            book_state.candidate_matched_file = candidate_ptr
+            return _isolate_matched_ebook_file(book_state, download_dir, logger)
+
         # File not in root - update candidate_ptr to parent directory
         # process_destination expects a directory, not a file
         parent_dir = os.path.dirname(book_state.candidate_ptr or "")
@@ -1755,13 +2010,27 @@ def _process_matched_directory(
         f"for {book_state.get_book_type_str()} {book_state.download_title}"
     )
 
+    book_type_enum = book_state.get_book_type_enum()
+
     # First pass: Look for valid files
     valid_file_path = _find_valid_file_in_directory(
         book_state.candidate_ptr, book_type=book_state.get_book_type_str()
     )
 
     if valid_file_path:
-        book_state.update_candidate(os.path.dirname(valid_file_path))
+        skip_reason = _inner_ebook_match_failure(
+            book_state, download_dir, book_state.candidate_ptr, fuzzlogger
+        )
+        if skip_reason:
+            return False, skip_reason
+        if book_state.candidate_matched_file:
+            isolated, skip_reason = _isolate_matched_ebook_file(
+                book_state, download_dir, logger
+            )
+            if not isolated:
+                return False, skip_reason
+        else:
+            book_state.update_candidate(os.path.dirname(valid_file_path))
     else:
         # No valid file, try extracting archives
         new_candidate, archives_extracted = _extract_archives_in_directory(
@@ -1780,12 +2049,26 @@ def _process_matched_directory(
             if not valid_file_path:
                 logger.debug("No valid file after extraction")
                 return False, "No valid file found after extraction"
+            skip_reason = _inner_ebook_match_failure(
+                book_state,
+                download_dir,
+                book_state.candidate_ptr,
+                fuzzlogger,
+                recurse=True,
+            )
+            if skip_reason:
+                return False, skip_reason
+            if book_state.candidate_matched_file:
+                isolated, skip_reason = _isolate_matched_ebook_file(
+                    book_state, download_dir, logger
+                )
+                if not isolated:
+                    return False, skip_reason
         else:
             return False, "No valid file or archives found"
 
     # Handle multi-book collections for eBooks
     # If folder contains multiple books, extract ONLY the best matching one
-    book_type_enum = book_state.get_book_type_enum()
     if book_type_enum == BookType.EBOOK:
         mult = multibook(book_state.candidate_ptr, recurse=True)
         if mult:
@@ -1886,7 +2169,11 @@ def _find_best_match_in_downloads(
             )
 
             if is_valid:
-                matches.append([match_percent, book_state.candidate_ptr])
+                matches.append([
+                    match_percent,
+                    book_state.candidate_ptr,
+                    book_state.candidate_match_kind,
+                ])
                 if match_percent == 100:
                     # Perfect match, no need to keep searching
                     break
@@ -1894,7 +2181,11 @@ def _find_best_match_in_downloads(
                 book_state.mark_skipped(skip_reason)
         # Even non-matches get tracked to report closest match
         elif match_percent > 0:
-            matches.append([match_percent, book_state.candidate_ptr])
+            matches.append([
+                match_percent,
+                book_state.candidate_ptr,
+                book_state.candidate_match_kind,
+            ])
 
     # Find the best match
     if not matches:
@@ -1903,8 +2194,9 @@ def _find_best_match_in_downloads(
     highest = max(matches, key=lambda x: x[0])
     best_match_percent = highest[0]
     best_candidate_ptr = highest[1]
+    best_match_kind = highest[2]
 
-    book_state.update_candidate(best_candidate_ptr)
+    book_state.update_candidate(best_candidate_ptr, best_match_kind)
 
     if best_match_percent >= match_threshold:
         logger.debug(
@@ -2934,10 +3226,12 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         processing_delay = CONFIG.get_int("PP_DELAY")
 
         ppcount = 0
+        processed_book_states = []
 
         for book_row in books_to_process:
             # Create BookState from database row
             book_state = BookState.from_db_row(book_row, CONFIG)
+            processed_book_states.append(book_state)
 
             # Check processing delay (once per book, not per directory!)
             # Legacy-compatible: processes even if Completed==0 (some clients don't set it)
@@ -3033,20 +3327,27 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
 
         # Mark unprocessed books as Failed to force a retry on next search
         failed = [0, 0, 0, 0]  # ebook, audio, mag, comic
-        for book_row in books_to_process:
-            book_state = BookState.from_db_row(book_row, CONFIG)
+        for book_state in processed_book_states:
             if not book_state.was_processed and book_state.has_failed():
                 logger.warning(
                     f"Marking {book_state.download_title} as Failed: "
                     f"{book_state.processing_stage} - {book_state.failure_reason}"
                 )
-                control_value_dict = {"DownloadID": book_state.download_id, "Status": "Snatched"}
-                new_value_dict = {
-                    "Status": "Failed",
-                    "NZBDate": now(),
-                    "DLResult": f"{book_state.processing_stage}: {book_state.failure_reason}"
-                }
-                db.upsert("wanted", new_value_dict, control_value_dict)
+                db.action(
+                    "UPDATE wanted SET Status='Failed',NZBDate=?,DLResult=? "
+                    "WHERE DownloadID=? and COALESCE(Source,'')=? and BookID=? "
+                    "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+                    "and Status='Snatched'",
+                    (
+                        now(),
+                        f"{book_state.processing_stage}: {book_state.failure_reason}",
+                        book_state.download_id,
+                        book_state.source or "",
+                        book_state.book_id,
+                        book_state.aux_info or "",
+                        book_state.download_url or "",
+                    ),
+                )
                 book_type_str = book_state.get_book_type_str()
                 cmd = ''
                 if book_type_str == BookType.EBOOK.value:
@@ -3055,14 +3356,14 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
                 elif book_type_str == BookType.AUDIOBOOK.value:
                     cmd = "UPDATE books SET audiostatus='Wanted' WHERE audiostatus='Snatched' and BookID=?"
                     failed[1] += 1
-                elif book_type_str == BookType.MAGAZINE.value():
+                elif book_type_str == BookType.MAGAZINE.value:
                     failed[2] += 1
-                elif book_type_str == BookType.COMIC.value():
+                elif book_type_str == BookType.COMIC.value:
                     failed[3] += 1
                 if cmd:
                     db.action(cmd, (book_state.book_id,))
                 if CONFIG.get_bool("DEL_FAILED"):
-                    delete_task(book_state.source, book_state.download_id, True)
+                    _delete_failed_task_if_unused(db, book_state, logger)
         if any(failed):
             logger.debug(f"Failed to process {failed[0]} ebook, {failed[1]} audio, {failed[2]} magazine, {failed[3]} comic")
 

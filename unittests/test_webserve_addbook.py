@@ -6,6 +6,8 @@
 import logging
 from unittest import mock
 
+import cherrypy
+
 import lazylibrarian
 from lazylibrarian import ROLE
 from lazylibrarian.config2 import CONFIG
@@ -69,15 +71,27 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         db.commit()
 
     @staticmethod
-    def _google_result(bookid='GB1', title='Rant', authorid='author-1', authorname='Chuck Palahniuk'):
+    def _google_result(bookid='GB1', title='Rant', authorid='author-1', authorname='Chuck Palahniuk',
+                       highest_fuzz=100, bookrate_count=0):
         return {
             'bookid': bookid,
             'bookname': title,
             'authorid': authorid,
             'authorname': authorname,
             'source': 'GoogleBooks',
-            'highest_fuzz': 100,
-            'bookrate_count': 0,
+            'highest_fuzz': highest_fuzz,
+            'bookrate_count': bookrate_count,
+            'booksub': '',
+            'bookisbn': '',
+            'bookpub': '',
+            'bookdate': '2026',
+            'booklang': 'en',
+            'booklink': '',
+            'bookrate': 0.0,
+            'bookimg': 'images/nocover.png',
+            'bookpages': 0,
+            'bookgenre': '',
+            'bookdesc': '',
             'contributors': [],
             'series': [],
         }
@@ -136,6 +150,436 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
             self.assertEqual(1, count['counter'])
         finally:
             db.close()
+
+    def test_existing_status_update_requires_compatible_title_when_provided(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'polluted-book', 'Different Book', status='Skipped', gb_id='GB1')
+        finally:
+            db.close()
+
+        match = webServe.update_existing_book_status(
+            'GB1', ebook_status='Wanted', preferred_key='gb_id', title='Rant', authorid='author-1')
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='polluted-book'")
+            self.assertEqual('Skipped', row['Status'])
+        finally:
+            db.close()
+
+    def test_exact_fallback_provider_id_beats_higher_ranked_candidate(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'exact-canonical', 'Rant', status='Skipped', gb_id='GB1')
+            self._insert_book(db, 'wrong-canonical', 'Rant', status='Skipped', gb_id='GB-WRONG')
+        finally:
+            db.close()
+
+        wrong = self._google_result(bookid='GB-WRONG', highest_fuzz=100, bookrate_count=999)
+        exact = self._google_result(bookid='GB1', highest_fuzz=95, bookrate_count=0)
+
+        def search(_term, source):
+            if source == 'GoogleBooks':
+                return [wrong, exact]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                'GB1', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None)
+
+        self.assertEqual('exact-canonical', match['BookID'])
+        db = DBConnection()
+        try:
+            exact_row = db.match("SELECT Status FROM books WHERE BookID='exact-canonical'")
+            wrong_row = db.match("SELECT Status FROM books WHERE BookID='wrong-canonical'")
+            self.assertEqual('Wanted', exact_row['Status'])
+            self.assertEqual('Skipped', wrong_row['Status'])
+        finally:
+            db.close()
+
+    def test_preferred_search_result_source_is_tried_before_primary_source(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'canonical-book', 'Rant', status='Skipped', gb_id='GB1')
+        finally:
+            db.close()
+
+        calls = []
+        result = self._google_result()
+
+        def search(_term, source):
+            calls.append(source)
+            if source == 'GoogleBooks':
+                return [result]
+            return []
+
+        with (
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+        ):
+            match = webServe._add_search_result_book_to_db(
+                'GB1', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoogleBooks')
+
+        self.assertEqual('canonical-book', match['BookID'])
+        self.assertEqual(['GoogleBooks'], calls)
+
+    def test_preferred_source_does_not_fuzzy_add_from_primary_when_exact_missing(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'goodreads-book', 'Rant', status='Skipped', gr_id='12345')
+        finally:
+            db.close()
+
+        calls = []
+        google_other = self._google_result(bookid='GB-OTHER', highest_fuzz=100)
+        goodreads_match = dict(google_other)
+        goodreads_match['bookid'] = '12345'
+        goodreads_match['source'] = 'GoodReads'
+
+        def search(_term, source):
+            calls.append(source)
+            if source == 'GoogleBooks':
+                return [google_other]
+            if source == 'GoodReads':
+                return [goodreads_match]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                'GB1', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoogleBooks')
+
+        self.assertIsNone(match)
+        self.assertEqual(['GoogleBooks'], calls)
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='goodreads-book'")
+            self.assertEqual('Skipped', row['Status'])
+        finally:
+            db.close()
+
+    def test_preferred_source_uses_exact_detail_when_search_omits_clicked_id(self):
+        from lazylibrarian import webServe
+
+        google_other = self._google_result(bookid='GB-OTHER', highest_fuzz=100)
+        exact_detail = self._google_result(bookid='GB1', highest_fuzz=100)
+
+        def search(_term, source):
+            if source == 'GoogleBooks':
+                return [google_other]
+            return []
+
+        with (
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=exact_detail),
+        ):
+            match = webServe._add_search_result_book_to_db(
+                'GB1', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoogleBooks')
+
+        self.assertEqual('GB1', match['BookID'])
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status,gb_id FROM books WHERE BookID='GB1'")
+            self.assertEqual('Wanted', row['Status'])
+            self.assertEqual('GB1', row['gb_id'])
+        finally:
+            db.close()
+
+    def test_no_source_nonnumeric_bookid_requires_exact_fallback_provider_match(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'other-canonical', 'Rant', status='Skipped', gb_id='GB-OTHER')
+        finally:
+            db.close()
+
+        google_other = self._google_result(bookid='GB-OTHER', highest_fuzz=100)
+
+        def search(_term, source):
+            if source == 'GoogleBooks':
+                return [google_other]
+            return []
+
+        with (
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+        ):
+            match = webServe._add_search_result_book_to_db(
+                'GB1', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None)
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='other-canonical'")
+            self.assertEqual('Skipped', row['Status'])
+        finally:
+            db.close()
+
+    def test_no_source_numeric_bookid_requires_exact_fallback_provider_match(self):
+        from lazylibrarian import webServe
+
+        CONFIG.set_bool('HC_API', True)
+        hard_cover_other = self._google_result(bookid='99999', highest_fuzz=100)
+        hard_cover_other['source'] = 'HardCover'
+
+        def search(_term, source):
+            if source == 'HardCover':
+                return [hard_cover_other]
+            return []
+
+        with (
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+        ):
+            match = webServe._add_search_result_book_to_db(
+                '12345', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None)
+
+        self.assertIsNone(match)
+
+    def test_add_book_source_aware_click_does_not_fall_through_to_direct_provider_add(self):
+        from lazylibrarian import gb, webServe
+
+        google_other = self._google_result(bookid='GB-OTHER', highest_fuzz=100)
+
+        def search(_term, source):
+            if source == 'GoogleBooks':
+                return [google_other]
+            return []
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+            mock.patch.object(gb.GoogleBooks, 'add_bookid_to_db', return_value=True) as direct_add,
+            self.assertRaises(cherrypy.HTTPRedirect),
+        ):
+            interface.add_book(
+                bookid='GB1', library='eBook', title='Rant',
+                authorname='Chuck Palahniuk', source='GoogleBooks')
+
+        direct_add.assert_not_called()
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books WHERE BookID='GB1'")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_add_book_source_less_search_result_does_not_fall_through_to_direct_provider_add(self):
+        from lazylibrarian import gr, webServe
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', return_value=[]),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+            mock.patch.object(gr.GoodReads, 'add_bookid_to_db', return_value=True) as direct_add,
+            self.assertRaises(cherrypy.HTTPRedirect),
+        ):
+            interface.add_book(
+                bookid='12345', library='eBook', title='Rant',
+                authorname='Chuck Palahniuk')
+
+        direct_add.assert_not_called()
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books WHERE BookID='12345'")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_add_book_source_less_search_result_does_not_update_configured_id_collision(self):
+        from lazylibrarian import gr, webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db, authorid='author-2', authorname='Different Author')
+            self._insert_book(
+                db, 'goodreads-collision', 'Rant', authorid='author-2',
+                status='Skipped', gr_id='12345')
+        finally:
+            db.close()
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', return_value=[]),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+            mock.patch.object(gr.GoodReads, 'add_bookid_to_db', return_value=True) as direct_add,
+            self.assertRaises(cherrypy.HTTPRedirect),
+        ):
+            interface.add_book(
+                bookid='12345', library='eBook', title='Rant',
+                authorid='author-1', authorname='Chuck Palahniuk')
+
+        direct_add.assert_not_called()
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='goodreads-collision'")
+            self.assertEqual('Skipped', row['Status'])
+        finally:
+            db.close()
+
+    def test_source_less_exact_fallback_does_not_update_author_mismatched_provider_row(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db, authorid='author-1', authorname='Chuck Palahniuk')
+            self._insert_author(db, authorid='author-2', authorname='Different Author')
+            self._insert_book(
+                db, 'goodreads-collision', 'Rant', authorid='author-2',
+                status='Skipped', gr_id='12345')
+        finally:
+            db.close()
+
+        exact = self._google_result(bookid='12345', authorid='author-1', highest_fuzz=100)
+        exact['source'] = 'GoodReads'
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [exact]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '12345', 'Wanted', 'Skipped', title='Rant', authorname='Chuck Palahniuk',
+                existing_ebook_status='Wanted', existing_audio_status=None)
+
+        self.assertTrue(webServe._is_blocked_add_result(match))
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='goodreads-collision'")
+            self.assertEqual('Skipped', row['Status'])
+        finally:
+            db.close()
+
+    def test_add_book_invalid_source_fails_closed(self):
+        from lazylibrarian import gr, webServe
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for') as search,
+            mock.patch.object(gr.GoodReads, 'add_bookid_to_db', return_value=True) as direct_add,
+            self.assertRaises(cherrypy.HTTPRedirect),
+        ):
+            interface.add_book(
+                bookid='GB1', library='eBook', title='Rant',
+                authorname='Chuck Palahniuk', source='BogusBooks')
+
+        search.assert_not_called()
+        direct_add.assert_not_called()
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books WHERE BookID='GB1'")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_add_book_source_aware_exact_result_starts_search_on_canonical_row(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'canonical-book', 'Rant', status='Skipped', gb_id='GB1')
+        finally:
+            db.close()
+
+        result = self._google_result()
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', side_effect=self._mock_search(result)),
+            mock.patch.object(interface, 'start_book_search') as start_search,
+            self.assertRaises(cherrypy.HTTPRedirect),
+        ):
+            interface.add_book(
+                bookid='GB1', library='eBook', title='Rant',
+                authorname='Chuck Palahniuk', source='GoogleBooks')
+
+        start_search.assert_called_once_with(
+            [{'bookid': 'canonical-book'}], library='eBook', force=True)
+
+    def test_bulk_add_uses_source_payload_for_existing_canonical_row(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'canonical-book', 'Rant', status='Skipped', gb_id='GB1')
+        finally:
+            db.close()
+
+        result = self._google_result()
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', side_effect=self._mock_search(result)),
+        ):
+            response = interface.mark_results_ajax(
+                action='AddBook',
+                **{'GB1': 'author-1|Chuck+Palahniuk|Rant|GoogleBooks'})
+
+        self.assertEqual(1, response['passed'])
+        self.assertEqual(0, response['failed'])
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status FROM books WHERE BookID='canonical-book'")
+            self.assertEqual('Wanted', row['Status'])
+        finally:
+            db.close()
+
+    def test_bulk_add_source_aware_failure_does_not_fall_through_to_direct_provider_add(self):
+        from lazylibrarian import gb, webServe
+
+        google_other = self._google_result(bookid='GB-OTHER', highest_fuzz=100)
+
+        def search(_term, source):
+            if source == 'GoogleBooks':
+                return [google_other]
+            return []
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+            mock.patch.object(gb.GoogleBooks, 'add_bookid_to_db', return_value=True) as direct_add,
+        ):
+            response = interface.mark_results_ajax(
+                action='AddBook',
+                **{'GB1': 'author-1|Chuck+Palahniuk|Rant|GoogleBooks'})
+
+        self.assertEqual(0, response['passed'])
+        self.assertEqual(1, response['failed'])
+        direct_add.assert_not_called()
 
     def test_google_result_does_not_resurrect_ignored_duplicate_provider_row(self):
         from lazylibrarian import webServe

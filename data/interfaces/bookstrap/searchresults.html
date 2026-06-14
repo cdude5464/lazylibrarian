@@ -98,7 +98,11 @@
                     value3 = value
                     destination2 = "#"
                     destination3 = "#"
-                    add_context = "&title=" + quote_plus(result.get('bookname') or '') + "&authorname=" + quote_plus(result.get('authorname') or '')
+                    add_context = (
+                        "&title=" + quote_plus(result.get('bookname') or '') +
+                        "&authorname=" + quote_plus(result.get('authorname') or '') +
+                        "&source=" + quote_plus(result.get('source') or '')
+                    )
 
                     if value == "Loading":
                         value2 = value
@@ -178,7 +182,7 @@
                         but_class3 = "btn-info hidden"
                     %>
 <tr>
-  <td class="select text-center"><input type="checkbox" name="${result['bookid']}" value="${result['authorid']}|${quote_plus(result.get('authorname') or '')}|${quote_plus(result.get('bookname') or '')}" /></td>
+  <td class="select text-center"><input type="checkbox" name="${result['bookid']}" value="${result['authorid']}|${quote_plus(result.get('authorname') or '')}|${quote_plus(result.get('bookname') or '')}|${quote_plus(result.get('source') or '')}" /></td>
   <td class="bookart text-center"><a href="${result['bookimg']}" target="_blank" rel="noreferrer"><img src="${result['bookimg']}" alt="Cover" width=200></a></td>
   <td class="authorname">${result['authorname']}</td>
   <td class="bookname"><a href="${result['booklink']}" target="_blank" rel="noreferrer">${result['bookname']}</a></td>

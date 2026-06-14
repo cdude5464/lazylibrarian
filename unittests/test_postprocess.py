@@ -30,6 +30,7 @@ from lazylibrarian.postprocess import (
     _normalize_title,
     _should_delete_processed_files,
     _tokenize_file,
+    _try_match_candidate_file,
     _validate_candidate_directory,
     process_dir,
 )
@@ -997,6 +998,8 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         self.original_audio_dir = CONFIG["AUDIO_DIR"]
         self.original_dest_copy = CONFIG["DESTINATION_COPY"]
         self.original_pp_delay = CONFIG["PP_DELAY"]
+        self.original_del_failed = CONFIG.get_bool("DEL_FAILED")
+        self.original_one_format = CONFIG.get_bool("ONE_FORMAT")
 
         # Configure test directories
         CONFIG["DOWNLOAD_DIR"] = self.download_dir
@@ -1018,6 +1021,8 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         CONFIG["AUDIO_DIR"] = self.original_audio_dir
         CONFIG["DESTINATION_COPY"] = self.original_dest_copy
         CONFIG["PP_DELAY"] = self.original_pp_delay
+        CONFIG.set_bool("DEL_FAILED", self.original_del_failed)
+        CONFIG.set_bool("ONE_FORMAT", self.original_one_format)
 
         # Clean up test directories
         if os.path.exists(self.test_root):
@@ -1412,3 +1417,346 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
 
         # 5. Database updated
         self.assert_status_updated(book_id, 'Processed')
+
+    def test_candidate_file_can_match_requested_book_title_not_release_name(self):
+        """Seedbox releases can contain an author-title file that does not fuzzy-match the release name."""
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        book_state = BookState(
+            book_id="FR2REQAAQBAJ",
+            download_title=_normalize_title(release_name),
+            book_title="Brynne Weaver - Harvest Season",
+            aux_type="eBook",
+        )
+        candidate = "Weaver, Brynne - Harvest Season.epub"
+        self.create_ebook_file(os.path.join(self.download_dir, candidate))
+
+        is_match, match_percent = _try_match_candidate_file(
+            candidate,
+            book_state,
+            self.download_dir,
+            80,
+            logging.getLogger("test.postprocess"),
+            logging.getLogger("test.postprocess.fuzz"),
+        )
+
+        self.assertTrue(is_match)
+        self.assertGreaterEqual(match_percent, 80)
+        self.assertEqual(
+            os.path.join(self.download_dir, candidate),
+            book_state.candidate_ptr,
+        )
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_folder_imports_author_title_file(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """forceProcess should import a helper-local author-title file despite an inaccessible remote path."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "seedbox_happy_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "f21ca1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{download_id}",
+            release_name,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub")
+        )
+        self.create_ebook_file(os.path.join(local_release_dir, "file_id.diz"))
+        self.create_ebook_file(os.path.join(local_release_dir, "node.nfo"))
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        author_dir = os.path.join(self.library_dir, author_name)
+        book_dir = os.path.join(author_dir, book_name)
+        self.assertTrue(os.path.exists(book_dir), f"Book directory should exist at {book_dir}")
+        epub_files = [f for f in os.listdir(book_dir) if f.endswith('.epub')]
+        self.assertEqual(1, len(epub_files))
+        self.assert_status_updated(book_id, 'Processed')
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_folder_rejects_wrong_file(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper-local folder must still prove the contained ebook matches the requested book."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "wrong_file_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "badca1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{download_id}",
+            release_name,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Completely Different.epub")
+        )
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        book_dir = os.path.join(self.library_dir, author_name, book_name)
+        self.assertFalse(os.path.exists(book_dir), "Wrong ebook should not be imported")
+        row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (book_id, download_id),
+        )
+        self.assertEqual("Failed", row["Status"])
+        self.assertIn("matching:", row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_parent_rejects_wrong_file(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper job parent must not trust a matched release folder with a wrong ebook inside."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "wrong_parent_file_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "parent1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{download_id}")
+        local_release_dir = os.path.join(local_job_dir, release_name)
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Completely Different.epub")
+        )
+
+        process_dir(startdir=local_job_dir, ignoreclient=True)
+
+        book_dir = os.path.join(self.library_dir, author_name, book_name)
+        self.assertFalse(os.path.exists(book_dir), "Wrong ebook should not be imported")
+        row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (book_id, download_id),
+        )
+        self.assertEqual("Failed", row["Status"])
+        self.assertIn("matching:", row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_parent_uses_matching_file_with_sample(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper job parent with a sample plus the requested ebook should import the match."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "sample_plus_match_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "sample1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{download_id}")
+        local_release_dir = os.path.join(local_job_dir, release_name)
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "000 Sample.epub"),
+            content="sample ebook content",
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub"),
+            content="correct ebook content",
+        )
+
+        process_dir(startdir=local_job_dir, ignoreclient=True)
+
+        book_dir = os.path.join(self.library_dir, author_name, book_name)
+        self.assertTrue(os.path.exists(book_dir), f"Book directory should exist at {book_dir}")
+        epub_files = [f for f in os.listdir(book_dir) if f.endswith('.epub')]
+        self.assertEqual(1, len(epub_files))
+        with open(os.path.join(book_dir, epub_files[0])) as imported_file:
+            self.assertEqual("correct ebook content", imported_file.read())
+        self.assert_status_updated(book_id, 'Processed')
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_parent_isolates_matching_pdf_over_sample_epub(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A matching lower-priority format must beat a nonmatching preferred sample format."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+        CONFIG.set_bool("ONE_FORMAT", True)
+
+        book_id = "sample_epub_match_pdf_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "pdfmatch67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{download_id}")
+        local_release_dir = os.path.join(local_job_dir, release_name)
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "000 Sample.epub"),
+            content="sample ebook content",
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season Sample.epub"),
+            content="same prefix sample ebook content",
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.pdf"),
+            content="correct pdf content",
+        )
+
+        process_dir(startdir=local_job_dir, ignoreclient=True)
+
+        book_dir = os.path.join(self.library_dir, author_name, book_name)
+        self.assertTrue(os.path.exists(book_dir), f"Book directory should exist at {book_dir}")
+        book_files = os.listdir(book_dir)
+        self.assertFalse(any(f.endswith('.epub') for f in book_files))
+        pdf_files = [f for f in book_files if f.endswith('.pdf')]
+        self.assertEqual(1, len(pdf_files))
+        with open(os.path.join(book_dir, pdf_files[0])) as imported_file:
+            self.assertEqual("correct pdf content", imported_file.read())
+        self.assert_status_updated(book_id, 'Processed')
+
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_unmatched_snatched_download_is_marked_failed(
+            self, mock_get_name, mock_get_progress, mock_check_contents):
+        """A no-match postprocess failure should not remain silently Snatched."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_name.return_value = None
+
+        book_id = "no_match_book"
+        self.create_test_author_and_book(book_id, "Failure Author", "Expected Book")
+        self.create_snatched_download(book_id, "Expected.Book.Release", "eBook")
+        self.create_ebook_file(os.path.join(self.download_dir, "Completely Different.epub"))
+
+        process_dir(ignoreclient=True)
+
+        row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (book_id,))
+        self.assertEqual("Failed", row["Status"])
+        self.assertIn("matching:", row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.delete_task')
+    @mock.patch('lazylibrarian.postprocess._process_snatched_book')
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_failed_update_does_not_touch_snatched_sibling_with_same_download_id(
+            self, mock_get_name, mock_get_progress, mock_check_contents,
+            mock_get_folder, mock_process_snatched, mock_delete_task):
+        """Final failure handling must not delete a downloader task still used by a sibling row."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_name.return_value = None
+        mock_get_folder.return_value = None
+        CONFIG.set_bool("DEL_FAILED", True)
+
+        def process_side_effect(book_state, *_args):
+            if book_state.book_id == "failed_book":
+                book_state.mark_failed("matching", "forced failure")
+            return 0
+
+        mock_process_snatched.side_effect = process_side_effect
+
+        shared_download_id = "shared-download-id"
+        failed_book = "failed_book"
+        delayed_book = "delayed_book"
+        self.create_test_author_and_book(failed_book, "Failure Author", "Expected Book")
+        self.create_test_author_and_book(delayed_book, "Delay Author", "Delayed Book")
+        self.create_snatched_download(
+            failed_book,
+            "Expected.Book.Release",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.create_snatched_download(
+            delayed_book,
+            "Delay.Author.Delayed.Book",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.db.action("UPDATE wanted SET NZBurl=? WHERE BookID=?", ("http://test.com/failed.nzb", failed_book))
+        self.db.action("UPDATE wanted SET NZBurl=? WHERE BookID=?", ("http://test.com/delayed.nzb", delayed_book))
+
+        process_dir(ignoreclient=True)
+
+        failed_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (failed_book,))
+        delayed_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (delayed_book,))
+        self.assertEqual("Failed", failed_row["Status"])
+        self.assertIn("matching:", failed_row["DLResult"])
+        self.assertEqual("Snatched", delayed_row["Status"])
+        self.assertIsNone(delayed_row["DLResult"])
+        mock_delete_task.assert_not_called()

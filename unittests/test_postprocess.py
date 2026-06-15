@@ -22,6 +22,7 @@ from lazylibrarian.postprocess import (
     _calculate_fuzzy_match,
     _check_and_schedule_next_run,
     _count_zipfiles_in_directory,
+    _ebook_metadata_conflict,
     _find_valid_file_in_directory,
     _handle_aborted_download,
     _handle_seeding_status,
@@ -34,6 +35,7 @@ from lazylibrarian.postprocess import (
     _should_delete_processed_files,
     _tokenize_file,
     _try_match_candidate_file,
+    _validate_ebook_embedded_metadata,
     _validate_candidate_directory,
     _filter_rows_for_helper_startdir,
     _get_ready_from_snatched,
@@ -44,6 +46,7 @@ from lazylibrarian.postprocess import (
 )
 from lazylibrarian.postprocess_metadata import (
     BookType,
+    EbookMetadata,
     prepare_book_metadata,
     prepare_comic_metadata,
     prepare_magazine_metadata,
@@ -138,6 +141,79 @@ class BookStateTest(LLTestCaseWithStartup):
 
         book_state.completed_at = int(time.time())
         self.assertTrue(book_state.is_completed())
+
+    def test_ebook_metadata_conflict_rejects_weak_author_subset_title(self):
+        conflict, msg = _ebook_metadata_conflict(
+            "Robert Cain",
+            "The Keeper",
+            "The Remnant Keeper (Tombs Rising Book 1)",
+            "Robert Scott-Norton",
+        )
+
+        self.assertTrue(conflict)
+        self.assertIn("different book", msg)
+        self.assertIn("remnant", msg.lower())
+
+    def test_ebook_metadata_conflict_allows_matching_author_extra_generic_title(self):
+        conflict, msg = _ebook_metadata_conflict(
+            "Robert Cain",
+            "The Keeper",
+            "The Keeper: Part 1",
+            "Robert Cain",
+        )
+
+        self.assertFalse(conflict)
+        self.assertEqual("", msg)
+
+    def test_ebook_metadata_conflict_rejects_same_title_wrong_named_author(self):
+        conflict, msg = _ebook_metadata_conflict(
+            "Robert Cain",
+            "The Keeper",
+            "The Keeper",
+            "Some Other Author",
+        )
+
+        self.assertTrue(conflict)
+        self.assertIn("author match", msg)
+        self.assertIn("title match", msg)
+
+    def test_ebook_metadata_conflict_allows_same_title_unknown_creator(self):
+        conflict, msg = _ebook_metadata_conflict(
+            "Robert Cain",
+            "The Keeper",
+            "The Keeper",
+            "Unknown",
+        )
+
+        self.assertFalse(conflict)
+        self.assertEqual("", msg)
+
+    def test_ebook_metadata_conflict_requires_title_and_creator_evidence(self):
+        conflict, msg = _ebook_metadata_conflict(
+            "Robert Cain",
+            "The Keeper",
+            "The Remnant Keeper",
+            "",
+        )
+
+        self.assertFalse(conflict)
+        self.assertEqual("", msg)
+
+    @mock.patch("lazylibrarian.postprocess.get_book_info")
+    def test_validate_ebook_embedded_metadata_returns_clean_failure_on_parse_error(self, mock_get_info):
+        mock_get_info.side_effect = KeyError("META-INF/container.xml")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ebook_path = os.path.join(tmpdir, "The Keeper.epub")
+            Path(ebook_path).write_text("not a valid epub")
+            valid, msg = _validate_ebook_embedded_metadata(
+                tmpdir,
+                "",
+                EbookMetadata(book_id="s0ZPEQAAQBAJ", author_name="Robert Cain", book_name="The Keeper"),
+                logging.getLogger("test.postprocess"),
+            )
+
+        self.assertFalse(valid)
+        self.assertIn("Unable to read embedded ebook metadata", msg)
 
     def test_seconds_since_completion(self):
         """Test elapsed time calculation"""

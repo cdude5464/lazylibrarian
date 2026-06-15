@@ -29,6 +29,7 @@ from lazylibrarian.downloadmethods import (
     tor_dl_method,
 )
 from lazylibrarian.formatter import check_int, get_list, now, replace_all, unaccented
+from lazylibrarian.matchguard import weak_author_extra_title_words
 from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
 from lazylibrarian.providers import get_searchterm
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
@@ -246,7 +247,8 @@ def find_best_result(resultlist, book, searchtype, source):
                 book_match = fuzz.token_set_ratio(title, result_title)
             else:
                 book_match = fuzz.token_set_ratio(title.replace(author, ''), only_title)
-            if 'booksearch' in res and res['booksearch'] == 'bibliotik':
+            title_only_result = 'booksearch' in res and res['booksearch'] == 'bibliotik'
+            if title_only_result:
                 # bibliotik only returns book title, not author name
                 fuzzlogger.debug("bibliotik, ignoring author fuzz")
                 author_match = 100
@@ -257,6 +259,24 @@ def find_best_result(resultlist, book, searchtype, source):
                              f"at {res[prefix + 'prov']}")
 
             rejected = False
+            if auxinfo == 'eBook':
+                guard_author_match = 0 if title_only_result else author_match
+                extra_words = weak_author_extra_title_words(
+                    result_title,
+                    author=author,
+                    title=title,
+                    subtitle=book.get('bookSub', ''),
+                    author_match=guard_author_match,
+                    match_ratio=CONFIG.get_int('MATCH_RATIO'),
+                    format_words=CONFIG['EBOOK_TYPE'],
+                    prefer_words=CONFIG['PREFER_WORDS'],
+                )
+                if extra_words:
+                    rejected = True
+                    logger.debug(
+                        f"Rejecting {result_title}, weak author match ({round(guard_author_match, 2)}%) and extra "
+                        f"title words [{', '.join(extra_words)}]"
+                    )
 
             url = res[f"{prefix}url"]
             if not url:

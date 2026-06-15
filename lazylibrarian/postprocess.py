@@ -79,7 +79,9 @@ from lazylibrarian.formatter import (
 )
 from lazylibrarian.images import create_mag_cover, createthumbs
 from lazylibrarian.importer import update_totals
+from lazylibrarian.librarysync import get_book_info
 from lazylibrarian.magazinescan import create_id
+from lazylibrarian.matchguard import match_tokens, weak_author_extra_title_words
 from lazylibrarian.mailinglist import mailing_list
 from lazylibrarian.metadata_opf import create_comic_opf, create_mag_opf, create_opf
 from lazylibrarian.notifiers import (
@@ -4311,6 +4313,98 @@ def _find_best_format(
     return best_match, found_set
 
 
+def _ebook_metadata_conflict(
+    expected_author: str,
+    expected_title: str,
+    metadata_title: str,
+    metadata_creator: str,
+) -> "tuple[bool, str]":
+    """Return True when embedded ebook metadata strongly identifies another book."""
+    expected_author = enforce_str(make_unicode(expected_author or "")).strip()
+    expected_title = enforce_str(make_unicode(expected_title or "")).strip()
+    metadata_title = enforce_str(make_unicode(metadata_title or "")).strip()
+    metadata_creator = enforce_str(make_unicode(metadata_creator or "")).strip()
+
+    if not expected_author or not expected_title or not metadata_title or not metadata_creator:
+        return False, ""
+
+    author_match = fuzz.token_set_ratio(expected_author, metadata_creator)
+    title_match = fuzz.token_set_ratio(expected_title, metadata_title)
+    extra_words = weak_author_extra_title_words(
+        metadata_title,
+        author=expected_author,
+        title=expected_title,
+        author_match=author_match,
+        match_ratio=CONFIG.get_int("MATCH_RATIO"),
+        format_words=CONFIG["EBOOK_TYPE"],
+        prefer_words=CONFIG["PREFER_WORDS"],
+    )
+    generic_creators = {"anonymous", "author", "authors", "editor", "editors", "na", "none", "unknown", "various"}
+    creator_identity = [token for token in match_tokens(metadata_creator) if token not in generic_creators]
+    same_title_wrong_author = (
+        author_match < CONFIG.get_int("MATCH_RATIO")
+        and title_match >= CONFIG.get_int("MATCH_RATIO")
+        and bool(creator_identity)
+    )
+    if not extra_words and not same_title_wrong_author:
+        return False, ""
+
+    return (
+        True,
+        "Embedded ebook metadata identifies a different book: "
+        f"{metadata_creator} / {metadata_title} "
+        f"(expected {expected_author} / {expected_title}; "
+        f"author match {round(author_match, 2)}%; "
+        f"title match {round(title_match, 2)}%; "
+        f"extra title words {', '.join(extra_words) if extra_words else 'none'})",
+    )
+
+
+def _find_ebook_metadata_file(book_path: str, best_format: str = "") -> str:
+    """Pick the ebook file whose embedded metadata should be validated."""
+    if best_format:
+        for _fname in listdir(book_path):
+            fname = enforce_str(_fname)
+            _, extn = _tokenize_file(fname)
+            if extn.lower() == best_format and CONFIG.is_valid_booktype(fname, booktype=BookType.EBOOK.value):
+                return os.path.join(book_path, fname)
+    return enforce_str(make_unicode(book_file(book_path, BookType.EBOOK.value, config=CONFIG)))
+
+
+def _validate_ebook_embedded_metadata(
+    book_path: str,
+    best_format: str,
+    book_metadata: BookMetadata,
+    logger: logging.Logger,
+) -> "tuple[bool, str]":
+    """Validate downloaded ebook metadata before Calibre can overwrite it."""
+    if not isinstance(book_metadata, EbookMetadata):
+        return True, ""
+
+    ebook_file = _find_ebook_metadata_file(book_path, best_format)
+    if not ebook_file:
+        return True, ""
+
+    try:
+        metadata = get_book_info(ebook_file)
+    except Exception as err:
+        msg = f"Unable to read embedded ebook metadata from {ebook_file}: {type(err).__name__} {err}"
+        logger.warning(msg)
+        return False, msg
+
+    conflict, msg = _ebook_metadata_conflict(
+        book_metadata.author_name,
+        book_metadata.book_name,
+        metadata.get("title", ""),
+        metadata.get("creator", ""),
+    )
+    if conflict:
+        logger.warning(f"Rejecting {ebook_file}: {msg}")
+        return False, msg
+
+    return True, ""
+
+
 def _is_metadata_file(fname: str) -> bool:
     """Check if file is a metadata file (.jpg or .opf)"""
     fname_lower = fname.lower()
@@ -4726,6 +4820,13 @@ def _process_destination(
             logger.debug(
                 f"After PreProcessing, found {','.join(found_types)}, best match {best_format}"
             )
+
+    if book_type == BookType.EBOOK.value:
+        valid_metadata, metadata_msg = _validate_ebook_embedded_metadata(
+            book_path, best_format, book_metadata, logger
+        )
+        if not valid_metadata:
+            return False, metadata_msg, book_path
 
     # If ebook, magazine or comic, do we want calibre to import it for us
     newbookfile = ""

@@ -136,6 +136,7 @@ class BookState:
     # Core identifiers (from database row)
     book_id: str
     download_title: str  # NZBtitle (download/torrent name) - for location finding
+    raw_download_title: str = ""  # Original NZBtitle for exact wanted-row identity checks
     book_title: str = ""  # Actual book title from books table - for drill-down matching
     aux_type: str = (
         ""  # case sensitive AuxInfo book type (eBook, AudioBook, Magazine, comic)
@@ -193,6 +194,7 @@ class BookState:
         return cls(
             book_id=book_data["BookID"],
             download_title=normalized_download_title,
+            raw_download_title=book_data["NZBtitle"],
             book_title="",  # Will be populated later if needed for drill-down
             aux_type=_extract_aux_type(book_data),
             aux_info=book_data["AuxInfo"],
@@ -739,6 +741,7 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
     delete_failed = CONFIG.get_bool("DEL_FAILED")
 
     for book_row in snatched_list:
+        book_row = dict(book_row)
         # Get current status from the downloader as the name may have changed
         # once magnet resolved, or download started or completed.
         # This is common with torrent downloaders. Usenet doesn't change the name.
@@ -775,6 +778,7 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
                 ),
             )
             title = download_name
+            book_row["NZBtitle"] = download_name
 
         rejected = check_contents(source, download_id, book_type_str, title,
                                   requested_author=requested_author,
@@ -2473,6 +2477,104 @@ def _process_book_post(
     return metadata.book_name
 
 
+def _strong_wanted_identity(book_state: BookState, logger: logging.Logger, context: str) -> dict | None:
+    required_identity = {
+        "DownloadID": book_state.download_id or "",
+        "Source": book_state.source or "",
+        "AuxInfo": book_state.aux_info or "",
+        "NZBurl": book_state.download_url or "",
+        "NZBprov": book_state.download_provider or "",
+        "NZBtitle": book_state.raw_download_title or "",
+    }
+    missing = [key for key, value in required_identity.items() if not value]
+    if missing:
+        logger.warning(
+            f"Unable to {context} for {book_state.download_title}: "
+            f"missing wanted identity fields {', '.join(missing)}"
+        )
+        return None
+    return required_identity
+
+
+def _resolve_book_state_id_after_destination(book_state: BookState, db, logger: logging.Logger) -> str | None:
+    """Return the current BookID after destination processing may have rewritten aliases."""
+    if not book_state.book_id:
+        return book_state.book_id
+
+    row = db.match("SELECT BookID FROM books WHERE BookID=?", (book_state.book_id,))
+    if row:
+        return book_state.book_id
+
+    required_identity = _strong_wanted_identity(book_state, logger, "resolve BookID rewrite")
+    if not required_identity:
+        return None
+
+    rows = db.select(
+        "SELECT wanted.BookID FROM wanted,books "
+        "WHERE wanted.BookID=books.BookID "
+        "and COALESCE(wanted.DownloadID,'')=? and COALESCE(wanted.Source,'')=? "
+        "and COALESCE(wanted.AuxInfo,'')=? and COALESCE(wanted.NZBurl,'')=? "
+        "and COALESCE(wanted.NZBprov,'')=? and COALESCE(wanted.NZBtitle,'')=? "
+        "and wanted.Status='Snatched'",
+        (
+            required_identity["DownloadID"],
+            required_identity["Source"],
+            required_identity["AuxInfo"],
+            required_identity["NZBurl"],
+            required_identity["NZBprov"],
+            required_identity["NZBtitle"],
+        ),
+    )
+    if len(rows) == 1:
+        current_bookid = rows[0]["BookID"]
+        logger.warning(
+            f"BookID changed during destination processing for {book_state.download_title}: "
+            f"{book_state.book_id} -> {current_bookid}"
+        )
+        return current_bookid
+    if rows:
+        logger.warning(
+            f"Unable to resolve BookID rewrite for {book_state.download_title}: "
+            f"{len(rows)} wanted rows still match download identity"
+        )
+    else:
+        logger.warning(
+            f"BookID {book_state.book_id} disappeared during destination processing for "
+            f"{book_state.download_title}"
+        )
+    return None
+
+
+def _mark_postprocess_failure_by_identity(book_state: BookState, db, logger: logging.Logger) -> bool:
+    required_identity = _strong_wanted_identity(book_state, logger, "mark postprocess failure")
+    if not required_identity:
+        return False
+    result = db.action(
+        "UPDATE wanted SET Status='Failed',NZBDate=?,DLResult=? "
+        "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? "
+        "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+        "and COALESCE(NZBprov,'')=? and COALESCE(NZBtitle,'')=? "
+        "and Status='Snatched'",
+        (
+            now(),
+            f"{book_state.processing_stage}: {book_state.failure_reason}",
+            required_identity["DownloadID"],
+            required_identity["Source"],
+            required_identity["AuxInfo"],
+            required_identity["NZBurl"],
+            required_identity["NZBprov"],
+            required_identity["NZBtitle"],
+        ),
+    )
+    updated = bool(result and result.rowcount)
+    if not updated:
+        logger.warning(
+            f"Unable to mark postprocess failure for {book_state.download_title}: "
+            "no wanted row matched strong identity"
+        )
+    return updated
+
+
 def _process_comic_post(
     metadata: ComicMetadata, dest_file: str, mostrecentissue: str, db
 ) -> "tuple[str, str]":
@@ -2604,6 +2706,18 @@ def _process_successful_download(
         f"Processed {book_state.mode_type} ({book_path}): {global_name}, {book_state.download_url}"
     )
     dest_file = enforce_str(make_unicode(dest_file))
+    if isinstance(metadata, EbookMetadata):
+        current_book_id = _resolve_book_state_id_after_destination(book_state, db, logger)
+        if not current_book_id:
+            book_state.mark_failed(
+                "post",
+                f"BookID rewrite could not be resolved after importing {book_state.download_title}",
+            )
+            _mark_postprocess_failure_by_identity(book_state, db, logger)
+            return 0
+        if current_book_id != book_state.book_id:
+            book_state.book_id = current_book_id
+            metadata.book_id = current_book_id
 
     # Update wanted table status to Processed
     db.action(

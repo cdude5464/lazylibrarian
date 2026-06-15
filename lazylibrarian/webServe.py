@@ -459,6 +459,26 @@ def _search_result_detail_for_source(source, bookid):
     return None
 
 
+def _can_use_safe_nonexact_search_result(source, preferred_source=None):
+    # GoodReads search can omit a clicked edition id while still returning the same title/author.
+    # GoogleBooks has a direct detail endpoint, so keep requiring an exact volume id there.
+    return source == 'GoodReads' and preferred_source == source
+
+
+def _search_result_is_safe_goodreads_nonexact_match(result, title=None, authorname=None, authorid=None):
+    if not result:
+        return False
+    if title and not _book_row_title_match({'BookName': result.get('bookname') or ''}, title):
+        return False
+    if authorid and str(result.get('authorid') or '') == str(authorid):
+        return True
+    if authorid and result.get('authorid'):
+        return False
+    if authorname:
+        return _normalize_duplicate_title(result.get('authorname') or '') == _normalize_duplicate_title(authorname)
+    return False
+
+
 def _author_exists(authorid):
     if not authorid:
         return False
@@ -573,7 +593,8 @@ def _find_existing_author_title_match(db, authorid, title, ebook_status=None, au
     return None
 
 
-def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None, authorname=None, reason=None,
+def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None, authorname=None, authorid=None,
+                                  reason=None,
                                   existing_ebook_status=None, existing_audio_status=None,
                                   preferred_source=None):
     logger = logging.getLogger(__name__)
@@ -623,6 +644,23 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
             if detail_match and _search_result_is_safe_match(
                     detail_match, bookid, title, authorname, exact_bookid=True):
                 match = detail_match
+            elif _can_use_safe_nonexact_search_result(source, preferred_source=preferred_source):
+                candidates = sorted(results, key=lambda x: (x.get('highest_fuzz', 0), x.get('bookrate_count', 0)),
+                                    reverse=True)
+                for result in candidates:
+                    if _search_result_is_safe_goodreads_nonexact_match(
+                            result, title=title, authorname=authorname, authorid=authorid):
+                        match = dict(result)
+                        match['bookid'] = str(bookid)
+                        if source == 'GoodReads':
+                            match['booklink'] = f"https://www.goodreads.com/book/show/{bookid}"
+                        logger.warning(
+                            f"Exact {source} search-result fallback for {bookid} was not returned; "
+                            f"using safe title/author match for {title}")
+                        break
+                if not match:
+                    logger.warning(f"Unable to find exact {source} search-result fallback for {bookid}: {title}")
+                    continue
             else:
                 logger.warning(f"Unable to find exact {source} search-result fallback for {bookid}: {title}")
                 continue
@@ -3913,6 +3951,7 @@ class WebInterface:
             if title and not invalid_source:
                 match = _add_search_result_book_to_db(
                     bookid, ebook_status, audio_status, title=title, authorname=authorname,
+                    authorid=authorid,
                     reason=f"Added by user search-result fallback from {provider_source} {bookid}",
                     existing_ebook_status=existing_ebook_status, existing_audio_status=existing_audio_status,
                     preferred_source=requested_source)
@@ -5005,6 +5044,7 @@ class WebInterface:
                 author_existed = _author_exists(result_author_id)
                 match = _add_search_result_book_to_db(
                     itm, wantbook, wantaudio, title=result_title, authorname=result_author_name,
+                    authorid=result_author_id,
                     reason=(
                         f"Added by user bulk search-result fallback from {provider_source} "
                         f"{wantbook}:{wantaudio}"

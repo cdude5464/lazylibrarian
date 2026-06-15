@@ -27,7 +27,9 @@ from lazylibrarian.postprocess import (
     _handle_seeding_status,
     _handle_snatched_timeout,
     _is_valid_media_file,
+    _mark_postprocess_failure_by_identity,
     _normalize_title,
+    _resolve_book_state_id_after_destination,
     _should_delete_processed_files,
     _tokenize_file,
     _try_match_candidate_file,
@@ -372,6 +374,268 @@ class BookStateTest(LLTestCaseWithStartup):
             # Should get magazine title
             self.assertIn("test magazine", book_state.book_title.lower())
             self.assertEqual(book_state.download_folder, "")
+        finally:
+            db.close()
+
+    def test_resolve_book_state_id_after_destination_follows_rewritten_wanted_row(self):
+        """Library sync can rewrite BookID during Calibre import; postprocess should follow it."""
+        db = DBConnection()
+        try:
+            db.action(
+                "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                ("author1", "John Steinbeck"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
+                ("276626", "author1", "East of Eden", "Have"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO wanted "
+                "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "276626",
+                    "John Steinbeck East of Eden.epub",
+                    "download-url",
+                    "2026-06-14 23:30:43",
+                    "annas",
+                    "Snatched",
+                    "0.6",
+                    "eBook",
+                    "direct",
+                    "DIRECT",
+                    "download-id",
+                ),
+            )
+            db.commit()
+
+            book_state = BookState(
+                book_id="4406",
+                download_title="John Steinbeck East of Eden",
+                raw_download_title="John Steinbeck East of Eden.epub",
+                aux_type="eBook",
+                aux_info="eBook",
+                source="DIRECT",
+                download_id="download-id",
+                download_url="download-url",
+                download_provider="annas",
+            )
+
+            resolved = _resolve_book_state_id_after_destination(
+                book_state, db, logging.getLogger(__name__)
+            )
+
+            self.assertEqual("276626", resolved)
+        finally:
+            db.close()
+
+    def test_resolve_book_state_id_after_destination_refuses_ambiguous_rewrite(self):
+        """Do not guess if more than one active wanted row shares a download identity."""
+        db = DBConnection()
+        try:
+            db.action(
+                "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                ("author1", "Test Author"),
+            )
+            for book_id, title in [("new-1", "First Book"), ("new-2", "Second Book")]:
+                db.action(
+                    "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
+                    (book_id, "author1", title, "Have"),
+                )
+                db.action(
+                    "INSERT OR REPLACE INTO wanted "
+                    "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        book_id,
+                        "Shared Download.epub",
+                        "download-url",
+                        "2026-06-14 23:30:43",
+                        "annas",
+                        "Snatched",
+                        "0.6",
+                        "eBook",
+                        "direct",
+                        "DIRECT",
+                        "download-id",
+                    ),
+                )
+            db.commit()
+
+            book_state = BookState(
+                book_id="old-id",
+                download_title="Shared Download",
+                raw_download_title="Shared Download.epub",
+                aux_type="eBook",
+                aux_info="eBook",
+                source="DIRECT",
+                download_id="download-id",
+                download_url="download-url",
+                download_provider="annas",
+            )
+
+            resolved = _resolve_book_state_id_after_destination(
+                book_state, db, logging.getLogger(__name__)
+            )
+
+            self.assertIsNone(resolved)
+        finally:
+            db.close()
+
+    def test_resolve_book_state_id_after_destination_requires_strong_identity(self):
+        """Do not resolve a rewritten BookID from blank/shared wanted identity fields."""
+        db = DBConnection()
+        try:
+            db.action(
+                "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                ("author1", "Test Author"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
+                ("new-id", "author1", "Test Book", "Have"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO wanted "
+                "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "new-id",
+                    "Test Book.epub",
+                    "",
+                    "2026-06-14 23:30:43",
+                    "annas",
+                    "Snatched",
+                    "0.6",
+                    "eBook",
+                    "direct",
+                    "",
+                    "",
+                ),
+            )
+            db.commit()
+
+            book_state = BookState(
+                book_id="old-id",
+                download_title="Test Book",
+                raw_download_title="Test Book.epub",
+                aux_type="eBook",
+                aux_info="eBook",
+                source="",
+                download_id="",
+                download_url="",
+                download_provider="annas",
+            )
+
+            resolved = _resolve_book_state_id_after_destination(
+                book_state, db, logging.getLogger(__name__)
+            )
+
+            self.assertIsNone(resolved)
+        finally:
+            db.close()
+
+    def test_mark_postprocess_failure_by_identity_updates_rewritten_wanted_row(self):
+        """If rewrite resolution fails, persist failure using download identity instead of stale BookID."""
+        db = DBConnection()
+        try:
+            db.action(
+                "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                ("author1", "Test Author"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
+                ("new-id", "author1", "Test Book", "Have"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO wanted "
+                "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "new-id",
+                    "Test Book.epub",
+                    "download-url",
+                    "2026-06-14 23:30:43",
+                    "annas",
+                    "Snatched",
+                    "0.6",
+                    "eBook",
+                    "direct",
+                    "DIRECT",
+                    "download-id",
+                ),
+            )
+            db.commit()
+
+            book_state = BookState(
+                book_id="old-id",
+                download_title="Test Book",
+                raw_download_title="Test Book.epub",
+                aux_type="eBook",
+                aux_info="eBook",
+                source="DIRECT",
+                download_id="download-id",
+                download_url="download-url",
+                download_provider="annas",
+            )
+            book_state.mark_failed("post", "BookID rewrite could not be resolved")
+
+            updated = _mark_postprocess_failure_by_identity(
+                book_state, db, logging.getLogger(__name__)
+            )
+
+            self.assertTrue(updated)
+            row = db.match("SELECT Status,DLResult FROM wanted WHERE BookID='new-id'")
+            self.assertEqual("Failed", row["Status"])
+            self.assertEqual("post: BookID rewrite could not be resolved", row["DLResult"])
+        finally:
+            db.close()
+
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_get_ready_from_snatched_updates_in_memory_title_after_downloader_rename(
+            self, mock_get_name, mock_get_progress, mock_check_contents):
+        """A downloader rename must update the row used to build BookState.raw_download_title."""
+        mock_get_name.return_value = "Renamed Release.epub"
+        mock_get_progress.return_value = (100, True)
+        mock_check_contents.return_value = None
+
+        db = DBConnection()
+        try:
+            db.action(
+                "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                ("author1", "Test Author"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
+                ("book1", "author1", "Test Book", "Snatched"),
+            )
+            db.action(
+                "INSERT OR REPLACE INTO wanted "
+                "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "book1",
+                    "Original Release.epub",
+                    "download-url",
+                    "2026-06-14 23:30:43",
+                    "test-provider",
+                    "Snatched",
+                    "0.6",
+                    "eBook",
+                    "torznab",
+                    "QBITTORRENT",
+                    "download-id",
+                ),
+            )
+            row = db.match("SELECT * FROM wanted WHERE BookID='book1'")
+
+            ready = _get_ready_from_snatched(db, [row])
+
+            self.assertEqual(1, len(ready))
+            self.assertEqual("Renamed Release.epub", ready[0]["NZBtitle"])
+            updated = db.match("SELECT NZBtitle FROM wanted WHERE BookID='book1'")
+            self.assertEqual("Renamed Release.epub", updated["NZBtitle"])
         finally:
             db.close()
 

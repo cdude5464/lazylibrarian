@@ -96,6 +96,16 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
             'series': [],
         }
 
+    @classmethod
+    def _goodreads_result(cls, bookid='12345', title='Rant', authorid='author-1',
+                          authorname='Chuck Palahniuk', highest_fuzz=100, bookrate_count=0):
+        result = cls._google_result(
+            bookid=bookid, title=title, authorid=authorid, authorname=authorname,
+            highest_fuzz=highest_fuzz, bookrate_count=bookrate_count)
+        result['source'] = 'GoodReads'
+        result['booklink'] = f'https://www.goodreads.com/book/show/{bookid}'
+        return result
+
     @staticmethod
     def _mock_search(result):
         def search(_term, source):
@@ -302,6 +312,238 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
             row = db.match("SELECT Status,gb_id FROM books WHERE BookID='GB1'")
             self.assertEqual('Wanted', row['Status'])
             self.assertEqual('GB1', row['gb_id'])
+        finally:
+            db.close()
+
+    def test_goodreads_source_aware_safe_fallback_when_search_omits_clicked_id(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertEqual('2696', match['BookID'])
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status,AudioStatus,gr_id,BookLink FROM books WHERE BookID='2696'")
+            self.assertEqual('Wanted', row['Status'])
+            self.assertEqual('Skipped', row['AudioStatus'])
+            self.assertEqual('2696', row['gr_id'])
+            self.assertEqual('https://www.goodreads.com/book/show/2696', row['BookLink'])
+            count = db.match("SELECT count(*) AS counter FROM books WHERE BookID='999999'")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_goodreads_safe_fallback_stamps_existing_title_row(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db, authorid='1838', authorname='Geoffrey Chaucer')
+            self._insert_book(db, 'canonical-book', 'The Canterbury Tales', authorid='1838',
+                              status='Skipped')
+        finally:
+            db.close()
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertEqual('canonical-book', match['BookID'])
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status,gr_id FROM books WHERE BookID='canonical-book'")
+            self.assertEqual('Wanted', row['Status'])
+            self.assertEqual('2696', row['gr_id'])
+            count = db.match("SELECT count(*) AS counter FROM books WHERE AuthorID='1838'")
+            self.assertEqual(1, count['counter'])
+        finally:
+            db.close()
+
+    def test_goodreads_safe_fallback_refuses_unsafe_title(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='Troilus and Criseyde',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_goodreads_safe_fallback_refuses_subset_title(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales and Other Poems',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_goodreads_safe_fallback_refuses_coauthor_author_name(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='coauthor-row', authorname='Geoffrey Chaucer David Wright')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_goodreads_safe_fallback_refuses_wrong_author_id_even_with_same_name(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='wrong-author', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertIsNone(match)
+        db = DBConnection()
+        try:
+            count = db.match("SELECT count(*) AS counter FROM books")
+            self.assertEqual(0, count['counter'])
+        finally:
+            db.close()
+
+    def test_source_less_goodreads_search_result_still_requires_exact_id(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        with (
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+            mock.patch.object(webServe, '_search_result_detail_for_source', return_value=None),
+        ):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None)
+
+        self.assertIsNone(match)
+
+    def test_bulk_goodreads_safe_fallback_uses_submitted_author_id(self):
+        from lazylibrarian import webServe
+
+        goodreads_other = self._goodreads_result(
+            bookid='999999', title='The Canterbury Tales',
+            authorid='1838', authorname='Geoffrey Chaucer')
+
+        def search(_term, source):
+            if source == 'GoodReads':
+                return [goodreads_other]
+            return []
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(webServe.WebInterface, 'check_permitted', return_value=None),
+            mock.patch.object(webServe, 'search_for', side_effect=search),
+        ):
+            response = interface.mark_results_ajax(
+                action='AddBook',
+                **{'2696': '1838|Geoffrey+Chaucer|The+Canterbury+Tales|GoodReads'})
+
+        self.assertEqual(1, response['passed'])
+        self.assertEqual(0, response['failed'])
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status,gr_id FROM books WHERE BookID='2696'")
+            self.assertEqual('Wanted', row['Status'])
+            self.assertEqual('2696', row['gr_id'])
         finally:
             db.close()
 

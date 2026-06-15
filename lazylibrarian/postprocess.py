@@ -642,8 +642,19 @@ def _update_download_status(
 
     if should_keep_seeding:
         # Mark as Seeding - download complete but still active in client
-        cmd = "UPDATE wanted SET Status='Seeding' WHERE NZBurl=? and Status IN ('Snatched', 'Processed')"
-        db.action(cmd, (book_state.download_url,))
+        cmd = (
+            "UPDATE wanted SET Status='Seeding' "
+            "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+            "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+            "and Status IN ('Snatched', 'Processed')"
+        )
+        db.action(cmd, (
+            book_state.download_id or "",
+            book_state.source or "",
+            book_state.book_id,
+            book_state.aux_info or "",
+            book_state.download_url or "",
+        ))
         logger.info(
             f"STATUS: {book_state.download_title} [{book_state.status} -> Seeding] "
             f"Download complete, continuing to seed"
@@ -652,8 +663,20 @@ def _update_download_status(
     # Mark as Processed - download complete
     if not dlresult:
         dlresult = "Download complete"
-    cmd = "UPDATE wanted SET Status='Processed', DLResult=? WHERE NZBurl=? and Status='Snatched'"
-    db.action(cmd, (dlresult, book_state.download_url))
+    cmd = (
+        "UPDATE wanted SET Status='Processed', DLResult=? "
+        "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+        "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+        "and Status='Snatched'"
+    )
+    db.action(cmd, (
+        dlresult,
+        book_state.download_id or "",
+        book_state.source or "",
+        book_state.book_id,
+        book_state.aux_info or "",
+        book_state.download_url or "",
+    ))
     logger.info(
         f"STATUS: {book_state.download_title} [{book_state.status} -> Processed] {dlresult}"
     )
@@ -738,8 +761,18 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
             logger.debug(f"{source} Changing [{title}] to [{download_name}]")
             # should we check against reject word list again as the name has changed?
             db.action(
-                "UPDATE wanted SET NZBtitle=? WHERE NZBurl=?",
-                (download_name, download_url),
+                "UPDATE wanted SET NZBtitle=? "
+                "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+                "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+                "and Status='Snatched'",
+                (
+                    download_name,
+                    download_id or "",
+                    source or "",
+                    book_id,
+                    book_row["AuxInfo"] or "",
+                    download_url or "",
+                ),
             )
             title = download_name
 
@@ -770,7 +803,11 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
                     f"STATUS: {title} [Snatched -> Failed] Content rejected: {rejected}"
                 )
                 if delete_failed:
-                    delete_task(source, download_id, True)
+                    _delete_failed_task_if_unused(
+                        db,
+                        BookState.from_db_row(book_row, CONFIG),
+                        logger,
+                    )
             continue
 
         # Check if download is complete before processing download directories
@@ -1218,6 +1255,208 @@ def _is_helper_job_parent(directory: str, download_id: str) -> bool:
         return False
     basename = os.path.basename(directory.rstrip(os.sep)).lower()
     return basename == f"lazylibrarian-{download_id}".lower()
+
+
+def _helper_download_id_from_path(path: str | None) -> str:
+    if not path:
+        return ""
+    normalized = os.path.normpath(path)
+    for part in normalized.split(os.sep):
+        match = re.match(r"^lazylibrarian-([0-9a-f]{32,64})$", part, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _helper_startdir_candidates(startdir: str | None) -> list[str]:
+    if not startdir:
+        return []
+
+    normalized = os.path.normpath(startdir)
+    download_id = _helper_download_id_from_path(normalized)
+    if not download_id:
+        return []
+
+    helper_component = f"lazylibrarian-{download_id}".lower()
+    parts = normalized.split(os.sep)
+    helper_index = -1
+    for idx, part in enumerate(parts):
+        if part.lower() == helper_component:
+            helper_index = idx
+            break
+
+    candidates = []
+
+    def add_candidate(name: str) -> None:
+        if name and name.lower() != helper_component and name not in candidates:
+            candidates.append(name)
+
+    for part in parts[helper_index + 1:]:
+        add_candidate(part)
+
+    if path_isfile(normalized):
+        add_candidate(os.path.basename(normalized))
+        add_candidate(os.path.basename(os.path.dirname(normalized)))
+    elif path_isdir(normalized):
+        if helper_index >= 0 and len(parts) > helper_index + 1:
+            add_candidate(os.path.basename(normalized.rstrip(os.sep)))
+        try:
+            for item in listdir(normalized):
+                add_candidate(enforce_str(item))
+                item_path = os.path.join(normalized, item)
+                if path_isdir(item_path):
+                    for child_item in listdir(item_path):
+                        add_candidate(enforce_str(child_item))
+        except Exception:
+            pass
+    else:
+        add_candidate(os.path.basename(normalized.rstrip(os.sep)))
+
+    return candidates
+
+
+def _populate_local_book_title(book_state: BookState, db) -> None:
+    if not book_state.book_id:
+        return
+    try:
+        if book_state.is_book():
+            result = db.match(
+                "SELECT AuthorName, BookName FROM books,authors "
+                "WHERE books.BookID=? AND books.AuthorID=authors.AuthorID",
+                (book_state.book_id,),
+            )
+            if result:
+                data = dict(result)
+                book_state.book_title = _normalize_title(
+                    f"{data.get('AuthorName', '')} - {data.get('BookName', '')}"
+                )
+        elif book_state.is_magazine():
+            result = db.match("SELECT Title FROM magazines WHERE Title=?", (book_state.book_id,))
+            if result:
+                book_state.book_title = _normalize_title(dict(result).get("Title", ""))
+    except ValueError:
+        return
+
+
+def _helper_startdir_media_counts(startdir: str | None) -> dict[BookType, int]:
+    counts = {book_type: 0 for book_type in BookType}
+    if not startdir:
+        return counts
+
+    media_files = []
+    if path_isfile(startdir):
+        media_files.append(startdir)
+    elif path_isdir(startdir):
+        for dirpath, _, files in os.walk(startdir):
+            for item in files:
+                media_files.append(os.path.join(dirpath, item))
+
+    for media_file in media_files:
+        filename = os.path.basename(media_file)
+        for book_type in BookType:
+            if CONFIG.is_valid_booktype(filename, booktype=book_type.value):
+                counts[book_type] += 1
+    return counts
+
+
+def _row_matches_helper_startdir(
+    book_row,
+    db,
+    startdir: str | None,
+    logger: logging.Logger,
+) -> tuple[bool, float]:
+    candidates = _helper_startdir_candidates(startdir)
+    if not candidates:
+        logger.warning(f"No helper-local path evidence found for forceProcess startdir {startdir}")
+        return False, 0
+
+    book_state = BookState.from_db_row(book_row, CONFIG)
+    _populate_local_book_title(book_state, db)
+    match_threshold = CONFIG.get_int("DLOAD_RATIO")
+    try:
+        book_type = book_state.get_book_type_enum()
+    except ValueError:
+        book_type = None
+
+    media_counts = _helper_startdir_media_counts(startdir)
+    if book_type and any(media_counts.values()) and not media_counts.get(book_type, 0):
+        logger.warning(
+            f"Skipping helper-scoped wanted row {book_state.book_id}/{book_state.download_title}: "
+            f"helper payload has no {book_type.value} media"
+        )
+        return False, 0
+
+    best_percent = 0
+    best_candidate = ""
+    for candidate in candidates:
+        normalized_candidate = _normalize_title(candidate)
+        if not normalized_candidate:
+            continue
+        match_percent, _ = _best_candidate_match(
+            book_state, normalized_candidate, logger
+        )
+        if match_percent > best_percent:
+            best_percent = match_percent
+            best_candidate = candidate
+
+    if best_percent >= match_threshold:
+        return True, best_percent
+
+    logger.warning(
+        f"Skipping helper-scoped wanted row {book_state.book_id}/{book_state.download_title}: "
+        f"startdir evidence did not match above {match_threshold}% "
+        f"(best: {round(best_percent, 2)}% from {best_candidate or 'none'})"
+    )
+    return False, best_percent
+
+
+def _wanted_row_identity(row) -> tuple[str, str, str, str, str]:
+    return (
+        row["DownloadID"] or "",
+        row["Source"] or "",
+        row["BookID"],
+        row["AuxInfo"] or "",
+        row["NZBurl"] or "",
+    )
+
+
+def _helper_row_sort_key(match_score: float, row) -> tuple[float, str, int]:
+    return (
+        match_score,
+        row["NZBdate"] or "",
+        check_int(row["Completed"], 0),
+    )
+
+
+def _filter_rows_for_helper_startdir(
+    rows,
+    db,
+    startdir: str | None,
+    logger: logging.Logger,
+):
+    if not startdir or not _helper_download_id_from_path(startdir):
+        return rows
+    filtered = []
+    for row in rows:
+        matched, match_score = _row_matches_helper_startdir(row, db, startdir, logger)
+        if matched:
+            filtered.append((match_score, row))
+    if len(filtered) > 1:
+        selected = max(filtered, key=lambda item: _helper_row_sort_key(item[0], item[1]))
+        selected_row = selected[1]
+        logger.warning(
+            f"Helper startdir {startdir} matched {len(filtered)} wanted rows for one "
+            f"download id; processing newest/best row {selected_row['BookID']} and "
+            "leaving siblings untouched"
+        )
+        filtered = [selected]
+    filtered_rows = [row for _, row in filtered]
+    if len(filtered_rows) != len(rows):
+        logger.debug(
+            f"Helper startdir filter kept {len(filtered_rows)} of {len(rows)} rows "
+            f"for {startdir}"
+        )
+    return filtered_rows
 
 
 def _requires_inner_ebook_match(book_state: BookState, download_dir: str) -> bool:
@@ -2367,16 +2606,21 @@ def _process_successful_download(
     dest_file = enforce_str(make_unicode(dest_file))
 
     # Update wanted table status to Processed
-    control_value_dict = {
-        "NZBurl": book_state.download_url,
-        "Status": "Snatched",
-    }
-    new_value_dict = {
-        "Status": "Processed",
-        "NZBDate": now(),
-        "DLResult": dest_file,
-    }
-    db.upsert("wanted", new_value_dict, control_value_dict)
+    db.action(
+        "UPDATE wanted SET Status='Processed',NZBDate=?,DLResult=? "
+        "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+        "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+        "and Status='Snatched'",
+        (
+            now(),
+            dest_file,
+            book_state.download_id or "",
+            book_state.source or "",
+            book_state.book_id,
+            book_state.aux_info or "",
+            book_state.download_url or "",
+        ),
+    )
 
     # Type-specific post-processing
     if isinstance(metadata, EbookMetadata):
@@ -2662,8 +2906,19 @@ def _handle_seeding_status(
         if book_state.progress == -1:
             msg += "torrent was removed, changing status to Snatched to process files from download directory"
             if book_state.book_id != "unknown":
-                cmd = "UPDATE wanted SET status='Snatched' WHERE status='Seeding' and DownloadID=?"
-                db.action(cmd, (book_state.download_id,))
+                cmd = (
+                    "UPDATE wanted SET status='Snatched' "
+                    "WHERE status='Seeding' and COALESCE(DownloadID,'')=? "
+                    "and COALESCE(Source,'')=? and BookID=? "
+                    "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=?"
+                )
+                db.action(cmd, (
+                    book_state.download_id or "",
+                    book_state.source or "",
+                    book_state.book_id,
+                    book_state.aux_info or "",
+                    book_state.download_url or "",
+                ))
         else:
             msg += "communication issue, will retry on next run"
         logger.info(msg)
@@ -2695,8 +2950,20 @@ def _handle_seeding_status(
             )
 
         if book_state.book_id != "unknown":
-            cmd = "UPDATE wanted SET status='Processed',NZBDate=? WHERE status='Seeding' and DownloadID=?"
-            db.action(cmd, (now(), book_state.download_id))
+            cmd = (
+                "UPDATE wanted SET status='Processed',NZBDate=? "
+                "WHERE status='Seeding' and COALESCE(DownloadID,'')=? "
+                "and COALESCE(Source,'')=? and BookID=? "
+                "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=?"
+            )
+            db.action(cmd, (
+                now(),
+                book_state.download_id or "",
+                book_state.source or "",
+                book_state.book_id,
+                book_state.aux_info or "",
+                book_state.download_url or "",
+            ))
             logger.info(
                 f"STATUS: {book_state.download_title} [Seeding -> Processed] Seeding complete"
             )
@@ -2855,15 +3122,38 @@ def _handle_aborted_download(
 
         # use url and status for identifier because magazine id isn't unique
         if book_state.status == "Snatched":
-            q = "UPDATE wanted SET Status='Failed',DLResult=? WHERE NZBurl=? and Status='Snatched'"
-            db.action(q, (dlresult, book_state.download_url))
+            q = (
+                "UPDATE wanted SET Status='Failed',DLResult=? "
+                "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+                "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+                "and Status='Snatched'"
+            )
+            db.action(q, (
+                dlresult,
+                book_state.download_id or "",
+                book_state.source or "",
+                book_state.book_id,
+                book_state.aux_info or "",
+                book_state.download_url or "",
+            ))
         else:  # don't overwrite dlresult reason for the abort
-            q = "UPDATE wanted SET Status='Failed' WHERE NZBurl=? and Status='Aborted'"
-            db.action(q, (book_state.download_url,))
+            q = (
+                "UPDATE wanted SET Status='Failed' "
+                "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+                "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+                "and Status='Aborted'"
+            )
+            db.action(q, (
+                book_state.download_id or "",
+                book_state.source or "",
+                book_state.book_id,
+                book_state.aux_info or "",
+                book_state.download_url or "",
+            ))
 
         if CONFIG.get_bool("DEL_FAILED"):
             logger.warning(f"{dlresult}, deleting failed task")
-            delete_task(book_state.source, book_state.download_id, True)
+            _delete_failed_task_if_unused(db, book_state, logger)
 
 
 def _check_and_schedule_next_run(db, logger: logging.Logger, reset: bool) -> None:
@@ -2893,7 +3183,13 @@ def _check_and_schedule_next_run(db, logger: logging.Logger, reset: bool) -> Non
         schedule_job(SchedulerCommand.RESTART, target="PostProcessor")
 
 
-def _manage_download_status(db, logger: logging.Logger) -> None:
+def _manage_download_status(
+    db,
+    logger: logging.Logger,
+    downloadid: str | None = None,
+    helper_startdir: str | None = None,
+    helper_allowed_identities: set[tuple[str, str, str, str, str]] | None = None,
+) -> None:
     """
     Manage download lifecycle for incomplete/failed downloads.
 
@@ -2910,8 +3206,24 @@ def _manage_download_status(db, logger: logging.Logger) -> None:
         logger: Logger instance
     """
     # Query for items needing status management
-    cmd = "SELECT * from wanted WHERE Status IN ('Snatched', 'Aborted', 'Seeding')"
-    incomplete = db.select(cmd)
+    params = ()
+    if downloadid:
+        cmd = (
+            "SELECT * from wanted WHERE COALESCE(DownloadID,'')=? "
+            "AND Status IN ('Snatched', 'Aborted', 'Seeding')"
+        )
+        params = (downloadid,)
+    else:
+        cmd = "SELECT * from wanted WHERE Status IN ('Snatched', 'Aborted', 'Seeding')"
+    incomplete = db.select(cmd, params)
+    incomplete = _filter_rows_for_helper_startdir(
+        incomplete, db, helper_startdir, logger
+    )
+    if helper_allowed_identities is not None:
+        incomplete = [
+            row for row in incomplete
+            if _wanted_row_identity(row) in helper_allowed_identities
+        ]
     logger.info(f"Found {len(incomplete)} items for status management")
 
     # Get config values once
@@ -3147,11 +3459,28 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
 
         # Now we will get a list of wanted books that are snatched and ready for processing
-        if downloadid:
+        scoped_downloadid = downloadid
+        if not scoped_downloadid and startdir:
+            scoped_downloadid = _helper_download_id_from_path(startdir)
+            if scoped_downloadid:
+                postprocesslogger.debug(
+                    f"Limiting forceProcess startdir to helper download id {scoped_downloadid}"
+                )
+
+        helper_startdir = startdir if startdir and _helper_download_id_from_path(startdir) else None
+        helper_allowed_identities = None
+        if scoped_downloadid:
             snatched_books = db.select(
                 "SELECT * from wanted WHERE DownloadID=? AND Status='Snatched'",
-                (downloadid,),
+                (scoped_downloadid,),
             )
+            snatched_books = _filter_rows_for_helper_startdir(
+                snatched_books, db, startdir, postprocesslogger
+            )
+            if helper_startdir:
+                helper_allowed_identities = {
+                    _wanted_row_identity(row) for row in snatched_books
+                }
         else:
             snatched_books = db.select("SELECT * from wanted WHERE Status='Snatched'")
 
@@ -3335,13 +3664,13 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
                 )
                 db.action(
                     "UPDATE wanted SET Status='Failed',NZBDate=?,DLResult=? "
-                    "WHERE DownloadID=? and COALESCE(Source,'')=? and BookID=? "
+                    "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
                     "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
                     "and Status='Snatched'",
                     (
                         now(),
                         f"{book_state.processing_stage}: {book_state.failure_reason}",
-                        book_state.download_id,
+                        book_state.download_id or "",
                         book_state.source or "",
                         book_state.book_id,
                         book_state.aux_info or "",
@@ -3374,7 +3703,13 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         # ═══════════════════════════════════════════════════════════
         postprocesslogger.info("Third pass: Download status management")
 
-        _manage_download_status(db, postprocesslogger)
+        _manage_download_status(
+            db,
+            postprocesslogger,
+            scoped_downloadid,
+            startdir,
+            helper_allowed_identities,
+        )
 
         # Cleanup and scheduling
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})

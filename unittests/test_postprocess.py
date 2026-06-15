@@ -32,6 +32,11 @@ from lazylibrarian.postprocess import (
     _tokenize_file,
     _try_match_candidate_file,
     _validate_candidate_directory,
+    _filter_rows_for_helper_startdir,
+    _get_ready_from_snatched,
+    _helper_download_id_from_path,
+    _helper_startdir_media_counts,
+    _update_download_status,
     process_dir,
 )
 from lazylibrarian.postprocess_metadata import (
@@ -102,6 +107,24 @@ class BookStateTest(LLTestCaseWithStartup):
         self.assertEqual(book_state.mode_type, "torrent")
         self.assertTrue(book_state.is_torrent())
         self.assertTrue(book_state.is_completed())
+
+    def test_helper_download_id_from_path_requires_helper_hash_component(self):
+        """Only real helper job directory components should scope forceProcess."""
+        download_id = "f21ca1f67e667ecd50899f508e770e6eb3925923"
+        self.assertEqual(
+            download_id,
+            _helper_download_id_from_path(
+                f"/media/downloads/seedbox/lazylibrarian-{download_id}/Release"
+            ),
+        )
+        self.assertEqual(
+            "",
+            _helper_download_id_from_path("/media/downloads/lazylibrarian-notes/Release"),
+        )
+        self.assertEqual(
+            "",
+            _helper_download_id_from_path("/media/downloads/lazylibrarian-manualhash/Release"),
+        )
 
     def test_is_completed(self):
         """Test completion status checking"""
@@ -706,7 +729,7 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         mock_db.action.assert_called_once()
         call_args = mock_db.action.call_args[0]
         self.assertIn("Snatched", call_args[0])
-        self.assertEqual(call_args[1], ("dl123",))
+        self.assertEqual(call_args[1], ("dl123", "TRANSMISSION", "book123", "", ""))
 
         # Should skip to next item
         self.assertTrue(result)
@@ -880,6 +903,7 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         )
 
         mock_db = mock.Mock()
+        mock_db.match.return_value = None
         mock_logger = mock.Mock()
 
         _handle_aborted_download(book_state, 12, mock_db, mock_logger)
@@ -907,6 +931,7 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         )
 
         mock_db = mock.Mock()
+        mock_db.match.return_value = None
         mock_logger = mock.Mock()
 
         _handle_aborted_download(book_state, 12, mock_db, mock_logger)
@@ -938,6 +963,7 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         )
 
         mock_db = mock.Mock()
+        mock_db.match.return_value = None
         mock_logger = mock.Mock()
 
         _handle_aborted_download(book_state, 12, mock_db, mock_logger)
@@ -1497,6 +1523,595 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
     @mock.patch('lazylibrarian.postprocess.check_contents')
     @mock.patch('lazylibrarian.postprocess.get_download_progress')
     @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_folder_scopes_to_helper_download_id(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A targeted helper startdir must not fail other active snatched books."""
+        mock_check_contents.return_value = None
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        target_book_id = "dolly_book"
+        target_author = "Annabel Monaghan"
+        target_book = "Dolly All the Time"
+        target_release = "Annabel.Monaghan.Dolly.All.the.Time.2026.RETAiL.EPUB.eBook-NODE"
+        target_download_id = "d02a928147758763237c803a5a4893587203dfdf"
+        other_book_id = "harvest_book"
+        other_download_id = "f21ca1f67e667ecd50899f508e770e6eb3925923"
+
+        def progress_for_download(_source, download_id):
+            if download_id == other_download_id:
+                return 0, False
+            return 100, True
+
+        mock_get_progress.side_effect = progress_for_download
+        mock_get_name.return_value = target_release
+        self.create_test_author_and_book(target_book_id, target_author, target_book)
+        self.create_snatched_download(
+            target_book_id,
+            target_release,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=target_download_id,
+        )
+        self.create_test_author_and_book(other_book_id, "Brynne Weaver", "Harvest Season")
+        self.create_snatched_download(
+            other_book_id,
+            "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE",
+            "eBook",
+            source="QBITTORRENT",
+            download_id=other_download_id,
+        )
+        old_snatched_date = (
+            datetime.datetime.now() - datetime.timedelta(hours=CONFIG.get_int("TASK_AGE") + 2)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        self.db.action(
+            "UPDATE wanted SET NZBdate=? WHERE BookID=?",
+            (old_snatched_date, other_book_id),
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{target_download_id}",
+            target_release,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Annabel Monaghan - Dolly All the Time.epub")
+        )
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        self.assert_status_updated(target_book_id, 'Processed')
+        other_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (other_book_id, other_download_id),
+        )
+        self.assertEqual("Snatched", other_row["Status"])
+        self.assertFalse(other_row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_local_seedbox_folder_scopes_duplicate_download_id_to_startdir(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper startdir must not evaluate sibling rows that share its DownloadID."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        target_book_id = "duplicate_download_target_book"
+        target_author = "Annabel Monaghan"
+        target_book = "Dolly All the Time"
+        target_release = "Annabel.Monaghan.Dolly.All.the.Time.2026.RETAiL.EPUB.eBook-NODE"
+        other_book_id = "duplicate_download_other_book"
+        shared_download_id = "d02a928147758763237c803a5a4893587203dfdf"
+        mock_get_name.return_value = target_release
+
+        self.create_test_author_and_book(target_book_id, target_author, target_book)
+        self.create_snatched_download(
+            target_book_id,
+            target_release,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        self.create_test_author_and_book(other_book_id, "Brynne Weaver", "Harvest Season")
+        self.create_snatched_download(
+            other_book_id,
+            "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE",
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{shared_download_id}",
+            target_release,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Annabel Monaghan - Dolly All the Time.epub")
+        )
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        self.assert_status_updated(target_book_id, 'Processed')
+        other_row = self.db.match(
+            "SELECT Status,DLResult,NZBtitle FROM wanted WHERE BookID=? AND DownloadID=?",
+            (other_book_id, shared_download_id),
+        )
+        self.assertEqual("Snatched", other_row["Status"])
+        self.assertFalse(other_row["DLResult"])
+        self.assertEqual(
+            "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE",
+            other_row["NZBtitle"],
+        )
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_helper_parent_uses_inner_file_evidence_for_obfuscated_folder(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper parent with an obfuscated child folder should still find the matching ebook."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "obfuscated_parent_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "abfca1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{download_id}")
+        local_release_dir = os.path.join(local_job_dir, "a1b2c3d4")
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub")
+        )
+
+        process_dir(startdir=local_job_dir, ignoreclient=True)
+
+        author_dir = os.path.join(self.library_dir, author_name)
+        book_dir = os.path.join(author_dir, book_name)
+        self.assertTrue(os.path.exists(book_dir), f"Book directory should exist at {book_dir}")
+        self.assert_status_updated(book_id, 'Processed')
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_helper_startdir_keeps_same_title_duplicate_sibling_untouched(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A helper payload that matches duplicate rows should only mutate one target row."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        target_book_id = "same_title_target_book"
+        other_book_id = "same_title_other_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne Weaver Harvest Season"
+        shared_download_id = "d12a928147758763237c803a5a4893587203dfdf"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(other_book_id, author_name, book_name)
+        self.create_snatched_download(
+            other_book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        old_snatched_date = (
+            datetime.datetime.now() - datetime.timedelta(hours=CONFIG.get_int("TASK_AGE") + 2)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        self.db.action(
+            "UPDATE wanted SET NZBdate=? WHERE BookID=?",
+            (old_snatched_date, other_book_id),
+        )
+        self.create_test_author_and_book(target_book_id, author_name, book_name)
+        self.create_snatched_download(
+            target_book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{shared_download_id}",
+            release_name,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub")
+        )
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        self.assert_status_updated(target_book_id, 'Processed')
+        other_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (other_book_id, shared_download_id),
+        )
+        self.assertEqual("Snatched", other_row["Status"])
+        self.assertFalse(other_row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_helper_startdir_prefers_row_with_matching_media_type(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """A newer same-title audio row must not win when the helper payload is an ebook."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        ebook_book_id = "same_title_ebook_book"
+        audio_book_id = "same_title_audio_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne Weaver Harvest Season"
+        shared_download_id = "e12a928147758763237c803a5a4893587203dfdf"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(ebook_book_id, author_name, book_name)
+        self.create_snatched_download(
+            ebook_book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        self.create_test_author_and_book(audio_book_id, author_name, book_name)
+        self.create_snatched_download(
+            audio_book_id,
+            release_name,
+            "AudioBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        new_snatched_date = (
+            datetime.datetime.now() + datetime.timedelta(minutes=1)
+        ).strftime("%Y-%m-%d %H:%M:%S")
+        self.db.action(
+            "UPDATE wanted SET NZBdate=? WHERE BookID=? AND AuxInfo='AudioBook'",
+            (new_snatched_date, audio_book_id),
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{shared_download_id}")
+        local_release_dir = os.path.join(local_job_dir, release_name)
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub")
+        )
+
+        rows = self.db.select(
+            "SELECT * FROM wanted WHERE DownloadID=? AND Status='Snatched'",
+            (shared_download_id,),
+        )
+        filtered = _filter_rows_for_helper_startdir(
+            rows, self.db, local_job_dir, logging.getLogger(__name__)
+        )
+
+        self.assertEqual([ebook_book_id], [row["BookID"] for row in filtered])
+        ebook_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND AuxInfo='eBook'",
+            (ebook_book_id,),
+        )
+        self.assertEqual("Snatched", ebook_row["Status"])
+        self.assertFalse(ebook_row["DLResult"])
+        audio_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND AuxInfo='AudioBook'",
+            (audio_book_id,),
+        )
+        self.assertEqual("Snatched", audio_row["Status"])
+        self.assertFalse(audio_row["DLResult"])
+
+    def test_force_process_helper_startdir_allows_pdf_magazine_payload(self):
+        """PDF helper payloads must satisfy magazine rows despite also being valid ebooks."""
+        magazine_title = "Test Magazine"
+        shared_download_id = "a12a928147758763237c803a5a4893587203dfdf"
+        release_name = "Test Magazine 2026 06 PDF"
+
+        self.db.action(
+            "INSERT OR REPLACE INTO magazines (Title) VALUES (?)",
+            (magazine_title,),
+        )
+        self.create_snatched_download(
+            magazine_title,
+            release_name,
+            "Magazine",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+
+        local_job_dir = os.path.join(self.download_dir, f"lazylibrarian-{shared_download_id}")
+        local_release_dir = os.path.join(local_job_dir, release_name)
+        pdf_path = self.create_ebook_file(
+            os.path.join(local_release_dir, "Test Magazine - 2026-06.pdf")
+        )
+
+        media_counts = _helper_startdir_media_counts(pdf_path)
+        self.assertEqual(1, media_counts[BookType.EBOOK])
+        self.assertEqual(1, media_counts[BookType.MAGAZINE])
+
+        rows = self.db.select(
+            "SELECT * FROM wanted WHERE DownloadID=? AND Status='Snatched'",
+            (shared_download_id,),
+        )
+        filtered = _filter_rows_for_helper_startdir(
+            rows, self.db, local_job_dir, logging.getLogger(__name__)
+        )
+
+        self.assertEqual([magazine_title], [row["BookID"] for row in filtered])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_third_pass_does_not_manage_same_title_sibling(
+            self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
+        """Third-pass status management must not reselect a sibling after target import."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        target_book_id = "third_pass_target_book"
+        other_book_id = "third_pass_other_book"
+        author_name = "Annabel Monaghan"
+        book_name = "Dolly All the Time"
+        release_name = "Annabel.Monaghan.Dolly.All.the.Time.2026.RETAiL.EPUB.eBook-NODE"
+        shared_download_id = "f12a928147758763237c803a5a4893587203dfdf"
+        mock_get_name.return_value = release_name
+
+        self.create_test_author_and_book(other_book_id, author_name, book_name)
+        self.create_snatched_download(
+            other_book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        self.db.action(
+            "UPDATE wanted SET Status='Aborted' WHERE BookID=? AND DownloadID=?",
+            (other_book_id, shared_download_id),
+        )
+        self.create_test_author_and_book(target_book_id, author_name, book_name)
+        self.create_snatched_download(
+            target_book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{shared_download_id}",
+            release_name,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Monaghan, Annabel - Dolly All the Time.epub")
+        )
+
+        process_dir(startdir=local_release_dir, ignoreclient=True)
+
+        self.assert_status_updated(target_book_id, 'Processed')
+        other_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (other_book_id, shared_download_id),
+        )
+        self.assertEqual("Aborted", other_row["Status"])
+        self.assertFalse(other_row["DLResult"])
+
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_force_process_name_refresh_scopes_duplicate_nzburl(
+            self, mock_get_name, mock_get_progress, mock_check_contents):
+        """A downloader-renamed title must not rewrite another snatched row with the same URL."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (0, False)
+        mock_get_name.return_value = "Renamed.Target.Release"
+
+        target_book_id = "renamed_target_book"
+        other_book_id = "renamed_other_book"
+        target_download_id = "renamed-target-download"
+        other_download_id = "renamed-other-download"
+
+        self.create_test_author_and_book(target_book_id, "Target Author", "Target Book")
+        self.create_test_author_and_book(other_book_id, "Other Author", "Other Book")
+        self.create_snatched_download(
+            target_book_id,
+            "Original.Target.Release",
+            "eBook",
+            download_id=target_download_id,
+        )
+        self.create_snatched_download(
+            other_book_id,
+            "Original.Other.Release",
+            "eBook",
+            download_id=other_download_id,
+        )
+
+        process_dir(ignoreclient=True, downloadid=target_download_id)
+
+        target_row = self.db.match("SELECT NZBtitle,Status FROM wanted WHERE BookID=?", (target_book_id,))
+        other_row = self.db.match("SELECT NZBtitle,Status FROM wanted WHERE BookID=?", (other_book_id,))
+        self.assertEqual("Renamed.Target.Release", target_row["NZBtitle"])
+        self.assertEqual("Snatched", target_row["Status"])
+        self.assertEqual("Original.Other.Release", other_row["NZBtitle"])
+        self.assertEqual("Snatched", other_row["Status"])
+
+    def test_update_download_status_scopes_processed_duplicate_nzburl(self):
+        """A completed status update must not process another snatched row with the same URL."""
+        target_book_id = "processed_target_book"
+        other_book_id = "processed_other_book"
+        self.create_test_author_and_book(target_book_id, "Target Author", "Target Book")
+        self.create_test_author_and_book(other_book_id, "Other Author", "Other Book")
+        self.create_snatched_download(
+            target_book_id,
+            "Target.Book.Release",
+            "eBook",
+            download_id="processed-target-download",
+        )
+        self.create_snatched_download(
+            other_book_id,
+            "Other.Book.Release",
+            "eBook",
+            download_id="processed-other-download",
+        )
+
+        row = self.db.match("SELECT * FROM wanted WHERE BookID=?", (target_book_id,))
+        book_state = BookState.from_db_row(row, CONFIG)
+        book_state.progress = 100
+        book_state.finished = True
+
+        _update_download_status(book_state, self.db, logging.getLogger(__name__))
+
+        target_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (target_book_id,))
+        other_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (other_book_id,))
+        self.assertEqual("Processed", target_row["Status"])
+        self.assertEqual("Download complete", target_row["DLResult"])
+        self.assertEqual("Snatched", other_row["Status"])
+        self.assertFalse(other_row["DLResult"])
+
+    def test_update_download_status_scopes_seeding_duplicate_nzburl(self):
+        """A seeding status update must not mark another snatched row with the same URL."""
+        original_keep_seeding = CONFIG.get_bool("KEEP_SEEDING")
+        self.addCleanup(lambda: CONFIG.set_bool("KEEP_SEEDING", original_keep_seeding))
+        CONFIG.set_bool("KEEP_SEEDING", True)
+
+        target_book_id = "seeding_target_book"
+        other_book_id = "seeding_other_book"
+        self.create_test_author_and_book(target_book_id, "Target Author", "Target Book")
+        self.create_test_author_and_book(other_book_id, "Other Author", "Other Book")
+        self.create_snatched_download(
+            target_book_id,
+            "Target.Book.Release",
+            "eBook",
+            download_id="seeding-target-download",
+        )
+        self.create_snatched_download(
+            other_book_id,
+            "Other.Book.Release",
+            "eBook",
+            download_id="seeding-other-download",
+        )
+        self.db.action("UPDATE wanted SET NZBmode='torrent' WHERE BookID=?", (target_book_id,))
+
+        row = self.db.match("SELECT * FROM wanted WHERE BookID=?", (target_book_id,))
+        book_state = BookState.from_db_row(row, CONFIG)
+        book_state.progress = 100
+        book_state.finished = False
+
+        _update_download_status(book_state, self.db, logging.getLogger(__name__))
+
+        target_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (target_book_id,))
+        other_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (other_book_id,))
+        self.assertEqual("Seeding", target_row["Status"])
+        self.assertEqual("Snatched", other_row["Status"])
+
+    def test_handle_seeding_not_found_scopes_duplicate_download_id(self):
+        """A removed seeding torrent must not unscope another row sharing the download id."""
+        target_book_id = "seeding_missing_target_book"
+        other_book_id = "seeding_missing_other_book"
+        shared_download_id = "shared-seeding-download"
+
+        self.create_test_author_and_book(target_book_id, "Target Author", "Target Book")
+        self.create_test_author_and_book(other_book_id, "Other Author", "Other Book")
+        self.create_snatched_download(
+            target_book_id,
+            "Target.Book.Release",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.create_snatched_download(
+            other_book_id,
+            "Other.Book.Release",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.db.action(
+            "UPDATE wanted SET Status='Seeding',NZBurl=? WHERE BookID=?",
+            ("http://test.com/seeding-target.nzb", target_book_id),
+        )
+        self.db.action(
+            "UPDATE wanted SET Status='Seeding',NZBurl=? WHERE BookID=?",
+            ("http://test.com/seeding-other.nzb", other_book_id),
+        )
+
+        row = self.db.match("SELECT * FROM wanted WHERE BookID=?", (target_book_id,))
+        book_state = BookState.from_db_row(row, CONFIG)
+        book_state.progress = -1
+        book_state.finished = False
+
+        _handle_seeding_status(book_state, True, True, self.db, logging.getLogger(__name__))
+
+        target_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (target_book_id,))
+        other_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (other_book_id,))
+        self.assertEqual("Snatched", target_row["Status"])
+        self.assertEqual("Seeding", other_row["Status"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    def test_handle_seeding_finished_scopes_duplicate_download_id(self, mock_get_folder):
+        """A finished seeding torrent must not process another row sharing the download id."""
+        mock_get_folder.return_value = self.download_dir
+        target_book_id = "seeding_finished_target_book"
+        other_book_id = "seeding_finished_other_book"
+        shared_download_id = "shared-finished-seeding-download"
+
+        self.create_test_author_and_book(target_book_id, "Target Author", "Target Book")
+        self.create_test_author_and_book(other_book_id, "Other Author", "Other Book")
+        self.create_snatched_download(
+            target_book_id,
+            "Target.Book.Release",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.create_snatched_download(
+            other_book_id,
+            "Other.Book.Release",
+            "eBook",
+            download_id=shared_download_id,
+        )
+        self.db.action(
+            "UPDATE wanted SET Status='Seeding',NZBurl=? WHERE BookID=?",
+            ("http://test.com/finished-target.nzb", target_book_id),
+        )
+        self.db.action(
+            "UPDATE wanted SET Status='Seeding',NZBurl=? WHERE BookID=?",
+            ("http://test.com/finished-other.nzb", other_book_id),
+        )
+
+        row = self.db.match("SELECT * FROM wanted WHERE BookID=?", (target_book_id,))
+        book_state = BookState.from_db_row(row, CONFIG)
+        book_state.progress = 100
+        book_state.finished = True
+
+        _handle_seeding_status(book_state, True, True, self.db, logging.getLogger(__name__))
+
+        target_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (target_book_id,))
+        other_row = self.db.match("SELECT Status FROM wanted WHERE BookID=?", (other_book_id,))
+        self.assertEqual("Processed", target_row["Status"])
+        self.assertEqual("Seeding", other_row["Status"])
+
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
     def test_force_process_local_seedbox_folder_rejects_wrong_file(
             self, mock_get_name, mock_get_progress, mock_check_contents, mock_get_folder):
         """A helper-local folder must still prove the contained ebook matches the requested book."""
@@ -1759,4 +2374,65 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         self.assertIn("matching:", failed_row["DLResult"])
         self.assertEqual("Snatched", delayed_row["Status"])
         self.assertIsNone(delayed_row["DLResult"])
+        mock_delete_task.assert_not_called()
+
+    @mock.patch('lazylibrarian.postprocess.delete_task')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_content_rejection_does_not_delete_shared_download_id_sibling(
+            self, mock_get_name, mock_check_contents, mock_get_progress, mock_delete_task):
+        """Rejected content must not delete a downloader task still used by a sibling row."""
+        mock_get_name.return_value = None
+        mock_get_progress.return_value = (0, False)
+        CONFIG.set_bool("DEL_FAILED", True)
+
+        shared_download_id = "shared-rejected-download-id"
+        rejected_book = "content_rejected_book"
+        sibling_book = "content_sibling_book"
+        self.create_test_author_and_book(rejected_book, "Rejected Author", "Rejected Book")
+        self.create_test_author_and_book(sibling_book, "Sibling Author", "Sibling Book")
+        self.create_snatched_download(
+            rejected_book,
+            "Rejected.Author.Rejected.Book",
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        self.create_snatched_download(
+            sibling_book,
+            "Sibling.Author.Sibling.Book",
+            "eBook",
+            source="QBITTORRENT",
+            download_id=shared_download_id,
+        )
+        self.db.action(
+            "UPDATE wanted SET NZBurl=? WHERE BookID=?",
+            ("http://test.com/rejected.nzb", rejected_book),
+        )
+        self.db.action(
+            "UPDATE wanted SET NZBurl=? WHERE BookID=?",
+            ("http://test.com/sibling.nzb", sibling_book),
+        )
+
+        def reject_selected(_source, _download_id, _book_type, title, **_kwargs):
+            if title == "Rejected.Author.Rejected.Book":
+                return "blocked test payload"
+            return None
+
+        mock_check_contents.side_effect = reject_selected
+        rows = self.db.select(
+            "SELECT * FROM wanted WHERE DownloadID=? AND Status='Snatched' ORDER BY BookID",
+            (shared_download_id,),
+        )
+
+        ready = _get_ready_from_snatched(self.db, rows)
+
+        self.assertEqual([], ready)
+        rejected_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (rejected_book,))
+        sibling_row = self.db.match("SELECT Status,DLResult FROM wanted WHERE BookID=?", (sibling_book,))
+        self.assertEqual("Failed", rejected_row["Status"])
+        self.assertEqual("blocked test payload", rejected_row["DLResult"])
+        self.assertEqual("Snatched", sibling_row["Status"])
+        self.assertIsNone(sibling_row["DLResult"])
         mock_delete_task.assert_not_called()

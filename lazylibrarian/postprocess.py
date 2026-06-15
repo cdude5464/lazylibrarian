@@ -780,6 +780,9 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
             title = download_name
             book_row["NZBtitle"] = download_name
 
+        if _complete_snatched_if_recent_bookfile_exists(db, book_row, logger):
+            continue
+
         rejected = check_contents(source, download_id, book_type_str, title,
                                   requested_author=requested_author,
                                   requested_title=requested_title)
@@ -834,6 +837,54 @@ def _get_ready_from_snatched(db, snatched_list: list[dict]):
         books_to_process.append(book_row)
 
     return books_to_process
+
+
+def _complete_snatched_if_recent_bookfile_exists(db, book_row: dict, logger: logging.Logger) -> bool:
+    """Mark a snatched ebook processed if this snatch already produced a verified BookFile."""
+    book_type_str = BookType.from_string(_extract_aux_type(book_row)).value
+    if book_type_str != BookType.EBOOK.value:
+        return False
+    book_id = book_row["BookID"]
+    book = db.match(
+        "SELECT BookFile,BookLibrary,Status FROM books WHERE BookID=?",
+        (book_id,),
+    )
+    if not book or not book["BookFile"] or not path_isfile(book["BookFile"]):
+        return False
+    if book["Status"] not in [CONFIG["FOUND_STATUS"], "Have"]:
+        return False
+    if not book["BookLibrary"] or not book_row["NZBdate"] or book["BookLibrary"] < book_row["NZBdate"]:
+        return False
+
+    result = db.action(
+        "UPDATE wanted SET Status='Processed',NZBDate=?,DLResult=? "
+        "WHERE COALESCE(DownloadID,'')=? and COALESCE(Source,'')=? and BookID=? "
+        "and COALESCE(AuxInfo,'')=? and COALESCE(NZBurl,'')=? "
+        "and COALESCE(NZBprov,'')=? and COALESCE(NZBtitle,'')=? "
+        "and Status='Snatched'",
+        (
+            now(),
+            book["BookFile"],
+            book_row["DownloadID"] or "",
+            book_row["Source"] or "",
+            book_id,
+            book_row["AuxInfo"] or "",
+            book_row["NZBurl"] or "",
+            book_row["NZBprov"] or "",
+            book_row["NZBtitle"] or "",
+        ),
+    )
+    if result and result.rowcount:
+        logger.warning(
+            f"Recovered snatched eBook {book_row['NZBtitle']} as Processed using "
+            f"existing BookFile {book['BookFile']}"
+        )
+        return True
+    logger.warning(
+        f"Unable to recover snatched eBook {book_row['NZBtitle']}: "
+        "no wanted row matched exact identity"
+    )
+    return False
 
 
 def _delete_failed_task_if_unused(

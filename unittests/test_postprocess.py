@@ -28,6 +28,7 @@ from lazylibrarian.postprocess import (
     _handle_snatched_timeout,
     _is_valid_media_file,
     _mark_postprocess_failure_by_identity,
+    _complete_snatched_if_recent_bookfile_exists,
     _normalize_title,
     _resolve_book_state_id_after_destination,
     _should_delete_processed_files,
@@ -608,14 +609,14 @@ class BookStateTest(LLTestCaseWithStartup):
             )
             db.action(
                 "INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status) VALUES (?, ?, ?, ?)",
-                ("book1", "author1", "Test Book", "Snatched"),
+                ("rename-book-1", "author1", "Test Book", "Snatched"),
             )
             db.action(
                 "INSERT OR REPLACE INTO wanted "
                 "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
-                    "book1",
+                    "rename-book-1",
                     "Original Release.epub",
                     "download-url",
                     "2026-06-14 23:30:43",
@@ -628,14 +629,110 @@ class BookStateTest(LLTestCaseWithStartup):
                     "download-id",
                 ),
             )
-            row = db.match("SELECT * FROM wanted WHERE BookID='book1'")
+            row = db.match("SELECT * FROM wanted WHERE BookID='rename-book-1'")
 
             ready = _get_ready_from_snatched(db, [row])
 
             self.assertEqual(1, len(ready))
             self.assertEqual("Renamed Release.epub", ready[0]["NZBtitle"])
-            updated = db.match("SELECT NZBtitle FROM wanted WHERE BookID='book1'")
+            updated = db.match("SELECT NZBtitle FROM wanted WHERE BookID='rename-book-1'")
             self.assertEqual("Renamed Release.epub", updated["NZBtitle"])
+        finally:
+            db.close()
+
+    def test_complete_snatched_if_recent_bookfile_exists_marks_processed(self):
+        """A row stuck Snatched after import should self-heal when BookFile is newer than snatch."""
+        db = DBConnection()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                book_file = os.path.join(tmpdir, "Test Book.epub")
+                Path(book_file).write_text("ebook", encoding="utf-8")
+                db.action(
+                    "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                    ("author1", "Test Author"),
+                )
+                db.action(
+                    "INSERT OR REPLACE INTO books "
+                    "(BookID, AuthorID, BookName, Status, BookFile, BookLibrary) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("book1", "author1", "Test Book", "Have", book_file, "2026-06-14 23:31:59"),
+                )
+                db.action(
+                    "INSERT OR REPLACE INTO wanted "
+                    "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "book1",
+                        "Test Book.epub",
+                        "download-url",
+                        "2026-06-14 23:30:43",
+                        "annas",
+                        "Snatched",
+                        "0.6",
+                        "eBook",
+                        "direct",
+                        "DIRECT",
+                        "download-id",
+                    ),
+                )
+                row = dict(db.match("SELECT * FROM wanted WHERE BookID='book1'"))
+
+                completed = _complete_snatched_if_recent_bookfile_exists(
+                    db, row, logging.getLogger(__name__)
+                )
+
+                self.assertTrue(completed)
+                wanted = db.match("SELECT Status,DLResult FROM wanted WHERE BookID='book1'")
+                self.assertEqual("Processed", wanted["Status"])
+                self.assertEqual(book_file, wanted["DLResult"])
+        finally:
+            db.close()
+
+    def test_complete_snatched_if_recent_bookfile_exists_ignores_old_bookfile(self):
+        """Do not satisfy a newer snatch from a pre-existing owned file."""
+        db = DBConnection()
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                book_file = os.path.join(tmpdir, "Test Book.epub")
+                Path(book_file).write_text("ebook", encoding="utf-8")
+                db.action(
+                    "INSERT OR REPLACE INTO authors (AuthorID, AuthorName) VALUES (?, ?)",
+                    ("author1", "Test Author"),
+                )
+                db.action(
+                    "INSERT OR REPLACE INTO books "
+                    "(BookID, AuthorID, BookName, Status, BookFile, BookLibrary) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    ("book1", "author1", "Test Book", "Have", book_file, "2026-06-14 22:31:59"),
+                )
+                db.action(
+                    "INSERT OR REPLACE INTO wanted "
+                    "(BookID,NZBtitle,NZBurl,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,Source,DownloadID) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        "book1",
+                        "Test Book.epub",
+                        "download-url",
+                        "2026-06-14 23:30:43",
+                        "annas",
+                        "Snatched",
+                        "0.6",
+                        "eBook",
+                        "direct",
+                        "DIRECT",
+                        "download-id",
+                    ),
+                )
+                row = dict(db.match("SELECT * FROM wanted WHERE BookID='book1'"))
+
+                completed = _complete_snatched_if_recent_bookfile_exists(
+                    db, row, logging.getLogger(__name__)
+                )
+
+                self.assertFalse(completed)
+                wanted = db.match("SELECT Status,DLResult FROM wanted WHERE BookID='book1'")
+                self.assertEqual("Snatched", wanted["Status"])
+                self.assertFalse(wanted["DLResult"])
         finally:
             db.close()
 

@@ -459,6 +459,19 @@ def _search_result_detail_for_source(source, bookid):
     return None
 
 
+def _search_result_terms(source=None, title=None, authorname=None, bookid=None, preferred_source=None):
+    terms = []
+    primary = f"{authorname or ''} {title or ''}".strip()
+    if primary:
+        terms.append(primary)
+    title_only = (title or '').strip()
+    if source == 'GoodReads' and preferred_source == source and bookid and title_only and title_only not in terms:
+        # Goodreads can omit a clicked provider id for classic/edition-heavy works from
+        # "author title" search while returning it for the exact title.
+        terms.append(title_only)
+    return terms
+
+
 def _can_use_safe_nonexact_search_result(source, preferred_source=None):
     # GoodReads search can omit a clicked edition id while still returning the same title/author.
     # GoogleBooks has a direct detail endpoint, so keep requiring an exact volume id there.
@@ -617,11 +630,19 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
             sources.append(source)
 
     for source in sources:
-        try:
-            results = search_for(f"{authorname} {title}".strip(), source)
-        except Exception as e:
-            logger.warning(f"Unable to search {source} fallback for {title}: {type(e).__name__} {str(e)}")
-            continue
+        results = []
+        for searchterm in _search_result_terms(
+                source=source, title=title, authorname=authorname, bookid=bookid,
+                preferred_source=preferred_source):
+            try:
+                term_results = search_for(searchterm, source)
+            except Exception as e:
+                logger.warning(f"Unable to search {source} fallback for {title}: {type(e).__name__} {str(e)}")
+                continue
+            if term_results:
+                results.extend(term_results)
+                if bookid and any(str(r.get('bookid')) == str(bookid) for r in term_results):
+                    break
         if not results:
             detail_match = _search_result_detail_for_source(source, bookid) if bookid else None
             if detail_match and _search_result_is_safe_match(

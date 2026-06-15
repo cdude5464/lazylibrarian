@@ -347,6 +347,49 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         finally:
             db.close()
 
+    def test_goodreads_source_aware_exact_title_retry_finds_clicked_id(self):
+        from lazylibrarian import webServe
+
+        derivative = self._goodreads_result(
+            bookid='8131249',
+            title='Works of Geoffrey Chaucer.  The Canterbury Tales/Troilus and Criseyde',
+            authorid='1838',
+            authorname='Geoffrey Chaucer')
+        exact = self._goodreads_result(
+            bookid='2696', title='The Canterbury Tales',
+            authorid='1838', authorname='Geoffrey Chaucer')
+        calls = []
+
+        def search(term, source):
+            calls.append((term, source))
+            if source != 'GoodReads':
+                return []
+            if term == 'Geoffrey Chaucer The Canterbury Tales':
+                return [derivative]
+            if term == 'The Canterbury Tales':
+                return [exact]
+            return []
+
+        with mock.patch.object(webServe, 'search_for', side_effect=search):
+            match = webServe._add_search_result_book_to_db(
+                '2696', 'Wanted', 'Skipped', title='The Canterbury Tales',
+                authorname='Geoffrey Chaucer', authorid='1838',
+                existing_ebook_status='Wanted', existing_audio_status=None,
+                preferred_source='GoodReads')
+
+        self.assertEqual('2696', match['BookID'])
+        self.assertEqual(
+            [('Geoffrey Chaucer The Canterbury Tales', 'GoodReads'), ('The Canterbury Tales', 'GoodReads')],
+            calls)
+        db = DBConnection()
+        try:
+            row = db.match("SELECT Status,AudioStatus,gr_id FROM books WHERE BookID='2696'")
+            self.assertEqual('Wanted', row['Status'])
+            self.assertEqual('Skipped', row['AudioStatus'])
+            self.assertEqual('2696', row['gr_id'])
+        finally:
+            db.close()
+
     def test_goodreads_safe_fallback_stamps_existing_title_row(self):
         from lazylibrarian import webServe
 

@@ -4360,19 +4360,46 @@ def _ebook_metadata_conflict(
     )
 
 
-def _ebook_language_conflict(metadata_language: str) -> "tuple[bool, str]":
-    """Return True when embedded ebook metadata explicitly declares a non-English language."""
-    language = enforce_str(make_unicode(metadata_language or "")).strip()
+def _normalize_ebook_language(value: str) -> str:
+    language = enforce_str(make_unicode(value or "")).strip().casefold().replace("_", "-")
     if not language:
+        return ""
+    primary = language.split("-", 1)[0].strip()
+    aliases = {
+        "eng": "en",
+        "english": "en",
+        "nld": "nl",
+        "dut": "nl",
+        "dutch": "nl",
+        "ita": "it",
+        "italian": "it",
+        "pol": "pl",
+        "polish": "pl",
+        "deu": "de",
+        "ger": "de",
+        "german": "de",
+        "fra": "fr",
+        "fre": "fr",
+        "french": "fr",
+        "spa": "es",
+        "spanish": "es",
+    }
+    return aliases.get(primary, primary)
+
+
+def _ebook_language_conflict(metadata_language: str, expected_language: str = "eng") -> "tuple[bool, str]":
+    """Return True when embedded ebook metadata explicitly conflicts with the expected book language."""
+    language = enforce_str(make_unicode(metadata_language or "")).strip()
+    observed = _normalize_ebook_language(language)
+    expected = _normalize_ebook_language(expected_language or "eng")
+    if not observed or not expected:
         return False, ""
-    normalized = language.casefold().replace("_", "-")
-    primary = normalized.split("-", 1)[0].strip()
-    if primary in {"en", "eng", "english"}:
+    if observed == expected:
         return False, ""
     return (
         True,
-        "Embedded ebook metadata declares a non-English language: "
-        f"{language} (expected English)",
+        "Embedded ebook metadata declares an unexpected language: "
+        f"{language} (expected {expected_language or 'eng'})",
     )
 
 
@@ -4418,7 +4445,7 @@ def _validate_ebook_embedded_metadata(
         logger.warning(f"Rejecting {ebook_file}: {msg}")
         return False, msg
 
-    conflict, msg = _ebook_language_conflict(metadata.get("language", ""))
+    conflict, msg = _ebook_language_conflict(metadata.get("language", ""), book_metadata.book_lang)
     if conflict:
         logger.warning(f"Rejecting {ebook_file}: {msg}")
         return False, msg

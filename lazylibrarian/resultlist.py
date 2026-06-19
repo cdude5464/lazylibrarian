@@ -86,6 +86,52 @@ def _reject_word_matches(word, result_title, author, title):
     )
 
 
+def _normalize_book_language(value):
+    language = unaccented(value or '', only_ascii=False).strip().lower().replace('_', '-')
+    if not language or language == 'unknown':
+        return ''
+    primary = language.split('-', 1)[0].strip()
+    aliases = {
+        'eng': 'en',
+        'english': 'en',
+        'nld': 'nl',
+        'dut': 'nl',
+        'dutch': 'nl',
+        'ita': 'it',
+        'italian': 'it',
+        'pol': 'pl',
+        'polish': 'pl',
+        'deu': 'de',
+        'ger': 'de',
+        'german': 'de',
+        'fra': 'fr',
+        'fre': 'fr',
+        'french': 'fr',
+        'spa': 'es',
+        'spanish': 'es',
+    }
+    return aliases.get(primary, primary)
+
+
+def _expected_book_language(db, book):
+    for key in ('BookLang', 'bookLang', 'booklang'):
+        if book.get(key):
+            return book.get(key)
+    bookid = book.get('bookid') or book.get('BookID')
+    if bookid:
+        row = db.match('SELECT BookLang from books WHERE BookID=?', (bookid,))
+        if row and row.get('BookLang'):
+            return row['BookLang']
+    anna_language = (CONFIG['ANNA_SEARCH_LANG'] or '').split(',', 1)[0].strip()
+    return '' if anna_language.lower() == 'any' else anna_language
+
+
+def _ebook_result_language_mismatch(result_language, expected_language):
+    observed = _normalize_book_language(result_language)
+    expected = _normalize_book_language(expected_language)
+    return bool(observed and expected and observed != expected)
+
+
 def _audiobook_failed_source_retryable(row):
     """Return True for failures that should not permanently blacklist a source."""
     if not row:
@@ -238,6 +284,7 @@ def find_best_result(resultlist, book, searchtype, source):
         logger.debug(f'Searching {len(resultlist)} {source} results for best {auxinfo} match')
         matches = []
         ignored_messages = []
+        expected_language = _expected_book_language(db, book) if auxinfo == 'eBook' else ''
         for res in resultlist:
             result_title = unaccented(replace_all(res[f"{prefix}title"], dictrepl),
                                       only_ascii=False).strip()
@@ -276,6 +323,13 @@ def find_best_result(resultlist, book, searchtype, source):
                     logger.debug(
                         f"Rejecting {result_title}, weak author match ({round(guard_author_match, 2)}%) and extra "
                         f"title words [{', '.join(extra_words)}]"
+                    )
+                result_language = res.get(f"{prefix}lang") or res.get('tor_lang') or ''
+                if not rejected and _ebook_result_language_mismatch(result_language, expected_language):
+                    rejected = True
+                    logger.debug(
+                        f"Rejecting {result_title}, language {result_language} does not match expected "
+                        f"{expected_language}"
                     )
 
             url = res[f"{prefix}url"]

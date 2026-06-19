@@ -74,6 +74,27 @@ class ResultListMatchingTest(LLTestCaseWithStartup):
         self.assertGreaterEqual(match[0], CONFIG.get_int("MATCH_RATIO"))
         self.assertEqual("Cain, Robert - The Keeper.epub", match[1]["NZBtitle"])
 
+    def test_ebook_result_rejects_explicit_wrong_language(self):
+        book = self._keeper_book()
+        book["BookLang"] = "eng"
+        result = self._direct_result("Cain, Robert - The Keeper.epub")
+        result["tor_lang"] = "it"
+
+        match = find_best_result([result], book, "book", "direct")
+
+        self.assertIsNone(match)
+
+    def test_ebook_result_accepts_matching_expected_language(self):
+        book = self._keeper_book()
+        book["BookLang"] = "ita"
+        result = self._direct_result("Cain, Robert - The Keeper.epub")
+        result["tor_lang"] = "it"
+
+        match = find_best_result([result], book, "book", "direct")
+
+        self.assertIsNotNone(match)
+        self.assertEqual("Cain, Robert - The Keeper.epub", match[1]["NZBtitle"])
+
     def test_ebook_result_rejects_bibliotik_title_only_subset_title(self):
         result = self._torrent_result("The Remnant Keeper.epub")
         result["booksearch"] = "bibliotik"

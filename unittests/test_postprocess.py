@@ -204,7 +204,7 @@ class BookStateTest(LLTestCaseWithStartup):
         conflict, msg = _ebook_language_conflict("nl-NL")
 
         self.assertTrue(conflict)
-        self.assertIn("non-English language", msg)
+        self.assertIn("unexpected language", msg)
         self.assertIn("nl-NL", msg)
 
     def test_ebook_language_conflict_allows_english_or_unknown_metadata(self):
@@ -213,6 +213,12 @@ class BookStateTest(LLTestCaseWithStartup):
                 conflict, msg = _ebook_language_conflict(language)
                 self.assertFalse(conflict)
                 self.assertEqual("", msg)
+
+    def test_ebook_language_conflict_allows_expected_non_english_metadata(self):
+        conflict, msg = _ebook_language_conflict("it-IT", "ita")
+
+        self.assertFalse(conflict)
+        self.assertEqual("", msg)
 
     @mock.patch("lazylibrarian.postprocess.get_book_info")
     def test_validate_ebook_embedded_metadata_returns_clean_failure_on_parse_error(self, mock_get_info):
@@ -252,7 +258,7 @@ class BookStateTest(LLTestCaseWithStartup):
             )
 
         self.assertFalse(valid)
-        self.assertIn("non-English language", msg)
+        self.assertIn("unexpected language", msg)
 
     def test_seconds_since_completion(self):
         """Test elapsed time calculation"""

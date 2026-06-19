@@ -3,9 +3,11 @@
 # Purpose:
 #   Test search result selection and rejection.
 
+import sqlite3
+
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.database import DBConnection
-from lazylibrarian.resultlist import find_best_result
+from lazylibrarian.resultlist import _expected_book_language, find_best_result
 from unittests.unittesthelpers import LLTestCaseWithStartup
 
 
@@ -94,6 +96,20 @@ class ResultListMatchingTest(LLTestCaseWithStartup):
 
         self.assertIsNotNone(match)
         self.assertEqual("Cain, Robert - The Keeper.epub", match[1]["NZBtitle"])
+
+    def test_expected_book_language_accepts_sqlite_row(self):
+        conn = sqlite3.connect(":memory:")
+        conn.row_factory = sqlite3.Row
+        conn.execute("CREATE TABLE books (BookLang TEXT)")
+        conn.execute("INSERT INTO books VALUES (?)", ("eng",))
+        row = conn.execute("SELECT BookLang FROM books").fetchone()
+
+        class RowDb:
+            @staticmethod
+            def match(_query, _params):
+                return row
+
+        self.assertEqual("eng", _expected_book_language(RowDb(), {"bookid": "x"}))
 
     def test_ebook_result_rejects_bibliotik_title_only_subset_title(self):
         result = self._torrent_result("The Remnant Keeper.epub")

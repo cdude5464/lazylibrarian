@@ -120,10 +120,22 @@ def _expected_book_language(db, book):
     bookid = book.get('bookid') or book.get('BookID')
     if bookid:
         row = db.match('SELECT BookLang from books WHERE BookID=?', (bookid,))
-        if row and row.get('BookLang'):
-            return row['BookLang']
+        row_language = _row_value(row, 'BookLang')
+        if row_language:
+            return row_language
     anna_language = (CONFIG['ANNA_SEARCH_LANG'] or '').split(',', 1)[0].strip()
     return '' if anna_language.lower() == 'any' else anna_language
+
+
+def _row_value(row, key):
+    if not row:
+        return None
+    if hasattr(row, 'get'):
+        return row.get(key)
+    try:
+        return row[key]
+    except (KeyError, IndexError, TypeError):
+        return None
 
 
 def _ebook_result_language_mismatch(result_language, expected_language):

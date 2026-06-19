@@ -4360,6 +4360,22 @@ def _ebook_metadata_conflict(
     )
 
 
+def _ebook_language_conflict(metadata_language: str) -> "tuple[bool, str]":
+    """Return True when embedded ebook metadata explicitly declares a non-English language."""
+    language = enforce_str(make_unicode(metadata_language or "")).strip()
+    if not language:
+        return False, ""
+    normalized = language.casefold().replace("_", "-")
+    primary = normalized.split("-", 1)[0].strip()
+    if primary in {"en", "eng", "english"}:
+        return False, ""
+    return (
+        True,
+        "Embedded ebook metadata declares a non-English language: "
+        f"{language} (expected English)",
+    )
+
+
 def _find_ebook_metadata_file(book_path: str, best_format: str = "") -> str:
     """Pick the ebook file whose embedded metadata should be validated."""
     if best_format:
@@ -4398,6 +4414,11 @@ def _validate_ebook_embedded_metadata(
         metadata.get("title", ""),
         metadata.get("creator", ""),
     )
+    if conflict:
+        logger.warning(f"Rejecting {ebook_file}: {msg}")
+        return False, msg
+
+    conflict, msg = _ebook_language_conflict(metadata.get("language", ""))
     if conflict:
         logger.warning(f"Rejecting {ebook_file}: {msg}")
         return False, msg

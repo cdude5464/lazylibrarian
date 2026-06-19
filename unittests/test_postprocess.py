@@ -22,6 +22,7 @@ from lazylibrarian.postprocess import (
     _calculate_fuzzy_match,
     _check_and_schedule_next_run,
     _count_zipfiles_in_directory,
+    _ebook_language_conflict,
     _ebook_metadata_conflict,
     _find_valid_file_in_directory,
     _handle_aborted_download,
@@ -199,6 +200,20 @@ class BookStateTest(LLTestCaseWithStartup):
         self.assertFalse(conflict)
         self.assertEqual("", msg)
 
+    def test_ebook_language_conflict_rejects_explicit_non_english_metadata(self):
+        conflict, msg = _ebook_language_conflict("nl-NL")
+
+        self.assertTrue(conflict)
+        self.assertIn("non-English language", msg)
+        self.assertIn("nl-NL", msg)
+
+    def test_ebook_language_conflict_allows_english_or_unknown_metadata(self):
+        for language in ("", "en", "en-US", "eng", "English"):
+            with self.subTest(language=language):
+                conflict, msg = _ebook_language_conflict(language)
+                self.assertFalse(conflict)
+                self.assertEqual("", msg)
+
     @mock.patch("lazylibrarian.postprocess.get_book_info")
     def test_validate_ebook_embedded_metadata_returns_clean_failure_on_parse_error(self, mock_get_info):
         mock_get_info.side_effect = KeyError("META-INF/container.xml")
@@ -214,6 +229,30 @@ class BookStateTest(LLTestCaseWithStartup):
 
         self.assertFalse(valid)
         self.assertIn("Unable to read embedded ebook metadata", msg)
+
+    @mock.patch("lazylibrarian.postprocess.get_book_info")
+    def test_validate_ebook_embedded_metadata_rejects_non_english_language(self, mock_get_info):
+        mock_get_info.return_value = {
+            "title": "Daisy Jones & The Six",
+            "creator": "Taylor Jenkins Reid",
+            "language": "nl-NL",
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ebook_path = os.path.join(tmpdir, "Daisy Jones & The Six.epub")
+            Path(ebook_path).write_text("epub payload")
+            valid, msg = _validate_ebook_embedded_metadata(
+                tmpdir,
+                "",
+                EbookMetadata(
+                    book_id="40597810",
+                    author_name="Taylor Jenkins Reid",
+                    book_name="Daisy Jones & The Six",
+                ),
+                logging.getLogger("test.postprocess"),
+            )
+
+        self.assertFalse(valid)
+        self.assertIn("non-English language", msg)
 
     def test_seconds_since_completion(self):
         """Test elapsed time calculation"""

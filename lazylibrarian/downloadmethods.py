@@ -51,7 +51,7 @@ from lazylibrarian.cache import fetch_url
 from lazylibrarian.common import get_user_agent, proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.directparser import bok_grabs, bok_login, session_get
-from lazylibrarian.download_client import check_contents, delete_task
+from lazylibrarian.download_client import check_contents
 from lazylibrarian.filesystem import (
     DIRS,
     get_directory,
@@ -1055,15 +1055,21 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                                                   requested_author=requested_author,
                                                   requested_title=requested_title)
                     if rejected:
-                        db.action("UPDATE wanted SET status='Failed',DLResult=? "
+                        db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=? "
                                   "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
-                                  (rejected, full_url, bookid, library))
-                        try:
-                            delete_task(source, download_id, True)
-                        except Exception as e:
-                            logger.warning(f"Unable to delete rejected torrent {download_id}: {type(e).__name__} {e}")
-                        finally:
-                            db.close()
+                                  (rejected, source, download_id, full_url, bookid, library))
+                        if source == 'QBITTORRENT':
+                            if not qbittorrent.preserve_rejected_torrent(download_id):
+                                logger.error(
+                                    f"Rejected torrent {download_id[:8]} was retained, but its private-tracker "
+                                    "share limits could not be protected"
+                                )
+                        else:
+                            logger.warning(
+                                f"Preserving rejected torrent {download_id} in {source} to avoid a "
+                                "private-tracker hit-and-run"
+                            )
+                        db.close()
                         return False, rejected
                     logger.debug(f"{source} setting torrent name to [{tor_title}]")
                     db.action('UPDATE wanted SET NZBtitle=? WHERE NZBurl=?', (tor_title, full_url))

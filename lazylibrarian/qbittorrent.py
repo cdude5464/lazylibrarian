@@ -245,6 +245,33 @@ def remove_torrent(hashid, remove_data=False):
     return False
 
 
+def preserve_rejected_torrent(hashid):
+    """Keep a post-add rejection in qBittorrent long enough to avoid an HnR."""
+    logger = logging.getLogger(__name__)
+    dlcommslogger = logging.getLogger('special.dlcomms')
+    hashid = hashid.lower()
+    qbclient = get_client()
+    if not qbclient:
+        return False
+    try:
+        qbclient._post(
+            "torrents/setShareLimits",
+            {
+                "hashes": hashid,
+                "ratioLimit": "-1",
+                "seedingTimeLimit": "43200",
+                "inactiveSeedingTimeLimit": "-1",
+            },
+        )
+        logger.warning(
+            f"Preserving rejected torrent {hashid[:8]} in qBittorrent for private-tracker seeding"
+        )
+        return True
+    except Exception as e:
+        dlcommslogger.error(f"Failed to protect rejected torrent share limits: {e}")
+        return False
+
+
 def check_link():
     """ Check we can talk to qbittorrent"""
     try:

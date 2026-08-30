@@ -222,6 +222,13 @@ class BookStateTest(LLTestCaseWithStartup):
         self.assertFalse(conflict)
         self.assertEqual("", msg)
 
+    def test_ebook_language_conflict_treats_unknown_expected_language_as_unconstrained(self):
+        for expected in ("Unknown", "und", "undetermined", "none", "n/a"):
+            with self.subTest(expected=expected):
+                conflict, msg = _ebook_language_conflict("en-US", expected)
+                self.assertFalse(conflict)
+                self.assertEqual("", msg)
+
     @mock.patch("lazylibrarian.postprocess.get_book_info")
     def test_validate_ebook_embedded_metadata_returns_clean_failure_on_parse_error(self, mock_get_info):
         mock_get_info.side_effect = KeyError("META-INF/container.xml")

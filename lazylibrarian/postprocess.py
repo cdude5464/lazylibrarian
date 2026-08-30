@@ -4384,7 +4384,7 @@ def _ebook_metadata_conflict(
 
 def _normalize_ebook_language(value: str) -> str:
     language = enforce_str(make_unicode(value or "")).strip().casefold().replace("_", "-")
-    if not language:
+    if not language or language in {"unknown", "und", "undetermined", "none", "na", "n/a"}:
         return ""
     primary = language.split("-", 1)[0].strip()
     aliases = {

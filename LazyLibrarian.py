@@ -23,6 +23,7 @@ import time
 
 import lazylibrarian
 from lazylibrarian import startup, webStart
+from lazylibrarian.box_helper_handoff import validate_box_helper_handoff_config
 from lazylibrarian.formatter import thread_name
 from lazylibrarian.cleanup import UNBUNDLER
 
@@ -49,6 +50,9 @@ def main():
     options, configfile = starter.startup_parsecommandline(__file__, args=sys.argv[1:])
     # Load config.ini and initialize CONFIG and DIRS
     starter.load_config(configfile)
+    # Fail closed before schedulers or the web server can start if the durable
+    # qBittorrent producer and lifecycle owner are not paired exactly.
+    validate_box_helper_handoff_config()
     # Read logging config and initialize loggers
     starter.init_loggers(console_only=False)
     # Run initialization that needs CONFIG to be loaded

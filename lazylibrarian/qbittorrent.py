@@ -16,10 +16,13 @@ import time
 from decimal import Decimal, InvalidOperation
 
 from lazylibrarian.config2 import CONFIG
+from lazylibrarian.box_helper_handoff import (
+    POLICY_QUARANTINE_PREFIX,
+    QBITTORRENT_LIFECYCLE_OWNER_ENV,
+    configured_qbittorrent_lifecycle_owner,
+    helper_owns_qbittorrent_lifecycle,
+)
 from lib.qbittorrent import Client, WrongCredentialsError
-
-
-POLICY_QUARANTINE_PREFIX = "BOX_HELPER_POLICY_QUARANTINE:"
 
 
 def get_client():
@@ -209,6 +212,13 @@ def remove_torrent(hashid, remove_data=False):
     dlcommslogger = logging.getLogger('special.dlcomms')
     dlcommslogger.debug(f'remove_torrent({hashid},{remove_data})')
     hashid = hashid.lower()
+    if helper_owns_qbittorrent_lifecycle():
+        owner = configured_qbittorrent_lifecycle_owner()
+        logger.warning(
+            f"Retaining qBittorrent task {hashid[:8]}: lifecycle removal is owned by "
+            f"{owner or 'an invalid external owner'}"
+        )
+        return False
     qbclient = get_client()
     if not qbclient:
         return False

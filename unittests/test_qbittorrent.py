@@ -1,7 +1,7 @@
 from unittest import TestCase
 from unittest.mock import Mock, call, patch
 
-from lazylibrarian import qbittorrent
+from lazylibrarian import box_helper_handoff, download_client, qbittorrent
 
 
 class FakeConfig(dict):
@@ -262,6 +262,111 @@ class QbittorrentProviderShareLimitTest(TestCase):
             ),
             client._post.call_args_list,
         )
+
+    def test_helper_lifecycle_owner_suppresses_torrent_and_payload_deletion(self):
+        for remove_data in (False, True):
+            with (
+                self.subTest(remove_data=remove_data),
+                patch.dict(
+                    'os.environ',
+                    {
+                        box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                            box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+                        box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'helper',
+                    },
+                    clear=True,
+                ),
+                patch.object(qbittorrent, 'get_client') as get_client,
+            ):
+                removed = qbittorrent.remove_torrent('A' * 40, remove_data)
+
+            self.assertFalse(removed)
+            get_client.assert_not_called()
+
+    def test_invalid_external_lifecycle_owner_fails_closed(self):
+        with (
+            patch.dict(
+                'os.environ',
+                {
+                    box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                        box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+                    box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'typo',
+                },
+                clear=True,
+            ),
+            patch.object(qbittorrent, 'get_client') as get_client,
+        ):
+            removed = qbittorrent.remove_torrent('a' * 40, True)
+
+        self.assertFalse(removed)
+        get_client.assert_not_called()
+
+    def test_durable_handoff_requires_exact_helper_owner(self):
+        invalid = (
+            {},
+            {
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                    box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+            },
+            {
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                    box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+                box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: '',
+            },
+            {
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                    box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+                box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'lazylibrarian',
+            },
+            {
+                box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'helper',
+            },
+        )
+        for env in invalid:
+            with self.subTest(env=env), patch.dict('os.environ', env, clear=True):
+                with self.assertRaises(RuntimeError):
+                    box_helper_handoff.validate_box_helper_handoff_config()
+                self.assertTrue(
+                    box_helper_handoff.helper_owns_qbittorrent_lifecycle()
+                )
+
+    def test_exact_durable_handoff_pair_passes_startup_validation(self):
+        env = {
+            box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+            box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'helper',
+        }
+        with patch.dict('os.environ', env, clear=True):
+            self.assertIsNone(
+                box_helper_handoff.validate_box_helper_handoff_config()
+            )
+            self.assertTrue(box_helper_handoff.helper_owns_qbittorrent_lifecycle())
+
+    def test_download_client_delete_task_obeys_helper_lifecycle_owner(self):
+        env = {
+            box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+            box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: 'helper',
+        }
+        with (
+            patch.dict('os.environ', env, clear=True),
+            patch.object(qbittorrent, 'get_client') as get_client,
+        ):
+            download_client.delete_task('QBITTORRENT', 'a' * 40, True)
+
+        get_client.assert_not_called()
+
+    def test_missing_ownership_config_fails_closed_before_qbittorrent_client(self):
+        with (
+            patch.dict('os.environ', {}, clear=True),
+            patch.object(qbittorrent, 'get_client') as get_client,
+        ):
+            with self.assertRaises(RuntimeError):
+                box_helper_handoff.validate_box_helper_handoff_config()
+            removed = qbittorrent.remove_torrent('a' * 40, True)
+
+        self.assertFalse(removed)
+        get_client.assert_not_called()
 
 
 if __name__ == '__main__':

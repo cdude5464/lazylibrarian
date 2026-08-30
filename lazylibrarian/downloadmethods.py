@@ -48,6 +48,11 @@ from lazylibrarian import (
 )
 from lazylibrarian.annas import annas_download
 from lazylibrarian.blockhandler import BLOCKHANDLER
+from lazylibrarian.box_helper_handoff import (
+    BOX_HELPER_HANDOFF_PROTOCOL,
+    DURABLE_OWNED_RESULT,
+    PRE_REJECTED_PREFIX,
+)
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.common import get_user_agent, proxy_list
 from lazylibrarian.config2 import CONFIG
@@ -78,10 +83,6 @@ from lazylibrarian.telemetry import record_usage_data
 from lib.bencode import bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
-
-
-PRE_REJECTED_PREFIX = "BOX_HELPER_PRE_REJECTED:"
-BOX_HELPER_HANDOFF_PROTOCOL = "box-qbit-durable-intent-v1"
 
 
 def box_helper_spool_root():
@@ -1204,8 +1205,13 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
             elif library == 'AudioBook':
                 db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
-            db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=? WHERE NZBurl=?",
-                      (source, download_id, full_url))
+            if source == 'QBITTORRENT':
+                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?,DLResult=? "
+                          "WHERE NZBurl=?",
+                          (source, download_id, DURABLE_OWNED_RESULT, full_url))
+            else:
+                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=? WHERE NZBurl=?",
+                          (source, download_id, full_url))
             if source == 'QBITTORRENT':
                 try:
                     emit_box_helper_spool(

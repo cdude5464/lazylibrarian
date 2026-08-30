@@ -35,6 +35,7 @@ import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.archive_utils import unpack_archive, unpack_multipart
 from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
+from lazylibrarian.box_helper_handoff import wanted_row_is_durable_helper_owned
 from lazylibrarian.cache import ImageType, cache_img
 from lazylibrarian.calibre_integration import send_to_calibre
 from lazylibrarian.common import multibook, run_script
@@ -1514,6 +1515,18 @@ def _filter_rows_for_helper_startdir(
             f"for {startdir}"
         )
     return filtered_rows
+
+
+def _filter_unscoped_durable_helper_rows(rows, logger: logging.Logger):
+    """Keep durable qBittorrent rows exclusively on helper-scoped processing."""
+    retained = [row for row in rows if not wanted_row_is_durable_helper_owned(row)]
+    skipped = len(rows) - len(retained)
+    if skipped:
+        logger.info(
+            f"Skipping {skipped} durable helper-owned qBittorrent "
+            "rows during unscoped postprocess"
+        )
+    return retained
 
 
 def _requires_inner_ebook_match(book_state: BookState, download_dir: str) -> bool:
@@ -3337,8 +3350,12 @@ def _check_and_schedule_next_run(db, logger: logging.Logger, reset: bool) -> Non
     """
 
     # Check if postprocessor needs to run again
-    snatched = db.select("SELECT * from wanted WHERE Status='Snatched'")
-    seeding = db.select("SELECT * from wanted WHERE Status='Seeding'")
+    snatched = _filter_unscoped_durable_helper_rows(
+        db.select("SELECT * from wanted WHERE Status='Snatched'"), logger
+    )
+    seeding = _filter_unscoped_durable_helper_rows(
+        db.select("SELECT * from wanted WHERE Status='Seeding'"), logger
+    )
 
     if not len(snatched) and not len(seeding):
         logger.info("Nothing marked as snatched or seeding. Stopping postprocessor.")
@@ -3386,6 +3403,8 @@ def _manage_download_status(
     incomplete = _filter_rows_for_helper_startdir(
         incomplete, db, helper_startdir, logger
     )
+    if not downloadid:
+        incomplete = _filter_unscoped_durable_helper_rows(incomplete, logger)
     if helper_allowed_identities is not None:
         incomplete = [
             row for row in incomplete
@@ -3649,7 +3668,10 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
                     _wanted_row_identity(row) for row in snatched_books
                 }
         else:
-            snatched_books = db.select("SELECT * from wanted WHERE Status='Snatched'")
+            snatched_books = _filter_unscoped_durable_helper_rows(
+                db.select("SELECT * from wanted WHERE Status='Snatched'"),
+                postprocesslogger,
+            )
 
         postprocesslogger.debug(
             f'Found {len(snatched_books)} {plural(len(snatched_books), "file")} marked "Snatched"'

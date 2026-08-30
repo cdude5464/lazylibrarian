@@ -14,6 +14,7 @@ import zipfile
 from pathlib import Path
 from unittest import mock
 
+from lazylibrarian import box_helper_handoff
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.database import DBConnection
 from lazylibrarian.postprocess import (
@@ -39,6 +40,7 @@ from lazylibrarian.postprocess import (
     _validate_ebook_embedded_metadata,
     _validate_candidate_directory,
     _filter_rows_for_helper_startdir,
+    _filter_unscoped_durable_helper_rows,
     _get_ready_from_snatched,
     _helper_download_id_from_path,
     _helper_startdir_media_counts,
@@ -1999,6 +2001,74 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         self.assertTrue(os.path.exists(book_dir), f"Book directory should exist at {book_dir}")
         epub_files = [f for f in os.listdir(book_dir) if f.endswith('.epub')]
         self.assertEqual(1, len(epub_files))
+        self.assert_status_updated(book_id, 'Processed')
+
+    @mock.patch('lazylibrarian.postprocess.delete_task')
+    @mock.patch('lazylibrarian.postprocess.get_download_folder')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_durable_helper_row_skips_hourly_but_scoped_force_process_imports(
+            self, mock_get_name, mock_get_progress, mock_check_contents,
+            mock_get_folder, mock_delete_task):
+        """Hourly PP cannot race helper ownership; exact helper PP still imports."""
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_folder.return_value = "/mnt/remote/Downloads/books"
+
+        book_id = "durable_helper_book"
+        author_name = "Brynne Weaver"
+        book_name = "Harvest Season"
+        release_name = "Brynne.Weaver.Harvest.Season.2026.RETAiL.EPUB.eBook-NODE"
+        download_id = "a21ca1f67e667ecd50899f508e770e6eb3925923"
+        mock_get_name.return_value = release_name
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(
+            book_id,
+            release_name,
+            "eBook",
+            source="QBITTORRENT",
+            download_id=download_id,
+        )
+        self.db.action(
+            "UPDATE wanted SET DLResult=? WHERE BookID=? AND DownloadID=?",
+            (box_helper_handoff.DURABLE_OWNED_RESULT, book_id, download_id),
+        )
+
+        local_release_dir = os.path.join(
+            self.download_dir,
+            f"lazylibrarian-{download_id}",
+            release_name,
+        )
+        self.create_ebook_file(
+            os.path.join(local_release_dir, "Weaver, Brynne - Harvest Season.epub")
+        )
+        env = {
+            box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL_ENV:
+                box_helper_handoff.BOX_HELPER_HANDOFF_PROTOCOL,
+            box_helper_handoff.QBITTORRENT_LIFECYCLE_OWNER_ENV: "helper",
+        }
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            process_dir(ignoreclient=True)
+
+        unscoped_row = self.db.match(
+            "SELECT Status,DLResult FROM wanted WHERE BookID=? AND DownloadID=?",
+            (book_id, download_id),
+        )
+        self.assertEqual("Snatched", unscoped_row["Status"])
+        self.assertEqual(
+            box_helper_handoff.DURABLE_OWNED_RESULT,
+            unscoped_row["DLResult"],
+        )
+        self.assertNotIn(
+            mock.call("QBITTORRENT", download_id, True),
+            mock_delete_task.call_args_list,
+        )
+
+        with mock.patch.dict(os.environ, env, clear=True):
+            process_dir(startdir=local_release_dir, ignoreclient=True)
+
         self.assert_status_updated(book_id, 'Processed')
 
     @mock.patch('lazylibrarian.postprocess.get_download_folder')

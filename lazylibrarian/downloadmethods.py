@@ -14,6 +14,7 @@
 import json
 import os
 import re
+import tempfile
 import threading
 import time
 import unicodedata
@@ -77,6 +78,60 @@ from lazylibrarian.telemetry import record_usage_data
 from lib.bencode import bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
+
+
+PRE_REJECTED_PREFIX = "BOX_HELPER_PRE_REJECTED:"
+BOX_HELPER_HANDOFF_PROTOCOL = "box-qbit-durable-intent-v1"
+
+
+def box_helper_spool_root():
+    return os.environ.get("BOX_LL_SPOOL_DIR", "/config/scripts/seedbox_spool")
+
+
+def emit_box_helper_spool(download_id, release_title, bookid, library, provider,
+                          handoff_phase, pre_rejected_reason='',
+                          policy_quarantine_reason=''):
+    """Atomically persist exact qBittorrent ownership independently of notifiers."""
+    root = box_helper_spool_root()
+    payload = {
+        'll_eventtype': 'QBit Add Intent' if handoff_phase == 'intent' else 'Snatched',
+        'll_download_id': download_id,
+        'll_download_client': 'QBITTORRENT',
+        'll_release_title': release_title or download_id,
+        'll_book_id': bookid or '',
+        'll_aux_info': library or '',
+        'll_provider': provider or '',
+        'll_mode': 'torrent',
+        'll_handoff_protocol': BOX_HELPER_HANDOFF_PROTOCOL,
+        'll_handoff_phase': handoff_phase,
+    }
+    if pre_rejected_reason:
+        payload['ll_pre_rejected_reason'] = pre_rejected_reason
+    if policy_quarantine_reason:
+        payload['ll_policy_quarantine_reason'] = policy_quarantine_reason
+    final = os.path.join(
+        root, f"{time.time_ns()}-{os.getpid()}-{download_id.lower()}.json"
+    )
+    with tempfile.NamedTemporaryFile(
+            mode='w', prefix='.ll-spool-', delete=False, dir=root, encoding='utf-8') as handle:
+        json.dump(payload, handle, indent=2, sort_keys=True)
+        handle.write('\n')
+        handle.flush()
+        os.fsync(handle.fileno())
+        temporary = handle.name
+    try:
+        os.replace(temporary, final)
+        os.chmod(final, 0o644)
+        directory_fd = os.open(root, os.O_RDONLY)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
+    except Exception:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+        raise
+    return final
 
 
 def _reject_word_tokens(value):
@@ -683,6 +738,7 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
     download_id = False
     source = ''
     torrent = ''
+    policy_quarantine_reason = ''
 
     full_url = tor_url  # keep the url as stored in "wanted" table
     tor_url = make_unicode(tor_url)
@@ -874,6 +930,18 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
 
         if CONFIG.get_bool('TOR_DOWNLOADER_QBITTORRENT') and CONFIG['QBITTORRENT_HOST']:
             source = "QBITTORRENT"
+            if not qbittorrent.provider_share_limits(provider_options):
+                res = "Refusing qBittorrent add without an explicit provider share policy"
+                logger.error(res)
+                return False, res
+            try:
+                emit_box_helper_spool(
+                    hashid, tor_title, bookid, library, provider, 'intent'
+                )
+            except Exception as e:
+                res = f"Mandatory box helper add-intent spool failed before qBittorrent add: {e}"
+                logger.error(res)
+                return False, res
             if torrent:
                 logger.debug(f"Sending {tor_title} data to qBittorrent")
                 status, res = qbittorrent.add_file(torrent, hashid, tor_title, provider_options)
@@ -883,6 +951,10 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 status, res = qbittorrent.add_torrent(tor_url, hashid, provider_options)  # returns True or False
             if status:
                 download_id = hashid
+                if str(res).startswith(qbittorrent.POLICY_QUARANTINE_PREFIX):
+                    policy_quarantine_reason = str(res)[
+                        len(qbittorrent.POLICY_QUARANTINE_PREFIX):
+                    ].strip()
                 tor_title = qbittorrent.get_name(hashid)
 
         if CONFIG.get_bool('TOR_DOWNLOADER_TRANSMISSION') and CONFIG['TRANSMISSION_HOST']:
@@ -1024,6 +1096,32 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                         requested_title = bookdata['BookName']
                     if not requested_author:
                         requested_author = bookdata['AuthorName']
+            if source == 'QBITTORRENT' and policy_quarantine_reason:
+                quarantine_result = (
+                    qbittorrent.POLICY_QUARANTINE_PREFIX + policy_quarantine_reason
+                )
+                db.action("UPDATE wanted SET status='Snatched',DLResult=?,Source=?,DownloadID=? "
+                          "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                          (quarantine_result, source, download_id,
+                           full_url, bookid, library))
+                if library == 'eBook':
+                    db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
+                elif library == 'AudioBook':
+                    db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
+                try:
+                    emit_box_helper_spool(
+                        download_id, tor_title, bookid, library, provider, 'final',
+                        policy_quarantine_reason=policy_quarantine_reason,
+                    )
+                except Exception as e:
+                    res = f"Mandatory box helper policy-quarantine spool failed: {e}"
+                    db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=? "
+                              "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                              (res, source, download_id, full_url, bookid, library))
+                    db.close()
+                    return False, res
+                db.close()
+                return True, quarantine_result
             if tor_title:
                 if make_unicode(download_id).upper() in make_unicode(tor_title).upper():
                     logger.warning(f"{source}: name contains hash, probably unresolved magnet")
@@ -1055,11 +1153,13 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                                                   requested_author=requested_author,
                                                   requested_title=requested_title)
                     if rejected:
-                        db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=? "
-                                  "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
-                                  (rejected, source, download_id, full_url, bookid, library))
+                        protection_warning = ''
                         if source == 'QBITTORRENT':
-                            if not qbittorrent.preserve_rejected_torrent(download_id):
+                            if not qbittorrent.preserve_rejected_torrent(
+                                    download_id, provider_options):
+                                protection_warning = (
+                                    f"; provider share policy for {download_id[:8]} was not verified"
+                                )
                                 logger.error(
                                     f"Rejected torrent {download_id[:8]} was retained, but its private-tracker "
                                     "share limits could not be protected"
@@ -1069,8 +1169,34 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                                 f"Preserving rejected torrent {download_id} in {source} to avoid a "
                                 "private-tracker hit-and-run"
                             )
+                        # The downloader already owns this exact hash. Keep the
+                        # wanted row on the normal Snatched path so resultlist
+                        # emits the configured durable custom snatch spool with
+                        # provider and DownloadID. The box helper then owns the
+                        # rejection lifecycle instead of losing it here.
+                        helper_rejection = rejected + protection_warning
+                        db.action("UPDATE wanted SET status='Snatched',DLResult=?,Source=?,DownloadID=? "
+                                  "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                                  (PRE_REJECTED_PREFIX + helper_rejection, source, download_id,
+                                   full_url, bookid, library))
+                        if library == 'eBook':
+                            db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
+                        elif library == 'AudioBook':
+                            db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
+                        try:
+                            emit_box_helper_spool(
+                                download_id, tor_title, bookid, library, provider, 'final',
+                                pre_rejected_reason=helper_rejection,
+                            )
+                        except Exception as e:
+                            res = f"Mandatory box helper pre-rejection spool failed: {e}"
+                            db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=? "
+                                      "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                                      (res, source, download_id, full_url, bookid, library))
+                            db.close()
+                            return False, res
                         db.close()
-                        return False, rejected
+                        return True, helper_rejection
                     logger.debug(f"{source} setting torrent name to [{tor_title}]")
                     db.action('UPDATE wanted SET NZBtitle=? WHERE NZBurl=?', (tor_title, full_url))
 
@@ -1080,6 +1206,18 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
             db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=? WHERE NZBurl=?",
                       (source, download_id, full_url))
+            if source == 'QBITTORRENT':
+                try:
+                    emit_box_helper_spool(
+                        download_id, tor_title, bookid, library, provider, 'final'
+                    )
+                except Exception as e:
+                    res = f"Mandatory box helper snatch spool failed: {e}"
+                    db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=? "
+                              "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                              (res, source, download_id, full_url, bookid, library))
+                    db.close()
+                    return False, res
             record_usage_data(f'Download/TOR/{source}/Success')
             db.close()
             return True, ''

@@ -13,9 +13,13 @@
 import logging
 import os
 import time
+from decimal import Decimal, InvalidOperation
 
 from lazylibrarian.config2 import CONFIG
 from lib.qbittorrent import Client, WrongCredentialsError
+
+
+POLICY_QUARANTINE_PREFIX = "BOX_HELPER_POLICY_QUARANTINE:"
 
 
 def get_client():
@@ -245,31 +249,30 @@ def remove_torrent(hashid, remove_data=False):
     return False
 
 
-def preserve_rejected_torrent(hashid):
-    """Keep a post-add rejection in qBittorrent long enough to avoid an HnR."""
+def preserve_rejected_torrent(hashid, provider_options):
+    """Keep a post-add rejection under its exact provider share policy."""
     logger = logging.getLogger(__name__)
     dlcommslogger = logging.getLogger('special.dlcomms')
     hashid = hashid.lower()
     qbclient = get_client()
     if not qbclient:
         return False
-    try:
-        qbclient._post(
-            "torrents/setShareLimits",
-            {
-                "hashes": hashid,
-                "ratioLimit": "-1",
-                "seedingTimeLimit": "43200",
-                "inactiveSeedingTimeLimit": "-1",
-            },
+    expected = provider_share_limits(provider_options)
+    if not expected:
+        dlcommslogger.error(
+            f"Rejected torrent {hashid[:8]} has no explicit provider share policy"
         )
-        logger.warning(
-            f"Preserving rejected torrent {hashid[:8]} in qBittorrent for private-tracker seeding"
-        )
-        return True
-    except Exception as e:
-        dlcommslogger.error(f"Failed to protect rejected torrent share limits: {e}")
         return False
+    mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
+    if mismatch:
+        dlcommslogger.error(
+            f"Failed to verify rejected torrent provider share limits: {mismatch}"
+        )
+        return False
+    logger.warning(
+        f"Preserving rejected torrent {hashid[:8]} in qBittorrent under its verified provider policy"
+    )
+    return True
 
 
 def check_link():
@@ -291,6 +294,8 @@ def add_file(data, hashid, title, provider_options):
     dlcommslogger = logging.getLogger('special.dlcomms')
 
     dlcommslogger.debug(f'add_file(data){title}')
+    if not provider_share_limits(provider_options):
+        return False, "Refusing qBittorrent add without an explicit provider share policy"
     hashid = hashid.lower()
     qbclient = get_client()
     if not qbclient:
@@ -315,6 +320,22 @@ def add_file(data, hashid, title, provider_options):
             dlcommslogger.error(f"Failed to add torrent file: {e}")
             return False, str(e)
         if torrent:
+            mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
+            if mismatch:
+                dlcommslogger.warning(
+                    f"qBittorrent provider share limits not verified for {hashid[:8]}: {mismatch}"
+                )
+                if count < 10:
+                    time.sleep(1)
+                    continue
+                warning = quarantine_unverified_provider_torrent(
+                    qbclient, hashid, mismatch
+                )
+                dlcommslogger.error(warning)
+                # The torrent already exists. Report success so LazyLibrarian
+                # records its exact hash and emits normal helper ownership
+                # instead of creating an unmanaged qBittorrent orphan.
+                return True, warning
             # Add explicit pause as qbittorrent v5 seems to ignore start paused arg
             if CONFIG.get_bool('TORRENT_PAUSED'):
                 paused = not qbclient.qbittorrent_version.startswith('v5')
@@ -332,6 +353,8 @@ def add_torrent(link, hashid, provider_options):
     dlcommslogger = logging.getLogger('special.dlcomms')
 
     dlcommslogger.debug(f'add_torrent({link})')
+    if not provider_share_limits(provider_options):
+        return False, "Refusing qBittorrent add without an explicit provider share policy"
 
     qbclient = get_client()
     if not qbclient:
@@ -357,6 +380,19 @@ def add_torrent(link, hashid, provider_options):
             dlcommslogger.error(f" Failed to add torrent: {e}")
             return False, str(e)
         if torrent:
+            mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
+            if mismatch:
+                dlcommslogger.warning(
+                    f"qBittorrent provider share limits not verified for {hashid[:8]}: {mismatch}"
+                )
+                if count < 10:
+                    time.sleep(1)
+                    continue
+                warning = quarantine_unverified_provider_torrent(
+                    qbclient, hashid, mismatch
+                )
+                dlcommslogger.error(warning)
+                return True, warning
             # Add explicit pause as qbittorrent v5 seems to ignore start paused arg
             if CONFIG.get_bool('TORRENT_PAUSED'):
                 paused = not qbclient.qbittorrent_version.startswith('v5')
@@ -370,6 +406,178 @@ def add_torrent(link, hashid, provider_options):
     return False, res
 
 
+def provider_share_limits(provider_options):
+    """Return one explicit qBittorrent policy for a configured provider.
+
+    qBittorrent uses ``-2`` for a limit inherited from its global preferences.
+    Provider-aware torrents must instead send every share-limit field, using
+    ``-1`` for disabled goals, so later HnR lifecycle checks never depend on a
+    mutable global ratio or inactive-seeding policy.
+    """
+    if not isinstance(provider_options, dict) or not any(
+            key in provider_options for key in ("seed_ratio", "seed_duration")):
+        return {}
+
+    def explicit_limit(key, *, whole_number=False):
+        if key not in provider_options:
+            return -1
+        value = provider_options[key]
+        if isinstance(value, bool) or value is None:
+            raise ValueError(f"{key} must be finite, positive, or exactly -1")
+        try:
+            number = Decimal(str(value))
+        except (InvalidOperation, TypeError, ValueError) as error:
+            raise ValueError(
+                f"{key} must be finite, positive, or exactly -1"
+            ) from error
+        if not number.is_finite():
+            raise ValueError(f"{key} must be finite, positive, or exactly -1")
+        if number == -1:
+            return -1
+        if number <= 0 or (whole_number and number != number.to_integral_value()):
+            suffix = " whole minutes" if whole_number else ""
+            raise ValueError(f"{key} must be positive{suffix} or exactly -1")
+        return int(number) if whole_number else float(number)
+
+    try:
+        ratio = explicit_limit("seed_ratio")
+        duration = explicit_limit("seed_duration", whole_number=True)
+    except ValueError as error:
+        logging.getLogger('special.dlcomms').error(
+            f"Invalid explicit qBittorrent provider share policy: {error}"
+        )
+        return {}
+    if ratio == -1 and duration == -1:
+        logging.getLogger('special.dlcomms').error(
+            "Invalid explicit qBittorrent provider share policy: all goals are disabled"
+        )
+        return {}
+    return {
+        "ratioLimit": ratio,
+        "seedingTimeLimit": duration,
+        "inactiveSeedingTimeLimit": -1,
+    }
+
+
+def provider_share_limit_mismatch(qbclient, hashid, provider_options):
+    """Read back and compare the exact per-torrent provider share policy."""
+    expected = provider_share_limits(provider_options)
+    if not expected:
+        return ''
+    return share_limit_mismatch(qbclient, hashid, expected)
+
+
+def share_limit_mismatch(qbclient, hashid, expected):
+    """Compare one already-normalized qBittorrent share-limit mapping."""
+    try:
+        torrents = qbclient.torrents(hashes=hashid.lower())
+    except Exception as e:
+        return f"readback failed: {type(e).__name__} {e}"
+    if not isinstance(torrents, list):
+        return "readback returned an invalid torrent list"
+    matching = [
+        torrent for torrent in torrents if isinstance(torrent, dict)
+        if str(torrent.get('hash', '')).lower() == hashid.lower()
+    ]
+    if len(matching) != 1:
+        return f"readback returned {len(matching)} exact hash rows"
+    torrent = matching[0]
+    checks = (
+        ("ratio_limit", float, float(expected["ratioLimit"])),
+        ("seeding_time_limit", int, int(expected["seedingTimeLimit"])),
+        ("inactive_seeding_time_limit", int, int(expected["inactiveSeedingTimeLimit"])),
+    )
+    mismatches = []
+    for field, converter, wanted in checks:
+        try:
+            actual = converter(torrent.get(field))
+        except (TypeError, ValueError):
+            mismatches.append(f"{field}=missing expected={wanted}")
+            continue
+        if actual != wanted:
+            mismatches.append(f"{field}={actual} expected={wanted}")
+    return ', '.join(mismatches)
+
+
+def set_share_limits(qbclient, hashid, limits):
+    """Write all three qBittorrent share-limit fields to one exact hash."""
+    qbclient._post(
+        "torrents/setShareLimits",
+        {
+            "hashes": hashid.lower(),
+            "ratioLimit": str(limits["ratioLimit"]),
+            "seedingTimeLimit": str(limits["seedingTimeLimit"]),
+            "inactiveSeedingTimeLimit": str(limits["inactiveSeedingTimeLimit"]),
+        },
+    )
+
+
+def repair_provider_share_limits(qbclient, hashid, provider_options):
+    """Apply an exact provider policy after add, then verify its readback."""
+    expected = provider_share_limits(provider_options)
+    if not expected:
+        return ''
+    mismatch = share_limit_mismatch(qbclient, hashid, expected)
+    if not mismatch:
+        return ''
+    try:
+        set_share_limits(qbclient, hashid, expected)
+    except Exception as e:
+        return f"setShareLimits failed: {type(e).__name__} {e}; prior readback: {mismatch}"
+    return share_limit_mismatch(qbclient, hashid, expected)
+
+
+def quarantine_unverified_provider_torrent(qbclient, hashid, provider_mismatch):
+    """Stop and tag an added torrent whose provider policy cannot be verified."""
+    errors = []
+    try:
+        qbclient._post(
+            "torrents/addTags",
+            {"hashes": hashid.lower(), "tags": "ll-policy-quarantine"},
+        )
+    except Exception as e:
+        errors.append(f"quarantine tag failed: {type(e).__name__} {e}")
+    try:
+        qbclient._post(
+            "torrents/setForceStart",
+            {"hashes": hashid.lower(), "value": "false"},
+        )
+    except Exception as e:
+        errors.append(f"force-start clear failed: {type(e).__name__} {e}")
+    try:
+        qbclient._post("torrents/stop", {"hashes": hashid.lower()})
+    except Exception as e:
+        errors.append(f"stop failed: {type(e).__name__} {e}")
+
+    stopped = False
+    for attempt in range(5):
+        try:
+            torrents = qbclient.torrents(hashes=hashid.lower())
+            matching = [
+                torrent for torrent in torrents if isinstance(torrent, dict)
+                if str(torrent.get('hash', '')).lower() == hashid.lower()
+            ] if isinstance(torrents, list) else []
+            if len(matching) == 1:
+                state = str(matching[0].get('state', '')).lower()
+                stopped = state in {'stoppedup', 'stoppeddl', 'pausedup', 'pauseddl'} \
+                    and not bool(matching[0].get('force_start'))
+                if stopped:
+                    break
+        except Exception as e:
+            errors.append(f"stop readback failed: {type(e).__name__} {e}")
+            break
+        if attempt < 4:
+            time.sleep(1)
+    if not stopped:
+        errors.append("stop/non-forced state was not verified")
+    detail = "; ".join(errors) if errors else "stopped and non-forced state verified"
+    return (
+        f"{POLICY_QUARANTINE_PREFIX}qBittorrent provider policy was not verified "
+        f"for {hashid[:8]} ({provider_mismatch}); retained exact hash under "
+        f"helper policy quarantine; {detail}"
+    )
+
+
 def get_args(provider_options):
     """ Get optional arguments based on configuration"""
     args = {'paused': bool(CONFIG.get_bool('TORRENT_PAUSED'))}
@@ -379,9 +587,6 @@ def get_args(provider_options):
     if CONFIG['QBITTORRENT_LABEL']:
         args['category'] = CONFIG['QBITTORRENT_LABEL']
 
-    if "seed_ratio" in provider_options:
-        args['ratioLimit'] = provider_options["seed_ratio"]
-    if "seed_duration" in provider_options:
-        args['seedingTimeLimit'] = provider_options["seed_duration"]
+    args.update(provider_share_limits(provider_options))
 
     return args

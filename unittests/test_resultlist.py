@@ -4,10 +4,16 @@
 #   Test search result selection and rejection.
 
 import sqlite3
+import json
+import os
+import tempfile
+from pathlib import Path
+from unittest.mock import Mock, patch
 
+from lazylibrarian import downloadmethods, qbittorrent, resultlist
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.database import DBConnection
-from lazylibrarian.resultlist import _expected_book_language, find_best_result
+from lazylibrarian.resultlist import _expected_book_language, download_result, find_best_result
 from unittests.unittesthelpers import LLTestCaseWithStartup
 
 
@@ -163,3 +169,111 @@ class ResultListMatchingTest(LLTestCaseWithStartup):
         match = find_best_result([result], self._keeper_book(), "book", "tor")
 
         self.assertIsNone(match)
+
+    def test_qbit_post_add_rejection_emits_mandatory_helper_spool_with_reason(self):
+        book_id = "box-helper-rejected-book"
+        author_id = "box-helper-author"
+        magnet = "magnet:?xt=urn:btih:" + "a" * 40
+        self.db.upsert(
+            "authors",
+            {"AuthorName": "Expected Author", "Status": "Paused"},
+            {"AuthorID": author_id},
+        )
+        self.db.upsert(
+            "books",
+            {
+                "AuthorID": author_id,
+                "BookName": "Expected Book",
+                "Status": "Wanted",
+                "AudioStatus": "Skipped",
+            },
+            {"BookID": book_id},
+        )
+
+        class Setting:
+            def __init__(self, value):
+                self.value = value
+
+        class Provider(dict):
+            def get_item(self, key):
+                return Setting({"SEED_RATIO": 0, "SEED_DURATION": 20160}[key])
+
+        class DownloadConfig:
+            @staticmethod
+            def get_bool(key):
+                return key == "TOR_DOWNLOADER_QBITTORRENT"
+
+            @staticmethod
+            def providers(_kind):
+                return [Provider(NAME="ABT", DISPNAME="ABT", HOST="ABT")]
+
+            @staticmethod
+            def __getitem__(key):
+                return {
+                    "QBITTORRENT_HOST": "qbit",
+                    "REJECT_WORDS": "",
+                }.get(key, "")
+
+        new_value = {
+            "BookID": book_id,
+            "NZBtitle": "Expected Book",
+            "NZBdate": "2026-08-30 12:00:00",
+            "NZBprov": "ABT",
+            "Status": "Wanted",
+            "NZBsize": 1000,
+            "AuxInfo": "eBook",
+            "NZBmode": "magnet",
+        }
+        match = [100, new_value, {"NZBurl": magnet}, 1]
+        book = {"authorName": "Expected Author", "bookName": "Expected Book"}
+        with tempfile.TemporaryDirectory() as temp:
+            def add_after_intent(*_args, **_kwargs):
+                existing = [
+                    json.loads(path.read_text(encoding="utf-8"))
+                    for path in Path(temp).glob("*.json")
+                ]
+                self.assertEqual(len(existing), 1)
+                self.assertEqual(existing[0]["ll_handoff_phase"], "intent")
+                return True, ""
+
+            with (
+            patch.dict(os.environ, {"BOX_LL_SPOOL_DIR": temp}),
+            patch.object(downloadmethods, "CONFIG", DownloadConfig()),
+            patch.object(qbittorrent, "add_torrent", side_effect=add_after_intent),
+            patch.object(qbittorrent, "get_name", return_value="Wrong Author - Wrong Book"),
+            patch.object(qbittorrent, "preserve_rejected_torrent", return_value=True) as preserve,
+            patch.object(downloadmethods, "check_contents", return_value="embedded title mismatch"),
+            patch.object(resultlist, "custom_notify_snatch") as optional_notifier,
+            patch.object(resultlist, "notify_snatch"),
+            patch.object(resultlist, "schedule_job"),
+            ):
+                outcome = download_result(match, book)
+                spool = {
+                    item["ll_handoff_phase"]: item
+                    for item in (
+                        json.loads(path.read_text(encoding="utf-8"))
+                        for path in Path(temp).glob("*.json")
+                    )
+                }
+
+        self.assertEqual(outcome, 2)
+        self.assertEqual(set(spool), {"intent", "final"})
+        self.assertEqual(spool["intent"]["ll_download_id"], "a" * 40)
+        self.assertEqual(spool["final"]["ll_provider"], "ABT")
+        self.assertEqual(
+            spool["final"]["ll_pre_rejected_reason"], "embedded title mismatch"
+        )
+        self.assertEqual(
+            spool["final"]["ll_handoff_protocol"],
+            downloadmethods.BOX_HELPER_HANDOFF_PROTOCOL,
+        )
+        preserve.assert_called_once_with("a" * 40, {"seed_duration": 20160})
+        optional_notifier.assert_called_once_with(f"{book_id} eBook")
+        wanted = self.db.match(
+            "SELECT Status,Source,DownloadID,DLResult FROM wanted WHERE BookID=? AND NZBurl=?",
+            (book_id, magnet),
+        )
+        self.assertEqual(wanted["Status"], "Snatched")
+        self.assertEqual(wanted["Source"], "QBITTORRENT")
+        self.assertEqual(wanted["DownloadID"], "a" * 40)
+        self.assertTrue(wanted["DLResult"].startswith(downloadmethods.PRE_REJECTED_PREFIX))

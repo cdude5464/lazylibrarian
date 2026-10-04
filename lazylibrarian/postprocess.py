@@ -1278,6 +1278,46 @@ def _best_candidate_match(
     return best_percent, best_title
 
 
+def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> bool:
+    """Identify obfuscated helper ebooks by exact DB title/author metadata."""
+    if (book_state.get_book_type_enum() != BookType.EBOOK
+            or not book_state.download_id
+            or _helper_download_id_from_path(filepath).lower() != book_state.download_id.lower()):
+        return False
+    job_root = next((str(parent) for parent in Path(os.path.abspath(filepath)).parents
+                     if _is_helper_job_parent(str(parent), book_state.download_id)), "")
+    if not job_root:
+        return False
+    real_root, real_file = os.path.realpath(job_root), os.path.realpath(filepath)
+    if os.path.commonpath([real_root, real_file]) != real_root:
+        return False
+    # Do not let a nested directory hide other ebook candidates in the same job.
+    ebook_files = _ebook_files_in_directory(job_root, recurse=True)
+    if len(ebook_files) != 1 or os.path.realpath(ebook_files[0]) != real_file:
+        return False
+    db = None
+    try:
+        db = database.DBConnection()
+        author, title = _requested_context_for_content_check(db, book_state.book_id)
+        row = db.match("SELECT BookLang FROM books WHERE BookID=?", (book_state.book_id,))
+        metadata = get_book_info(filepath)
+        if not author or not title or not row:
+            return False
+        author_tokens, title_tokens = match_tokens(author), match_tokens(title)
+        if (not author_tokens or not title_tokens
+                or author_tokens != match_tokens(metadata.get("creator", ""))
+                or title_tokens != match_tokens(metadata.get("title", ""))):
+            return False
+        conflict, _ = _ebook_language_conflict(metadata.get("language", ""), row["BookLang"])
+        return not conflict
+    except Exception:
+        # Filename matching can continue, but unreadable metadata proves nothing.
+        return False
+    finally:
+        if db is not None:
+            db.close()
+
+
 def _file_name_matches_book_state(
     book_state: BookState,
     filepath: str,
@@ -1592,6 +1632,9 @@ def _inner_ebook_match_failure(
 
     if best_matching_file:
         book_state.candidate_matched_file = best_matching_file
+        return ""
+    if len(ebook_files) == 1 and _exact_helper_ebook_metadata_match(book_state, ebook_files[0]):
+        book_state.candidate_matched_file = ebook_files[0]
         return ""
 
     return (
@@ -2209,6 +2252,15 @@ def _try_match_candidate_file(
                 book_state.update_candidate(matched_file, "inner_file_name")
                 is_match = True
                 match_percent = file_match_percent
+
+    # A helper job can contain an obfuscated ebook inside a scene release whose
+    # punctuation makes filename matching fail. Require one file and exact
+    # embedded identity; never broaden the fuzzy threshold or select a collection.
+    if not is_match and path_isdir(book_state.candidate_ptr or ""):
+        ebook_files = _ebook_files_in_directory(book_state.candidate_ptr, recurse=True)
+        if len(ebook_files) == 1 and _exact_helper_ebook_metadata_match(book_state, ebook_files[0]):
+            book_state.update_candidate(ebook_files[0], "inner_file_name")
+            is_match, match_percent = True, 100.0
 
     return is_match, match_percent
 

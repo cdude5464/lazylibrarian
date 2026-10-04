@@ -85,6 +85,33 @@ from lib.bencode import bdecode, bencode
 from .magnet2torrent import magnet2torrent
 
 
+def torrent_provider_options(provider):
+    """Resolve an exact provider identity, allowing only terminal URL slashes.
+
+    Providers report Torznab URLs without the configured trailing slash.
+    Never match a host prefix or silently choose among duplicate identities.
+    """
+    if not provider:
+        return {}
+    matches = []
+    for item in CONFIG.providers('TORZNAB'):
+        host = item['HOST']
+        host_match = (
+            isinstance(provider, str) and provider.startswith(('http://', 'https://'))
+            and isinstance(host, str) and host.rstrip('/') == provider.rstrip('/')
+        )
+        if provider in (item['NAME'], item['DISPNAME']) or host_match:
+            matches.append(item)
+    if len(matches) != 1:
+        return {}
+    options = {}
+    for setting, key in (('SEED_RATIO', 'seed_ratio'), ('SEED_DURATION', 'seed_duration')):
+        value = matches[0].get_item(setting).value
+        if value:
+            options[key] = value
+    return options
+
+
 def box_helper_spool_root():
     return os.environ.get("BOX_LL_SPOOL_DIR", "/config/scripts/seedbox_spool")
 
@@ -883,17 +910,7 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
             logger.debug(f"data: {make_unicode(str(torrent[:50]))}")
             return False, res
 
-        provider_options = {}
-        if provider:
-            for item in CONFIG.providers('TORZNAB'):
-                if item['NAME'] == provider or item['DISPNAME'] == provider or item['HOST'] == provider:
-                    seed_ratio = item.get_item("SEED_RATIO").value
-                    if seed_ratio:
-                        provider_options['seed_ratio'] = seed_ratio
-                    seed_duration = item.get_item("SEED_DURATION").value
-                    if seed_duration:
-                        provider_options['seed_duration'] = seed_duration
-                    break
+        provider_options = torrent_provider_options(provider)
 
         if CONFIG.get_bool('TOR_DOWNLOADER_UTORRENT') and CONFIG['UTORRENT_HOST']:
             logger.debug(f"Sending {tor_title} to Utorrent")

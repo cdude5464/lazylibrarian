@@ -44,7 +44,20 @@ def good_enough(match):
     return bool(match and int(match[0]) >= CONFIG.get_int('MATCH_RATIO'))
 
 
-def warn_mode(mode):
+def warn_mode(mode, search_type=None):
+    # A search may skip every provider in a mode because none supports its media.
+    # Count configured providers here, including blocked ones, so real outages
+    # still warn even when another provider only supports a different media type.
+    if search_type and mode in ['tor', 'direct']:
+        dltype = 'A' if 'audio' in search_type else 'E'
+        names = ['KAT', 'TPB', 'TDL', 'LIME', 'ABB'] if mode == 'tor' else ['BOK', 'ANNA', 'SLSK']
+        compatible = any(CONFIG.get_bool(name) and dltype in CONFIG[f'{name}_DLTYPES']
+                         for name in names)
+        if mode == 'direct' and not compatible:
+            compatible = any(provider.get_bool('ENABLED') and dltype in provider['DLTYPES']
+                             for provider in CONFIG.providers('GEN'))
+        if not compatible:
+            return
     # don't nag. Show warning messages no more than every 20 mins
     logger = logging.getLogger(__name__)
     timenow = int(time.time())
@@ -283,7 +296,7 @@ def search_book(books=None, library=None):
                 if CONFIG.use_tor():
                     resultlist, nprov = iterate_over_torrent_sites(book, searchtype)
                     if not nprov:
-                        warn_mode('tor')
+                        warn_mode('tor', searchtype)
                     elif resultlist:
                         match = find_best_result(resultlist, book, searchtype, 'tor')
                         if not good_enough(match):
@@ -298,7 +311,7 @@ def search_book(books=None, library=None):
                 if CONFIG.use_direct():
                     resultlist, nprov = iterate_over_direct_sites(book, searchtype)
                     if not nprov:
-                        warn_mode('direct')
+                        warn_mode('direct', searchtype)
                     elif resultlist:
                         match = find_best_result(resultlist, book, searchtype, 'direct')
                         if not good_enough(match):
@@ -354,7 +367,7 @@ def search_book(books=None, library=None):
                     if CONFIG.use_tor():
                         resultlist, nprov = iterate_over_torrent_sites(book, f"short{searchtype}")
                         if not nprov:
-                            warn_mode('tor')
+                            warn_mode('tor', searchtype)
                         elif resultlist:
                             match = find_best_result(resultlist, book, searchtype, 'tor')
                             if not good_enough(match):
@@ -370,7 +383,7 @@ def search_book(books=None, library=None):
                     if CONFIG.use_direct():
                         resultlist, nprov = iterate_over_direct_sites(book, f"short{searchtype}")
                         if not nprov:
-                            warn_mode('direct')
+                            warn_mode('direct', searchtype)
                         elif resultlist:
                             match = find_best_result(resultlist, book, searchtype, 'direct')
                             if not good_enough(match):
@@ -464,7 +477,7 @@ def search_book(books=None, library=None):
                     if CONFIG.use_tor():
                         resultlist, nprov = iterate_over_torrent_sites(book, f"title{searchtype}")
                         if not nprov:
-                            warn_mode('tor')
+                            warn_mode('tor', searchtype)
                         elif resultlist:
                             match = find_best_result(resultlist, book, searchtype, 'tor')
                             if not good_enough(match):
@@ -480,7 +493,7 @@ def search_book(books=None, library=None):
                     if CONFIG.use_direct():
                         resultlist, nprov = iterate_over_direct_sites(book, f"title{searchtype}")
                         if not nprov:
-                            warn_mode('direct')
+                            warn_mode('direct', searchtype)
                         elif resultlist:
                             match = find_best_result(resultlist, book, searchtype, 'direct')
                             if not good_enough(match):

@@ -175,6 +175,10 @@ def _failed_source_retryable(row, auxinfo, author='', title=''):
     if status != 'Failed':
         return False
     result = result.lower()
+    # A pre-add configuration refusal says nothing about source quality.
+    # Reconsider it after configuration repair; download policy gates still run.
+    if result == 'refusing qbittorrent add without an explicit provider share policy':
+        return True
     if provider == 'annas' and (
             'fast-download limit reached' in result
             or 'rate limited' in result

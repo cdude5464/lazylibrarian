@@ -7,6 +7,7 @@
 #    Should not depend on any other LazyLibrarian files, except ConfigDict
 
 import logging
+import ntpath
 import os
 import shutil
 import sys
@@ -168,55 +169,32 @@ def splitext(name: str) -> tuple[str, str]:
 
 
 WINDOWS_MAGIC_PREFIX = '\\\\?\\'
+# Windows paths this long fail unless LongPathsEnabled is set, which it isn't by default.
+# Directories have the lower limit, MAX_PATH (260) less room for an 8.3 file name.
+WINDOWS_MAX_PATH = 248
 
 
 def syspath(path: str | bytes, prefix: bool = True) -> str:
-    """Convert a path for use by the operating system. In particular,
-    paths on Windows must receive a magic prefix and must be converted
-    to Unicode before they are sent to the OS. To disable the magic
-    prefix on Windows, set `prefix` to False---but only do this if you
-    *really* know what you're doing.
+    """Convert a path for use by the operating system. Only Windows needs anything:
+    paths too long for MAX_PATH get the magic prefix, which lifts the limit.
+    The prefix turns off path normalisation, so the path is made absolute with backslashes first.
+    Shorter paths are returned unchanged. Set `prefix` to False to never add it.
     """
     DIRS.permlogger.debug(f"{os.path.__name__}:{sys.version[0:5]} [{repr(path)}] {isinstance(path, str)}")
 
     if os.path.__name__ != 'ntpath':
         return path
 
-    if not isinstance(path, str):
-        # Beets currently represents Windows paths internally with UTF-8
-        # arbitrarily. But earlier versions used MBCS because it is
-        # reported as the FS encoding by Windows. Try both.
-        try:
-            # if path is _not_ a string, ie bytes
-            # noinspection PyUnresolvedReferences
-            path = path.decode('utf-8')
-        except UnicodeError:
-            # The encoding should always be MBCS, Windows' broken
-            # Unicode representation.
-            encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
-            path = path.decode(encoding, 'replace')
-
-    if 1 < len(path) < 4 and path[1] == ':':  # it's just a drive letter (E: or E:/)
+    path = os.fsdecode(path)
+    if not prefix or len(path) < WINDOWS_MAX_PATH or path.startswith(WINDOWS_MAGIC_PREFIX):
         return path
 
-    # the html cache addressing uses forwardslash as a separator but Windows file system needs backslash
-    s = path.find(DIRS.CACHEDIR)
-    if s >= 0 and '/' in path:
-        path = path.replace('/', '\\')
-        # logger.debug("cache path changed [%s] to [%s]" % (opath, path))
-
-    if not path.startswith('.') and prefix and not path.startswith(WINDOWS_MAGIC_PREFIX):
-        # Don't affect relative paths
-        # Add the magic prefix if it isn't already there.
-        # http://msdn.microsoft.com/en-us/library/windows/desktop/aa365247.aspx
-        # The prefix turns off path normalisation, so forward slashes are no longer separators
-        path = path.replace('/', '\\')
-        if path.startswith('\\\\'):
-            # UNC path. Final path should look like \\?\UNC\...
-            path = f"UNC{path[1:]}"
-        path = WINDOWS_MAGIC_PREFIX + path
-
-    return path
+    # https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
+    path = ntpath.abspath(path)
+    if path.startswith('\\\\'):
+        # UNC path. Final path should look like \\?\UNC\...
+        return f"{WINDOWS_MAGIC_PREFIX}UNC{path[1:]}"
+    return WINDOWS_MAGIC_PREFIX + path
 
 
 def remove_file(name: str) -> bool:

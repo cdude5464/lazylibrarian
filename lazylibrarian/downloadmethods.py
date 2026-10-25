@@ -494,11 +494,9 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             _ = make_dirs(destdir)
         _, extn = splitext(filename)
         destfile = os.path.join(destdir, basename + extn)
-        if os.name == 'nt':  # Windows has max path length of 256
-            destfile = '\\\\?\\' + destfile
         logger.debug(f"Saving as {destfile}")
         try:
-            with open(destfile, "wb") as bookfile:
+            with open(syspath(destfile), "wb") as bookfile:
                 bookfile.write(filecontent)
         except Exception as e:
             res = f"{type(e).__name__} writing book to {destfile}, {e}"
@@ -621,9 +619,6 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
                 hashid = sha1(bencode(dl_url)).hexdigest()
 
             destfile = os.path.join(destdir, basename + '.' + extn)
-
-            if os.name == 'nt':  # Windows has max path length of 256
-                destfile = '\\\\?\\' + destfile
 
             db = database.DBConnection()
             try:

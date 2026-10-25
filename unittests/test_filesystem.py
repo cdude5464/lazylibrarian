@@ -39,17 +39,23 @@ class FilesystemTest(LLTestCaseWithConfigandDIRS):
 
     def test_syspath(self):
         """ Test that syspath returns a proper path in both Linux and Windows"""
+        long = 'a' * filesystem.WINDOWS_MAX_PATH
         paths_input_windows = [
-            ['', '\\\\?\\'],
-            ['simple', '\\\\?\\simple'],
+            # Paths that fit in MAX_PATH go to the OS as they are
+            ['', ''],
+            ['simple', 'simple'],
             ['./relative/path', './relative/path'],
-            ['/absolute/path', '\\\\?\\\\absolute\\path'],
-            ['C:/Users/x/config.ini', '\\\\?\\C:\\Users\\x\\config.ini'],
-            [b'not a string', '\\\\?\\not a string'],
+            ['/absolute/path', '/absolute/path'],
+            ['C:/Users/x/config.ini', 'C:/Users/x/config.ini'],
+            [b'not a string', 'not a string'],
             ['D:\\', 'D:\\'],
-            ['\\\\SERVER\\SHARE\\dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
-            ['\\\\SERVER\\SHARE/dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
-            ['//SERVER/SHARE/dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
+            ['\\\\SERVER\\SHARE/dir', '\\\\SERVER\\SHARE/dir'],
+            # Longer ones get the prefix, after making them absolute with backslashes
+            [f'C:/Users/{long}', f'\\\\?\\C:\\Users\\{long}'],
+            [f'C:\\Users\\x\\..\\{long}', f'\\\\?\\C:\\Users\\{long}'],
+            [f'\\\\SERVER\\SHARE/{long}', f'\\\\?\\UNC\\SERVER\\SHARE\\{long}'],
+            [f'//SERVER/SHARE/{long}', f'\\\\?\\UNC\\SERVER\\SHARE\\{long}'],
+            [f'\\\\?\\C:\\{long}', f'\\\\?\\C:\\{long}'],
         ]
         with mock.patch('os.path.__name__', 'posixpath'):
             for path1, _ in paths_input_windows:
@@ -58,6 +64,7 @@ class FilesystemTest(LLTestCaseWithConfigandDIRS):
         with mock.patch('os.path.__name__', 'ntpath'):
             for path1, path2 in paths_input_windows:
                 self.assertEqual(filesystem.syspath(path1), path2)
+            self.assertEqual(filesystem.syspath(f'C:/{long}', prefix=False), f'C:/{long}')
 
     # Tests for set_datadir
 

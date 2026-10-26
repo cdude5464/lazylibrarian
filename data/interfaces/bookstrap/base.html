@@ -363,6 +363,14 @@
                 %if perm&lazylibrarian.perm_config:
                   <li><a id="config" href="config" class="navbarcfg"><i class="fa fa-cog"></i> ${_('Config')}</a></li>
                 % endif
+                %if perm&lazylibrarian.perm_config:
+                  <li><a id="whatsnew" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
+                  <span class="visible-xs-inline">${_("What's new") | h}</span>
+                  %if lazylibrarian.WHATS_NEW:
+                    <span class="badge">${len(lazylibrarian.WHATS_NEW)}</span>
+                  %endif
+                  </a></li>
+                %endif
                 <li><a id="help" href="help" target="_new"><i class="fa fa-question-circle"></i> ${_('Help')}</a></li>
                 %if perm > 0:
                   %if CONFIG['USER_ACCOUNTS']:
@@ -485,6 +493,36 @@
           $(document).on('click', '#translateYes', function() { hideTranslateNotice(this, 30); });
           $(document).on('click', '#translateNo', function(e) { e.preventDefault(); hideTranslateNotice(this, 365); });
         }
+        %endif
+
+        %if perm&lazylibrarian.perm_config and lazylibrarian.WHATS_NEW:
+        <%
+            news = lazylibrarian.WHATS_NEW
+            news_count = len(news)
+        %>
+        var newsMsg = '<div>' + ${js(ngettext('One change since you last looked:', '%(count)d changes since you last looked:', news_count) % {'count': news_count})} + '<ul>';
+        %for item in news[:5]:
+        newsMsg += '<li>' + ${js(item['html'])} + '</li>';
+        %endfor
+        newsMsg += '</ul><a href="whats_new" class="btn btn-xs btn-primary">' + ${_js("What's new")} + '</a>&nbsp;' +
+            '<a href="#" class="btn btn-xs btn-primary" id="whatsNewSeen">' + ${_js('Dismiss')} + '</a></div>';
+        $.notify({
+            icon: "images/ll48.png",
+            title: '<strong>' + ${_js('LazyLibrarian updated')} + '</strong>',
+            message: newsMsg
+        },{
+            icon_type: 'image',
+            type: 'info',
+            delay: 0,
+            // shown until closed, closing marks the running version as seen
+            onClose: function() {
+                $.post('whats_new_seen', function() { $('#whatsnew .badge').remove(); });
+            }
+        });
+        $(document).on('click', '#whatsNewSeen', function(e) {
+            e.preventDefault();
+            $(this).closest('[data-notify="container"]').find('[data-notify="dismiss"]').click();
+        });
         %endif
 
         $('#ignoreTelemetry').click(function() {

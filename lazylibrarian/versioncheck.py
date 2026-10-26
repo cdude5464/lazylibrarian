@@ -25,7 +25,7 @@ from shutil import move, rmtree
 from curl_cffi import requests
 
 import lazylibrarian
-from lazylibrarian import database, version
+from lazylibrarian import database, version, whatsnew
 from lazylibrarian.common import dbbackup, docker, proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, listdir, path_isdir, syspath
@@ -271,6 +271,10 @@ def check_for_updates():
     # lazylibrarian.CONFIG['CURRENT_VERSION'] = 'testing'
 
     logger.debug(f"Update check complete. Behind {CONFIG['COMMITS_BEHIND']}")
+    try:
+        whatsnew.check_whats_new()
+    except Exception as err:
+        logger.warning(f"What's new check failed: {type(err).__name__} {err}")
     db = database.DBConnection()
     columns = db.match('PRAGMA table_info(jobs)')
     if columns:

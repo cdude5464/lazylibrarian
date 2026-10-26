@@ -1160,7 +1160,9 @@
             // show what that is, matching anna_search_languages() and zlib_search_languages()
             const chips = $("#langpicker .langchip.btn-primary");
             const all = unique.some(code => code.toLowerCase() === "all");
-            const anna = all ? [] : chips.map(function() { return $(this).data("anna"); }).get().filter(code => code);
+            // a language Annas Archive doesn't support searches all languages, so it isn't dropped
+            const annaCodes = chips.map(function() { return $(this).data("anna"); }).get();
+            const anna = all || annaCodes.some(code => !code) ? [] : annaCodes;
             const zlib = all ? [] : chips.map(function() { return $(this).data("zlib"); }).get();
             $.each({"#anna_search_lang": anna, "#bok_search_lang": zlib}, function(id, langs) {
                 const field = $(id);

@@ -31,6 +31,7 @@ PIDFILE = ''  # If running as a daemon, the name of the file holding the PID
 SYS_ENCODING = ''  # A copy of CONFIG['SYS_ENCODING'] that can be overridden
 LOGINUSER = None  # UserID of currently logged-in user, if any
 COMMIT_LIST = ''  # List of git commits since last update. If it includes "**MANUAL**", don't update.
+WHATS_NEW = []  # Changes since the version the user last saw, see whatsnew.py
 SHOWLOGOUT = 1  # If 1, the Logout option is shown in the UI.
 REQUESTSLOG = 0  # If 1, sets http.client.HTTPConnection.debuglevel=1.
 DOCKER = False  # Set to True if we discover LL is running inside of Docker

@@ -517,7 +517,9 @@ def annas_download(md5, folder, title, extn, domain_index=0):
 def anna_search(book=None, searchtype='ebook', test=False):
     logger = logging.getLogger(__name__)
     provider = "annas"
-    languages = anna_languages(anna_search_languages(CONFIG['ANNA_SEARCH_LANG'], CONFIG['IMP_PREFLANG']))
+    # iterate_over_direct_sites() passes comics as 'ebook', the original search type is in the book
+    languages = anna_languages(anna_search_languages(CONFIG['ANNA_SEARCH_LANG'], CONFIG['IMP_PREFLANG'],
+                                                     (book or {}).get('searchtype') or searchtype))
 
     if BLOCKHANDLER.is_blocked(provider):
         if test:

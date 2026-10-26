@@ -6,6 +6,8 @@
 #    others the English name) so each language in the picker stands for all of its codes,
 #    and selecting it adds every code to IMP_PREFLANG.
 
+import logging
+
 from lazylibrarian import i18n
 from lazylibrarian.formatter import get_list
 from lazylibrarian.i18n import N_
@@ -131,22 +133,38 @@ def _search_languages(preflang: str) -> list | None:
     return [(name, codes) for _, name, codes in sorted(found)]
 
 
-def anna_search_languages(anna_search_lang: str, preflang: str) -> str:
-    """ ANNA_SEARCH_LANG, or when it's empty (automatic) the Import languages Anna's Archive supports.
-        ANY if none of them are, as searching a language we don't want is better than finding nothing """
+# Magazines and comics have a language of their own, not the Import languages,
+# so automatic search languages search them in all languages
+ALL_LANGUAGE_SEARCHES = ('mag', 'comic')
+
+
+def anna_search_languages(anna_search_lang: str, preflang: str, searchtype: str = '') -> str:
+    """ ANNA_SEARCH_LANG, or when it's empty (automatic) the Import languages for Anna's Archive.
+        ANY for magazines and comics, and when an Import language isn't one Anna's Archive
+        supports: leaving it out would drop that language without a word, and searching a
+        language we don't want is better than finding nothing """
     if anna_search_lang.strip():
         return anna_search_lang
+    if searchtype in ALL_LANGUAGE_SEARCHES:
+        return 'ANY'
     from lazylibrarian.annas import Language as AnnaLanguage
 
-    codes = [codes[0].upper() for _, codes in _search_languages(preflang) or []]
-    return ', '.join(code for code in codes if code in AnnaLanguage.__members__) or 'ANY'
+    languages = _search_languages(preflang) or []
+    unsupported = [name for name, codes in languages if codes[0].upper() not in AnnaLanguage.__members__]
+    if unsupported:
+        logging.getLogger(__name__).debug(
+            f"Annas Archive doesn't support {', '.join(unsupported)}, searching all languages")
+        return 'ANY'
+    return ', '.join(codes[0].upper() for _, codes in languages) or 'ANY'
 
 
-def zlib_search_languages(bok_search_lang: str, preflang: str) -> str:
+def zlib_search_languages(bok_search_lang: str, preflang: str, searchtype: str = '') -> str:
     """ BOK_SEARCH_LANG, or when it's empty (automatic) the Import languages as Z-Library names.
-        ANY if they don't limit the language """
+        ANY for magazines and comics, and if they don't limit the language """
     if bok_search_lang.strip():
         return bok_search_lang
+    if searchtype in ALL_LANGUAGE_SEARCHES:
+        return 'ANY'
     return ', '.join(name.lower() for name, _ in _search_languages(preflang) or []) or 'ANY'
 
 

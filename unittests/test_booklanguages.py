@@ -123,8 +123,9 @@ class BookLanguagesTest(unittest.TestCase):
         # empty means automatic, from the import languages in their order
         self.assertEqual(anna_search_languages('', 'sk, slo, Slovak, cs, cze, Czech, Unknown'), 'SK, CS')
         self.assertEqual(anna_search_languages(' ', 'cs, sk'), 'CS, SK')
-        # languages Anna's Archive doesn't have are skipped, ANY if none are left
-        self.assertEqual(anna_search_languages('', 'cy, de'), 'DE')
+        # a language Anna's Archive doesn't have searches all languages, it isn't dropped
+        self.assertEqual(anna_search_languages('', 'cy, de'), 'ANY')
+        self.assertEqual(anna_search_languages('', 'da, dan, Danish, en, eng, English'), 'ANY')
         self.assertEqual(anna_search_languages('', 'Welsh, Unknown'), 'ANY')
         # import languages that don't limit the language
         self.assertEqual(anna_search_languages('', 'All, sk'), 'ANY')
@@ -139,6 +140,18 @@ class BookLanguagesTest(unittest.TestCase):
         self.assertEqual(zlib_search_languages('', 'sk, slo, Slovak, cs, cze, Czech, Unknown'), 'slovak, czech')
         self.assertEqual(zlib_search_languages('', 'Unknown'), 'ANY')
         self.assertEqual(zlib_search_languages('', 'all'), 'ANY')
+
+    def test_magazines_search_all_languages(self):
+        # magazines and comics have their own language, automatic doesn't limit them to the import languages
+        for searchtype in ('mag', 'comic'):
+            self.assertEqual(anna_search_languages('', 'en, eng, English', searchtype), 'ANY')
+            self.assertEqual(zlib_search_languages('', 'en, eng, English', searchtype), 'ANY')
+        # books still search the import languages
+        self.assertEqual(anna_search_languages('', 'en, eng, English', 'book'), 'EN')
+        self.assertEqual(zlib_search_languages('', 'en, eng, English', 'book'), 'english')
+        # an entered value is used for magazines too
+        self.assertEqual(anna_search_languages('DE', 'en', 'mag'), 'DE')
+        self.assertEqual(zlib_search_languages('german', 'en', 'mag'), 'german')
 
     def test_zlib_override(self):
         self.assertEqual(zlib_search_languages('english', 'sk, cs'), 'english')

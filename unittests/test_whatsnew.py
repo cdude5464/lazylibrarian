@@ -5,6 +5,7 @@
 #   Docker and source installs get a new version from outside, so the update check
 #   finds nothing; whatsnew compares the running version with WHATS_NEW_SEEN.
 
+import os
 from unittest import mock
 
 import lazylibrarian
@@ -233,3 +234,12 @@ class WhatsNewTest(LLTestCase):
             self.assertEqual(whatsnew.branch(), 'master')
         with mock.patch.object(whatsnew, 'CONFIG', config(GIT_BRANCH='')):
             self.assertEqual(whatsnew.branch(), 'master')
+
+    def test_bell_has_a_label_in_the_phone_menu(self):
+        # on small screens the header turns into a drop-down list, where a bare bell sits on its own row
+        base = os.path.join(os.path.dirname(__file__), '..', 'data', 'interfaces', 'bookstrap', 'base.html')
+        with open(base, encoding='utf-8') as f:
+            page = f.read()
+        bell = page[page.index('id="whatsnew"'):]
+        bell = bell[:bell.index('</a>')]
+        self.assertIn('<span class="visible-xs-inline">${_("What\'s new") | h}</span>', bell)

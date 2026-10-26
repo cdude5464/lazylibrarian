@@ -3932,14 +3932,15 @@
                     <label for="anna_search_lang" class="control=label">${_('Annas Archive Search Languages:')}</label>
                     <input type="text" id="anna_search_lang" name="anna_search_lang" value="${CONFIG['ANNA_SEARCH_LANG'] | h}" class="form-control"
                       placeholder="${_('Automatic: %s') % config['anna_auto'] | h}" data-auto="${_('Automatic: %s') | h}">
-                    <span class="help-block">${_('Leave empty to search the Import languages above.')}<br/>
-                      ${_('Anything entered here replaces the Import languages for Annas Archive: comma separated language codes, e.g: EN, DE, or ANY for all languages.')}</span>
+                    <span class="help-block">${_('Leave empty to search the Import languages above. Magazines and comics are searched in all languages.')}<br/>
+                      ${_('Anything entered here replaces the Import languages for Annas Archive: comma separated language codes, e.g: EN, DE, or ANY for all languages.')}<br/>
+                      ${_('If one of the Import languages is not supported by Annas Archive, it searches all languages.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="bok_search_lang" class="control=label">${_('Z-Library Search Languages:')}</label>
                     <input type="text" id="bok_search_lang" name="bok_search_lang" value="${CONFIG['BOK_SEARCH_LANG'] | h}" class="form-control"
                       placeholder="${_('Automatic: %s') % config['zlib_auto'] | h}" data-auto="${_('Automatic: %s') | h}">
-                    <span class="help-block">${_('Leave empty to search the Import languages above.')}<br/>
+                    <span class="help-block">${_('Leave empty to search the Import languages above. Magazines and comics are searched in all languages.')}<br/>
                       ${_('Anything entered here replaces the Import languages for Z-Library: comma separated language names, e.g: spanish, german, or ANY for all languages.')}</span>
                   </div>
                   <div class="form-group" id="lang_refresh_options">

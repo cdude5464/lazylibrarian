@@ -150,7 +150,8 @@ def direct_bok(book=None, prov=None, test=False):
 
     try:
         # full language names, lower case, eg spanish, german, or ANY
-        langs = zlib_search_languages(CONFIG['BOK_SEARCH_LANG'], CONFIG['IMP_PREFLANG'])
+        langs = zlib_search_languages(CONFIG['BOK_SEARCH_LANG'], CONFIG['IMP_PREFLANG'],
+                                      book.get('searchtype', ''))
         if langs.strip().upper() == 'ANY':
             langs = None
         lazylibrarian.test_data = f"Searching {provider}"

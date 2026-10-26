@@ -192,7 +192,8 @@ def valid_ident(ident: str) -> bool:
 
 def safe_filename(name: str) -> str:
     """ Reduce an uploader supplied name to a single path component """
-    # sanitize keeps ':' on windows, which would make "D:x" a drive relative path
+    # ':' would make "D:x" a drive relative path on Windows. sanitize() removes it, but only while
+    # filename_dict has it, and dicts.json can be edited, so make sure
     name = sanitize((name or '').replace('\\', '/').split('/')[-1]).replace(':', '')
     return '' if name in ('.', '..') else name
 

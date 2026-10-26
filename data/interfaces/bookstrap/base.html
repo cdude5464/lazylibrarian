@@ -365,6 +365,7 @@
                 % endif
                 %if perm&lazylibrarian.perm_config:
                   <li><a id="whatsnew" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
+                  <span class="visible-xs-inline">${_("What's new") | h}</span>
                   %if lazylibrarian.WHATS_NEW:
                     <span class="badge">${len(lazylibrarian.WHATS_NEW)}</span>
                   %endif

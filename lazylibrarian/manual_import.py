@@ -395,6 +395,7 @@ def process_issues(source_dir=None, title=""):
                     if (
                         word not in title_words
                         and word not in nouns
+                        and unaccented(word).lower() not in nouns  # season names are stored without accents
                         and not word.isdigit()
                     ):
                         cleanword = unaccented(word).lower()

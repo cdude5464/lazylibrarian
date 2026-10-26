@@ -186,6 +186,7 @@ from lazylibrarian.manual_import import (
 )
 from lazylibrarian.manualbook import search_item
 from lazylibrarian.metadata_opf import create_opf
+from lazylibrarian.monthlanguages import SEASON_NAMES, month_language_picker
 from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
 from lazylibrarian.oldump import update_openlibrary_dump
 from lazylibrarian.opds import OPDS
@@ -2333,7 +2334,8 @@ class WebInterface:
         months = {}
         try:
             for cnt, itm in enumerate(lazylibrarian.MONTHNAMES[0]):
-                months[cnt] = ', '.join(itm)
+                # each language is in the table twice, for its long and short names, show it once
+                months[cnt] = ', '.join(itm[::2] if cnt == 0 else itm)
         except Exception as e:
             logger.error(f"Unable to load monthnames: {e}")
             logger.error(f"{lazylibrarian.MONTHNAMES}")
@@ -2349,6 +2351,10 @@ class WebInterface:
         except Exception as e:
             logger.error(f"Unable to load seasons: {e}")
             logger.error(f"{lazylibrarian.SEASONS}")
+        # the month name languages add their season names to these months, so they always get a field
+        for month in {month for names in SEASON_NAMES.values() for month in names.values()}:
+            seasons.setdefault(month, '')
+        seasons = dict(sorted(seasons.items()))
 
         namevars = name_vars('test')
         testvars = {}
@@ -2363,6 +2369,8 @@ class WebInterface:
             "namevars": testvars,
             "seasons": seasons,
             "months": months,
+            "month_languages": month_language_picker(lazylibrarian.MONTHNAMES[0] if lazylibrarian.MONTHNAMES else [],
+                                                     browser_languages()),
             "book_languages": language_picker(CONFIG['IMP_PREFLANG'], browser_languages()),
             "gb_countries": country_picker(CONFIG['GB_COUNTRY']),
             "mag_languages": magazine_language_picker(CONFIG['PREF_MAGLANG']),
@@ -2473,6 +2481,9 @@ class WebInterface:
             month_names = kwargs.get(key, '')
             if month_names:
                 new_months.append(get_list(month_names, ','))
+        # the Languages row has each language once, the table has it for the long and the short names
+        if len(new_months) > 1 and len(new_months[0]) * 2 == len(new_months[1]):
+            new_months[0] = [lang for lang in new_months[0] for _ in range(2)]
         if new_months != lazylibrarian.MONTHNAMES[0]:
             logger.debug("MONTHNAMES has changed")
             if not validate_monthtable(new_months):
@@ -2499,7 +2510,8 @@ class WebInterface:
                 season_names = kwargs[key]
                 season_value = check_int(key.split('_')[1], 0)
                 for itm in get_list(season_names):
-                    new_seasons[itm] = season_value
+                    # month2num matches season names without accents and lowercase
+                    new_seasons[unaccented(itm).lower()] = season_value
         if new_seasons != lazylibrarian.SEASONS:
             logger.debug("SEASONS has changed")
             lazylibrarian.SEASONS = new_seasons.copy()

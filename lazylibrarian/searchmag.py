@@ -348,7 +348,9 @@ def search_magazines(mags=None, reset=False, backissues=False):
                                     nouns.extend(list(lazylibrarian.SEASONS.keys()))
                                     nouns = set(nouns)
                                     for word in lower_title:
-                                        if word not in lower_bookid and word not in nouns and not word.isdigit():
+                                        # season names are stored without accents
+                                        if (word not in lower_bookid and word not in nouns
+                                                and unaccented(word).lower() not in nouns and not word.isdigit()):
                                             valid = False
                                             for f in range(1, 13):
                                                 if (word in lazylibrarian.MONTHNAMES[0][f] or

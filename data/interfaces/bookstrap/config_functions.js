@@ -1142,9 +1142,8 @@
         function updatePreflang() {
             const codes = [];
             $("#langpicker .langchip.btn-primary").each(function() {
-                codes.push(...$(this).data("codes").split(","));
+                codes.push(...String($(this).data("codes")).split(","));
             });
-            codes.push(...$("#imp_preflang_other").val().split(","));
             const seen = new Set();
             const unique = codes.map(code => code.trim()).filter(code => {
                 const key = code.toLowerCase();
@@ -1160,17 +1159,21 @@
             // show what that is, matching anna_search_languages() and zlib_search_languages()
             const chips = $("#langpicker .langchip.btn-primary");
             const all = unique.some(code => code.toLowerCase() === "all");
+            // All, Unknown and codes the picker doesn't know have no Z-Library name, they aren't
+            // languages of either site, as in anna_search_languages() and zlib_search_languages()
+            const languages = chips.filter(function() { return $(this).data("zlib"); });
             // a language Annas Archive doesn't support searches all languages, so it isn't dropped
-            const annaCodes = chips.map(function() { return $(this).data("anna"); }).get();
+            const annaCodes = languages.map(function() { return $(this).data("anna"); }).get();
             const anna = all || annaCodes.some(code => !code) ? [] : annaCodes;
-            const zlib = all ? [] : chips.map(function() { return $(this).data("zlib"); }).get();
+            const zlib = all ? [] : languages.map(function() { return $(this).data("zlib"); }).get();
             $.each({"#anna_search_lang": anna, "#bok_search_lang": zlib}, function(id, langs) {
                 const field = $(id);
                 field.attr("placeholder", field.data("auto").replace("%s", langs.length ? langs.join(", ") : "ANY"));
             });
         }
 
-        $("#langpicker .langchip").on("click", function() {
+        // delegated, so codes added below work like the other chips
+        $("#langpicker").on("click", ".langchip", function() {
             const selected = !$(this).hasClass("btn-primary");
             if (selected) {
                 // keep selected languages in the order they were picked
@@ -1185,7 +1188,31 @@
                 .attr("aria-pressed", selected ? "true" : "false");
             updatePreflang();
         });
-        $("#imp_preflang_other").on("input", updatePreflang);
+
+        // a code the picker doesn't know becomes a chip of its own, Enter must not submit the form
+        $("#langpicker_add").on("keydown", function(e) {
+            if (e.key !== "Enter") {
+                return;
+            }
+            e.preventDefault();
+            const code = $(this).val().replace(/,/g, " ").trim();
+            $(this).val("");
+            if (!code) {
+                return;
+            }
+            const existing = $("#langpicker .langchip").filter(function() {
+                return String($(this).data("codes")).split(",").some(item => item.trim().toLowerCase() === code.toLowerCase());
+            });
+            if (existing.length) {
+                if (!existing.first().hasClass("btn-primary")) {
+                    existing.first().removeClass("hidden").trigger("click");
+                }
+                return;
+            }
+            $("<button>", {type: "button", "class": "btn btn-default langchip", title: code, "aria-pressed": "false"})
+                .attr({"data-codes": code, "data-anna": "", "data-zlib": ""}).text(code)
+                .insertBefore($(this).parent()).trigger("click");
+        });
 
         // GoogleBooks countries are sent as codes, show their names in the UI language, sorted by name
         try {
@@ -1200,10 +1227,11 @@
             // older browsers keep the codes
         }
 
-        $("#langpicker_more").on("click", function(e) {
+        // used by the import and the month name language pickers
+        $(".langpicker-more a").on("click", function(e) {
             e.preventDefault();
             const label = $(this).find("span");
-            const more = $("#langpicker .langchip-more");
+            const more = $($(this).data("picker")).find(".langchip-more");
             const showing = $(this).find("i").hasClass("fa-chevron-down");
             // languages selected while expanded stay visible
             more.filter(showing ? "*" : ":not(.btn-primary)").toggleClass("hidden", !showing);
@@ -1211,6 +1239,150 @@
             label.text($(this).data("less"));
             $(this).data("less", text);
             $(this).find("i").toggleClass("fa-chevron-down", !showing).toggleClass("fa-chevron-up", showing);
+        });
+    }
+
+    function initMonthLanguagePicker()
+    {
+        "use strict";
+        // Each language is in the month table twice, a column of long names then one of short names.
+        // The Languages field shows it once, config_update() doubles it again.
+        // The fields are read on every click, so hand edits to the table are kept.
+        function readTable() {
+            const table = [];
+            for (let row = 0; row <= 12; row++) {
+                table.push($("#month_" + row).val().split(",").map(item => item.trim()).filter(item => item));
+            }
+            if (table[0].length * 2 === table[1].length) {
+                table[0] = table[0].flatMap(lang => [lang, lang]);
+            }
+            return table;
+        }
+        function writeTable(table) {
+            const doubled = table[0].length === table[1].length;
+            table.forEach((items, row) => {
+                $("#month_" + row).val((row === 0 && doubled ? items.filter((item, idx) => idx % 2 === 0) : items).join(", "));
+            });
+        }
+        // data-seasons is "name:month,name:month", the season fields are season_<month>
+        function seasonNames(chip) {
+            return (chip.attr("data-seasons") || "").split(",").filter(item => item).map(item => {
+                const [name, month] = item.split(":");
+                return {name: name, month: month};
+            });
+        }
+        function seasonFields() {
+            return $("#monthlangpicker").closest("form").find("input[id^='season_']");
+        }
+        function addSeasons(chip) {
+            const present = new Set();
+            seasonFields().each(function() {
+                $(this).val().split(",").forEach(item => present.add(item.trim().toLowerCase()));
+            });
+            seasonNames(chip).forEach(season => {
+                const field = $("#season_" + season.month);
+                if (field.length && !present.has(season.name)) {
+                    const current = field.val().trim();
+                    field.val((current ? current + ", " : "") + season.name);
+                    present.add(season.name);
+                }
+            });
+        }
+        function removeSeasons(chip) {
+            // a name another switched on language uses too stays, e.g. winter is English, German and Dutch
+            const kept = new Set();
+            $("#monthlangpicker .langchip.btn-primary").not(chip).each(function() {
+                seasonNames($(this)).forEach(season => kept.add(season.name));
+            });
+            const removed = new Set(seasonNames(chip).map(season => season.name).filter(name => !kept.has(name)));
+            seasonFields().each(function() {
+                const items = $(this).val().split(",").map(item => item.trim()).filter(item => item);
+                $(this).val(items.filter(item => !removed.has(item.toLowerCase())).join(", "));
+            });
+        }
+
+        // Issue, volume and magazine title words, author name suffixes and articles,
+        // each chip has them in data-<field id>
+        const wordFields = ["issue_nouns", "volume_nouns", "mag_nouns", "name_postfix", "name_definite"];
+        function chipWords(chip, field) {
+            return (chip.attr("data-" + field) || "").split(",").filter(item => item);
+        }
+        function addWords(chip) {
+            wordFields.forEach(field => {
+                const input = $("#" + field);
+                const items = input.val().split(",").map(item => item.trim()).filter(item => item);
+                const present = new Set(items.map(item => item.toLowerCase()));
+                chipWords(chip, field).forEach(word => {
+                    if (!present.has(word)) {
+                        items.push(word);
+                        present.add(word);
+                    }
+                });
+                input.val(items.join(", "));
+            });
+        }
+        function removeWords(chip) {
+            // a word another switched on language uses too stays, e.g. nr is German, Dutch and Polish
+            wordFields.forEach(field => {
+                const kept = new Set();
+                $("#monthlangpicker .langchip.btn-primary").not(chip).each(function() {
+                    chipWords($(this), field).forEach(word => kept.add(word));
+                });
+                const removed = new Set(chipWords(chip, field).filter(word => !kept.has(word)));
+                const input = $("#" + field);
+                const items = input.val().split(",").map(item => item.trim()).filter(item => item);
+                input.val(items.filter(item => !removed.has(item.toLowerCase())).join(", "));
+            });
+        }
+
+        $("#monthlangpicker .langchip").on("click", function() {
+            const chip = $(this);
+            const locale = String(chip.data("locale"));
+            const selected = !chip.hasClass("btn-primary");
+            const table = readTable();
+            if (selected) {
+                const long = chip.attr("data-long").split(",");
+                const short = chip.attr("data-short").split(",");
+                table[0].push(locale, locale);
+                for (let month = 1; month <= 12; month++) {
+                    table[month].push(long[month - 1], short[month - 1]);
+                }
+                $("#date_lang").append($("<option>").val(locale).attr("title", locale).text(chip.text().trim()));
+                addSeasons(chip);
+                addWords(chip);
+                // keep selected languages in the order they are in the table
+                const last = $("#monthlangpicker .langchip.btn-primary").last();
+                if (last.length) {
+                    chip.insertAfter(last);
+                } else {
+                    chip.prependTo("#monthlangpicker");
+                }
+            } else {
+                if ($("#monthlangpicker .langchip.btn-primary").length < 2) {
+                    return;
+                }
+                const lower = locale.toLowerCase();
+                const keep = table[0].map((item, idx) => item.toLowerCase() === lower ? -1 : idx).filter(idx => idx >= 0);
+                // remember the names as they were in the table, so switching back on restores them
+                const first = table[0].findIndex(item => item.toLowerCase() === lower);
+                if (first >= 0 && first + 1 < table[0].length) {
+                    chip.attr("data-long", table.slice(1).map(items => items[first]).join(","));
+                    chip.attr("data-short", table.slice(1).map(items => items[first + 1]).join(","));
+                }
+                for (let row = 0; row <= 12; row++) {
+                    table[row] = keep.map(idx => table[row][idx]);
+                }
+                removeSeasons(chip);
+                removeWords(chip);
+                const dateLang = $("#date_lang");
+                dateLang.find("option").filter(function() { return this.value.toLowerCase() === lower; }).remove();
+                if (!dateLang.val()) {
+                    dateLang.val(dateLang.find("option").first().val());
+                }
+            }
+            writeTable(table);
+            chip.toggleClass("btn-primary", selected).toggleClass("btn-default", !selected)
+                .attr("aria-pressed", selected ? "true" : "false");
         });
     }
 </script>

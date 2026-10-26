@@ -63,6 +63,8 @@ BOOK_LANGUAGES = [
     (N_('Lithuanian'), ['lt', 'lit', 'Lithuanian']),
     (N_('Macedonian'), ['mk', 'mac', 'mkd', 'Macedonian']),
     (N_('Malay'), ['ms', 'may', 'msa', 'Malay']),
+    (N_('Malayalam'), ['ml', 'mal', 'Malayalam']),
+    (N_('Odia'), ['or', 'ori', 'ory', 'Odia', 'Oriya']),
     (N_('Persian'), ['fa', 'per', 'fas', 'Persian']),
     (N_('Romanian'), ['ro', 'rum', 'ron', 'Romanian']),
     (N_('Serbian'), ['sr', 'srp', 'Serbian']),
@@ -70,6 +72,7 @@ BOOK_LANGUAGES = [
     (N_('Swahili'), ['sw', 'swa', 'Swahili']),
     (N_('Tamil'), ['ta', 'tam', 'Tamil']),
     (N_('Thai'), ['th', 'tha', 'Thai']),
+    (N_('Twi'), ['tw', 'Twi']),
     (N_('Urdu'), ['ur', 'urd', 'Urdu']),
     (N_('Vietnamese'), ['vi', 'vie', 'Vietnamese']),
     (N_('Welsh'), ['cy', 'wel', 'cym', 'Welsh']),
@@ -78,15 +81,16 @@ BOOK_LANGUAGES = [
 
 
 def language_picker(preflang: str, browser_languages: list | tuple = ()) -> dict:
-    """ Split an IMP_PREFLANG value into picker languages and the entries the picker doesn't know.
+    """ The languages of an IMP_PREFLANG value for the language picker.
         A language is selected if any of its codes is in the value.
-        Before "Show all" the picker shows the selected languages, in the order they appear in the
-        value, then the browser_languages (codes like 'sk' or 'en_us') sorted by their translated name.
-        The rest follow, sorted the same.
+        All and Unknown are picker entries of their own, and so is each entry of the value the
+        picker doesn't know, so saving keeps it.
+        Before "Show all" the picker shows the selected entries, in the order they appear in the
+        value, then All and Unknown, then the browser_languages (codes like 'sk' or 'en_us')
+        sorted by their translated name. The rest follow, sorted the same.
         Each language also carries what it searches for when Anna's Archive and Z-Library are automatic:
-        'anna' for Anna's Archive ('' if not supported), 'zlib' for Z-Library.
-        Returns {'languages': [{'name', 'label', 'codes', 'anna', 'zlib', 'selected', 'shown'}],
-                 'other': str} """
+        'anna' for Anna's Archive ('' if not supported), 'zlib' for Z-Library ('' for the special entries).
+        Returns {'languages': [{'name', 'label', 'codes', 'anna', 'zlib', 'selected', 'shown'}]} """
     from lazylibrarian.annas import Language as AnnaLanguage
 
     wanted = [item for item in get_list(preflang, ',') if item]
@@ -112,11 +116,25 @@ def language_picker(preflang: str, browser_languages: list | tuple = ()) -> dict
             'shown': bool(found or lower_codes & shown),
         })
     languages.sort(key=lambda lang: lang['label'].lower())
-    selected = sorted((lang for lang in languages if lang['selected']), key=lambda lang: lang['position'])
-    ordered = (selected + [lang for lang in languages if lang['shown'] and not lang['selected']]
+
+    # All turns the language check off, Unknown also takes books the source has no language for
+    special = []
+    for code, label in (('All', N_('All languages')), ('Unknown', N_('Unknown'))):
+        known.add(code.lower())
+        special.append({'name': code, 'label': i18n.gettext(label), 'codes': code, 'anna': '', 'zlib': '',
+                        'selected': code.lower() in position, 'position': position.get(code.lower(), 0),
+                        'shown': True})
+    seen = set()
+    for item in wanted:
+        if item.lower() not in known and item.lower() not in seen:
+            seen.add(item.lower())
+            special.append({'name': item, 'label': item, 'codes': item, 'anna': '', 'zlib': '',
+                            'selected': True, 'position': position[item.lower()], 'shown': True})
+
+    selected = sorted((lang for lang in special + languages if lang['selected']), key=lambda lang: lang['position'])
+    ordered = (selected + [lang for lang in special + languages if lang['shown'] and not lang['selected']]
                + [lang for lang in languages if not lang['shown']])
-    other = [item for item in wanted if item.lower() not in known]
-    return {'languages': ordered, 'other': ', '.join(other)}
+    return {'languages': ordered}
 
 
 def _search_languages(preflang: str) -> list | None:

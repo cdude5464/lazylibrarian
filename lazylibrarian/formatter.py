@@ -14,7 +14,6 @@
 # import chardet
 import datetime
 import logging
-import os
 import re
 import threading
 import unicodedata
@@ -151,8 +150,8 @@ def sanitize(name, is_folder_or_file=False):
     if is_folder_or_file:
         dic.pop('\\', None)
         dic['\\\\'] ,= '\\'
-    if os.path.__name__ == 'ntpath':
-        dic.pop(':', None)
+    # ':' goes on Windows too, it isn't allowed in file or folder names there. Callers pass names
+    # and relative naming patterns, never a full path with a drive letter
     filename = replace_all(filename, dic)
     # Remove all characters below code point 32
     filename = "".join(c for c in filename if ord(c) > 31)

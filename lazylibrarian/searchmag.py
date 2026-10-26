@@ -32,6 +32,8 @@ from lazylibrarian.formatter import (
     replace_all,
     thread_name,
     unaccented,
+    word_key,
+    word_keys,
 )
 from lazylibrarian.magazinescan import get_dateparts
 from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
@@ -346,9 +348,10 @@ def search_magazines(mags=None, reset=False, backissues=False):
                                     nouns.extend(get_list(CONFIG['MAG_NOUNS']))
                                     nouns.extend(get_list(CONFIG['MAG_TYPE']))
                                     nouns.extend(list(lazylibrarian.SEASONS.keys()))
-                                    nouns = set(nouns)
+                                    # compared without accents, titles are often written without them
+                                    nouns = word_keys(nouns)
                                     for word in lower_title:
-                                        if word not in lower_bookid and word not in nouns and not word.isdigit():
+                                        if word not in lower_bookid and word_key(word) not in nouns and not word.isdigit():
                                             valid = False
                                             for f in range(1, 13):
                                                 if (word in lazylibrarian.MONTHNAMES[0][f] or

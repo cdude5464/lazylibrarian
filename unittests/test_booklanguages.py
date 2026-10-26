@@ -36,8 +36,8 @@ class BookLanguagesTest(unittest.TestCase):
         picker = language_picker('en, eng, en-US, en-GB, English')
         selected = [lang['name'] for lang in picker['languages'] if lang['selected']]
         self.assertEqual(selected, ['English'])
-        self.assertEqual(picker['other'], '')
-        self.assertEqual(len(picker['languages']), len(BOOK_LANGUAGES))
+        # and All and Unknown
+        self.assertEqual(len(picker['languages']), len(BOOK_LANGUAGES) + 2)
 
     def test_any_code_selects_language(self):
         picker = language_picker('CZE, sk')
@@ -45,20 +45,23 @@ class BookLanguagesTest(unittest.TestCase):
         self.assertEqual(selected, ['Czech', 'Slovak'])
 
     def test_unknown_entries_are_kept(self):
+        # All, Unknown and codes the picker doesn't know are entries of their own, in their order
         picker = language_picker('en, Unknown, All, xx-YY')
-        self.assertEqual(picker['other'], 'Unknown, All, xx-YY')
+        selected = [lang for lang in picker['languages'] if lang['selected']]
+        self.assertEqual([lang['name'] for lang in selected], ['English', 'Unknown', 'All', 'xx-YY'])
+        self.assertEqual([lang['codes'] for lang in selected[1:]], ['Unknown', 'All', 'xx-YY'])
+        self.assertEqual(len(picker['languages']), len(BOOK_LANGUAGES) + 3)
 
     def test_empty_value(self):
         picker = language_picker('')
         self.assertFalse(any(lang['selected'] for lang in picker['languages']))
-        self.assertEqual(picker['other'], '')
 
     def test_selected_keep_their_order(self):
         picker = language_picker('sk, slo, slk, Slovak, cs, cze, ces, Czech, Unknown')
         selected = [lang for lang in picker['languages'] if lang['selected']]
-        self.assertEqual([lang['name'] for lang in selected], ['Slovak', 'Czech'])
-        self.assertEqual([lang['anna'] for lang in selected], ['SK', 'CS'])
-        self.assertEqual([lang['zlib'] for lang in selected], ['slovak', 'czech'])
+        self.assertEqual([lang['name'] for lang in selected], ['Slovak', 'Czech', 'Unknown'])
+        self.assertEqual([lang['anna'] for lang in selected], ['SK', 'CS', ''])
+        self.assertEqual([lang['zlib'] for lang in selected], ['slovak', 'czech', ''])
 
     def test_anna_unsupported(self):
         picker = language_picker('Welsh')
@@ -74,22 +77,24 @@ class BookLanguagesTest(unittest.TestCase):
         self.assertEqual(anna_languages(''), [])
 
     def test_order(self):
-        # selected first in their order, then the browser languages, then the rest, by name
+        # selected first in their order, then All and Unknown, then the browser languages, then the rest, by name
         picker = language_picker('Yiddish, Welsh', ['cs', 'nb_no', 'sk', 'welsh'])
         shown = [lang['name'] for lang in picker['languages'] if lang['shown']]
-        self.assertEqual(shown, ['Yiddish', 'Welsh', 'Czech', 'Norwegian', 'Slovak'])
+        self.assertEqual(shown, ['Yiddish', 'Welsh', 'All', 'Unknown', 'Czech', 'Norwegian', 'Slovak'])
         names = [lang['name'] for lang in picker['languages']]
         self.assertEqual(names[:len(shown)], shown)
         rest = [lang['label'].lower() for lang in picker['languages'][len(shown):]]
         self.assertEqual(rest, sorted(rest))
-        self.assertEqual(len(picker['languages']), len(BOOK_LANGUAGES))
+        self.assertEqual(len(picker['languages']), len(BOOK_LANGUAGES) + 2)
 
     @mock.patch('lazylibrarian.i18n.available_languages', return_value=['de', 'en', 'sk'])
     def test_interface_languages_not_shown(self, _):
         # the interface languages will grow, only selected and browser languages come before "Show all"
         picker = language_picker('en, eng', ['fr'])
-        self.assertEqual([lang['name'] for lang in picker['languages'] if lang['shown']], ['English', 'French'])
-        self.assertEqual([lang['name'] for lang in language_picker('', [])['languages'] if lang['shown']], [])
+        self.assertEqual([lang['name'] for lang in picker['languages'] if lang['shown']],
+                         ['English', 'All', 'Unknown', 'French'])
+        self.assertEqual([lang['name'] for lang in language_picker('', [])['languages'] if lang['shown']],
+                         ['All', 'Unknown'])
 
     def test_countries(self):
         self.assertEqual(len(GB_COUNTRIES), 249)

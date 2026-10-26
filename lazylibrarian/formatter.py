@@ -599,6 +599,18 @@ def two_months(word):
     return a, b
 
 
+def word_key(word: str) -> str:
+    """ How words from titles and names are compared with the word lists in the settings:
+        without accents, lowercase and without a trailing period, so "Číslo", "cislo" and "č." match """
+    return unaccented(word).lower().strip('.')
+
+
+def word_keys(words) -> set:
+    """ word_key() of each word in a settings list, done once per lookup as the settings
+        can change from the config page """
+    return {word_key(word) for word in words}
+
+
 def month2num(month):
     """
     Return a month number
@@ -1026,7 +1038,7 @@ def sort_definite(title: str, articles=list[str]) -> str:
     if len(words) < 2:
         return title
     word = words.pop(0)
-    if word.lower() in articles:
+    if word_key(word) in word_keys(articles):
         return f"{' '.join(words)}, {word}"
     return title
 
@@ -1038,7 +1050,7 @@ def surname_first(authorname: str, postfixes: list[str]) -> str:
         return authorname
     res = words.pop()
 
-    if res.strip('.').lower() in postfixes:
+    if word_key(res) in word_keys(postfixes):
         res = f"{words.pop()} {res}"
     return res + ', ' + ' '.join(words)
 

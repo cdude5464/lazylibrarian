@@ -67,6 +67,8 @@ from lazylibrarian.formatter import (
     split_title,
     today,
     unaccented,
+    word_key,
+    word_keys,
 )
 from lazylibrarian.gr import GoodReads
 from lazylibrarian.hc import HardCover
@@ -389,12 +391,13 @@ def process_issues(source_dir=None, title=""):
                 # Some docker quirk, or the python version in the docker ???
                 # nouns.extend(lazylibrarian.SEASONS)
                 nouns.extend(list(lazylibrarian.SEASONS.keys()))
-                nouns = set(nouns)
+                # compared without accents, titles are often written without them
+                nouns = word_keys(nouns)
                 valid = True
                 for word in filename_words:
                     if (
                         word not in title_words
-                        and word not in nouns
+                        and word_key(word) not in nouns
                         and not word.isdigit()
                     ):
                         cleanword = unaccented(word).lower()

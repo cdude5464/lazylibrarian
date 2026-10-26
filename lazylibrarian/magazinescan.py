@@ -49,6 +49,8 @@ from lazylibrarian.formatter import (
     replacevars,
     sanitize,
     two_months,
+    word_key,
+    word_keys,
 )
 from lazylibrarian.images import create_mag_cover, read_pdf_tags, write_pdf_tags
 from lazylibrarian.librarysync import get_book_info
@@ -558,9 +560,10 @@ def get_dateparts(title_or_issue, datetype=''):
     logger = logging.getLogger(__name__)
     dic = {'.': ' ', '-': ' ', '/': ' ', '+': ' ', '_': ' ', '(': '', ')': '', '[': ' ', ']': ' ', '#': '# '}
     words = replace_all(title_or_issue, dic).split()
-    issuenouns = get_list(CONFIG['ISSUE_NOUNS'])
-    volumenouns = get_list(CONFIG['VOLUME_NOUNS'])
-    nouns = issuenouns + volumenouns
+    # compared without accents, titles are often written without them
+    issuenouns = word_keys(get_list(CONFIG['ISSUE_NOUNS']))
+    volumenouns = word_keys(get_list(CONFIG['VOLUME_NOUNS']))
+    nouns = issuenouns | volumenouns
 
     year = 0
     months = []
@@ -588,12 +591,12 @@ def get_dateparts(title_or_issue, datetype=''):
             if month_a:
                 months.append(month_a)
                 months.append(month_b)
-        if words[pos].lower().strip('.') in issuenouns:
+        if word_key(words[pos]) in issuenouns:
             if pos + 1 < len(words):
                 inoun = words[pos]
                 pos += 1
                 issue = check_int(words[pos], 0)
-        elif words[pos].lower().strip('.') in volumenouns and pos + 1 < len(words):
+        elif word_key(words[pos]) in volumenouns and pos + 1 < len(words):
             vnoun = words[pos]
             pos += 1
             volume = check_int(words[pos], 0)
@@ -690,12 +693,12 @@ def get_dateparts(title_or_issue, datetype=''):
                 if month:
                     if pos > 1:
                         day = check_int(re.sub(r"\D", "", words[pos - 2]), 0)
-                        if pos > 2 and words[pos - 3].lower().strip('.') in issuenouns:
+                        if pos > 2 and word_key(words[pos - 3]) in issuenouns:
                             dateparts['issue'] = day
                             dateparts['inoun'] = words[pos - 3]
                             dateparts['style'] = 10
                             break
-                        if pos > 2 and words[pos - 3].lower().strip('.') in volumenouns:
+                        if pos > 2 and word_key(words[pos - 3]) in volumenouns:
                             dateparts['volume'] = day
                             dateparts['vnoun'] = words[pos - 3]
                             dateparts['style'] = 10
@@ -786,7 +789,7 @@ def get_dateparts(title_or_issue, datetype=''):
             while pos < len(words):
                 # might be "Vol.3" or "#12" with no space between noun and number
                 splitted = re.split(r'(\d+)', words[pos].lower())
-                if splitted[0].strip('.') in nouns:
+                if word_key(splitted[0]) in nouns:
                     if len(splitted) > 1:
                         issue = check_int(splitted[1], 0)
                         if issue:

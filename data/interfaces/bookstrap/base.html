@@ -56,7 +56,11 @@
       vertical-align: middle;
     }
     .popover {
+      /* A fixed width rather than shrink-to-fit, so the popover doesn't get squeezed against
+         the right edge of the window once it's positioned; and never wider than the window */
+      width: max-content;
       max-width: 400px;
+      max-width: min(400px, calc(100vw - 20px));
     }
     </style>
     %if ui_lang_auto:
@@ -610,6 +614,16 @@
         return $();
       }
 
+      // Beside the icon (right, else left) when the popover fits there, otherwise below it,
+      // so on narrow screens it isn't pushed off the edge of the window.
+      function helpPlacement(tip, el) {
+        var rect = el.getBoundingClientRect();
+        var width = Math.min(400, $(window).width() - 20) + 20;
+        if ($(window).width() - rect.right >= width) { return 'right'; }
+        if (rect.left >= width) { return 'left'; }
+        return 'auto bottom';
+      }
+
       $(function () {
         $('.help-block').not('.help-keep').each(function () {
           var help = $(this);
@@ -641,8 +655,9 @@
             // A short hide delay stops the popover flickering when the pointer briefly
             // leaves the icon, e.g. while the popover is being positioned.
             delay: { show: 100, hide: 300 },
-            placement: 'auto right',
-            container: 'body'
+            placement: helpPlacement,
+            container: 'body',
+            viewport: { selector: 'body', padding: 10 }
           });
         });
       })

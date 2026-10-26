@@ -58,6 +58,7 @@ from lazylibrarian import (
     transmission,
     utorrent,
     versioncheck,
+    whatsnew,
 )
 from lazylibrarian.auth import (
     SESSION_KEY,
@@ -7843,6 +7844,26 @@ class WebInterface:
             message = message + '<br><small>' + messages
 
         return message
+
+    @cherrypy.expose
+    @require_auth()
+    def whats_new(self):
+        self.check_permitted(lazylibrarian.perm_config, redirect_unauth=True)
+        unseen = [item['id'] for item in lazylibrarian.WHATS_NEW]
+        changes = whatsnew.recent_changes()
+        if not changes['error']:
+            # opening the page counts as having seen them, like closing the popup
+            whatsnew.mark_seen()
+        return serve_template(templatename="whatsnew.html", title=i18n.gettext("What's new"), changes=changes,
+                              unseen=unseen, repo=whatsnew.web_url(), branch=whatsnew.branch())
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @require_auth()
+    def whats_new_seen(self):
+        self.check_permitted(lazylibrarian.perm_config)
+        whatsnew.mark_seen()
+        return 'OK'
 
     @cherrypy.expose
     @require_auth()

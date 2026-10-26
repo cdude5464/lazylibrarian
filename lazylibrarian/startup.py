@@ -564,7 +564,7 @@ class StartupLazyLibrarian:
         json_file = os.path.join(DIRS.DATADIR, 'seasons.json')
         if path_isfile(json_file):
             try:
-                with open(syspath(json_file)) as json_data:
+                with open(syspath(json_file), encoding='utf-8') as json_data:
                     seasons = json.load(json_data)
                 self.logger.debug(f'Loaded seasons.json : {seasons}')
             except Exception as e:
@@ -577,7 +577,7 @@ class StartupLazyLibrarian:
         json_file = os.path.join(DIRS.DATADIR, 'monthnames.json')
         if path_isfile(json_file):
             try:
-                with open(syspath(json_file)) as json_data:
+                with open(syspath(json_file), encoding='utf-8') as json_data:
                     table = json.load(json_data)
                 mlist = ''
                 if not validate_monthtable(table):

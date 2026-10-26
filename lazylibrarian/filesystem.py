@@ -169,16 +169,14 @@ def splitext(name: str) -> tuple[str, str]:
 
 
 WINDOWS_MAGIC_PREFIX = '\\\\?\\'
-# Windows paths this long fail unless LongPathsEnabled is set, which it isn't by default.
-# Directories have the lower limit, MAX_PATH (260) less room for an 8.3 file name.
-WINDOWS_MAX_PATH = 248
 
 
 def syspath(path: str | bytes, prefix: bool = True) -> str:
     """Convert a path for use by the operating system. Only Windows needs anything:
-    paths too long for MAX_PATH get the magic prefix, which lifts the limit.
+    every path gets the magic prefix, which lifts the MAX_PATH limit, also for the files
+    that rmtree, os.walk and shutil.move find below a directory.
     The prefix turns off path normalisation, so the path is made absolute with backslashes first.
-    Shorter paths are returned unchanged. Set `prefix` to False to never add it.
+    Relative paths starting with . are left alone. Set `prefix` to False to never add it.
     """
     DIRS.permlogger.debug(f"{os.path.__name__}:{sys.version[0:5]} [{repr(path)}] {isinstance(path, str)}")
 
@@ -186,7 +184,9 @@ def syspath(path: str | bytes, prefix: bool = True) -> str:
         return path
 
     path = os.fsdecode(path)
-    if not prefix or len(path) < WINDOWS_MAX_PATH or path.startswith(WINDOWS_MAGIC_PREFIX):
+    if not prefix or not path or path.startswith(('.', WINDOWS_MAGIC_PREFIX)):
+        return path
+    if 1 < len(path) < 4 and path[1] == ':':  # it's just a drive letter (E: or E:/)
         return path
 
     # https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation

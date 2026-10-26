@@ -201,6 +201,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigStr('Git', 'CURRENT_VERSION', ''),
     ConfigStr('Git', 'LATEST_VERSION', ''),
     ConfigInt('Git', 'COMMITS_BEHIND', 0),
+    ConfigStr('Git', 'WHATS_NEW_SEEN', ''),
     ConfigBool('Git', 'AUTO_UPDATE', False),
     ConfigStr('SABnzbd', 'SAB_HOST', ''),
     ConfigRangedInt('SABnzbd', 'SAB_PORT', 0, 0, 65535),
@@ -709,7 +710,7 @@ ARRAY_DEFS: dict[str, DefaultArrayDef] = {
 }
 
 CONFIG_GIT = ['GIT_REPO', 'GIT_USER', 'GIT_BRANCH', 'LATEST_VERSION', 'GIT_UPDATED', 'CURRENT_VERSION',
-              'GIT_HOST', 'COMMITS_BEHIND', 'INSTALL_TYPE', 'AUTO_UPDATE']
+              'GIT_HOST', 'COMMITS_BEHIND', 'INSTALL_TYPE', 'AUTO_UPDATE', 'WHATS_NEW_SEEN']
 
 
 def get_default(setting: str):

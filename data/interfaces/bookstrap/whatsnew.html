@@ -1,0 +1,45 @@
+<%inherit file="base.html"/>
+<%!
+    from lazylibrarian.common import docker
+%>
+<%def name="changelist(items)">
+  <table class="table table-condensed table-striped">
+    <tbody>
+    %for item in items:
+      <tr>
+        <td class="text-nowrap" style="width: 8em"><small>${item['date'] | h}</small></td>
+        <td>
+          ${item['html']}
+          %if item['id'] in unseen:
+            <span class="label label-success">${_('New')}</span>
+          %endif
+          <br><small class="text-muted">${item['author'] | h} &middot;
+            <a href="${repo}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></small>
+        </td>
+      </tr>
+    %endfor
+    </tbody>
+  </table>
+</%def>
+<%def name="body()">
+  <h1>${title}</h1>
+  %if changes['error']:
+    <p>${_('Unable to get the list of changes from %(repo)s, try again later.') % {'repo': repo} | h}</p>
+  %else:
+    %if changes['known'] and changes['upcoming']:
+      <h3>${_('Not installed yet')}</h3>
+      %if docker():
+        <p class="text-muted">${_('These will be included in the next container image update.')}</p>
+      %endif
+      ${changelist(changes['upcoming'])}
+    %endif
+    %if changes['known']:
+      <h3>${_('Installed')}</h3>
+    %else:
+      <h3>${_('Recent changes')}</h3>
+      <p class="text-muted">${_('The installed version is not known, so changes are not marked as installed.')}</p>
+    %endif
+    ${changelist(changes['installed'])}
+  %endif
+  <p><a href="${repo}/-/commits/${changes.get('branch') or branch | u}" target="_blank" rel="noopener">${_('All changes on GitLab')}</a></p>
+</%def>

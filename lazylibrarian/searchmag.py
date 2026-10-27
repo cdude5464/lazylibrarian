@@ -36,7 +36,7 @@ from lazylibrarian.formatter import (
     word_keys,
 )
 from lazylibrarian.magazinescan import get_dateparts
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import (
     iterate_over_direct_sites,
     iterate_over_irc_sites,
@@ -584,9 +584,8 @@ def download_maglist(maglist, table='wanted'):
                     db.action("UPDATE pastissues set status=? WHERE NZBurl=?", ('Snatched', magazine["nzburl"]))
                 logger.info(f"Downloading {magazine['nzbtitle']} from {magazine['nzbprov']}")
                 custom_notify_snatch(f"{magazine['bookid']} {magazine['nzburl']}")
-                notify_snatch(
-                    f"Magazine {unaccented(magazine['nzbtitle'], only_ascii=False)} from "
-                    f"{CONFIG.disp_name(magazine['nzbprov'])} at {now()}")
+                notify_snatch(notify_text(unaccented(magazine['nzbtitle'], only_ascii=False),
+                                          CONFIG.disp_name(magazine['nzbprov']), 'Magazine'))
             else:
                 db.action(f"UPDATE {table} SET status='Failed',DLResult=? WHERE NZBurl=?",
                           (res, magazine["nzburl"]))

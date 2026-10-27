@@ -187,7 +187,7 @@ from lazylibrarian.manual_import import (
 from lazylibrarian.manualbook import search_item
 from lazylibrarian.metadata_opf import create_opf
 from lazylibrarian.monthlanguages import SEASON_NAMES, month_language_picker
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.oldump import update_openlibrary_dump
 from lazylibrarian.opds import OPDS
 from lazylibrarian.opfedit import opf_read, opf_write
@@ -3504,9 +3504,8 @@ class WebInterface:
             if snatch:
                 logger.info(f'Requested {library} {bookdata["BookName"]} from {provider}')
                 custom_notify_snatch(f"{bookid} {library}")
-                notify_snatch(
-                    f"{unaccented(bookdata['BookName'], only_ascii=False)} from "
-                    f"{CONFIG.disp_name(provider)} at {now()}")
+                notify_snatch(notify_text(unaccented(bookdata['BookName'], only_ascii=False),
+                                          CONFIG.disp_name(provider), library))
                 schedule_job(action=SchedulerCommand.START, target='PostProcessor')
             else:
                 db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?", (res, url))

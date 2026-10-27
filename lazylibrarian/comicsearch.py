@@ -34,7 +34,7 @@ from lazylibrarian.formatter import (
     thread_name,
     unaccented,
 )
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import (
     iterate_over_direct_sites,
     iterate_over_irc_sites,
@@ -356,9 +356,8 @@ def download_comiclist(foundissues):
                     logger.info(f"Downloading {item['title']} from {item['provider']}")
                     db.action("UPDATE wanted SET nzbdate=? WHERE NZBurl=?", (now(), item['url']))
                     custom_notify_snatch(f"{bookid} {item['url']}")
-                    notify_snatch(
-                        f"Comic {unaccented(item['title'], only_ascii=False)} from "
-                        f"{CONFIG.disp_name(item['provider'])} at {now()}")
+                    notify_snatch(notify_text(unaccented(item['title'], only_ascii=False),
+                                              CONFIG.disp_name(item['provider']), 'Comic'))
                 else:
                     db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?",
                               (res, item["url"]))

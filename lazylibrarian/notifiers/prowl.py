@@ -3,7 +3,7 @@ from http.client import HTTPSConnection
 from urllib.parse import urlencode
 
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 
 class ProwlNotifier:
@@ -67,15 +67,15 @@ class ProwlNotifier:
     def notify_snatch(self, title, fail=False):
         if CONFIG.get_bool('PROWL_ONSNATCH'):
             if fail:
-                self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_strings[NOTIFY_FAIL],
+                self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_event(NOTIFY_FAIL),
                                  message=title)
             else:
-                self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_strings[NOTIFY_SNATCH],
+                self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_event(NOTIFY_SNATCH),
                                  message=title)
 
     def notify_download(self, title):
         if CONFIG.get_bool('PROWL_ONDOWNLOAD'):
-            self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_strings[NOTIFY_DOWNLOAD],
+            self._send_prowl(prowl_api=None, prowl_priority=None, event=notify_event(NOTIFY_DOWNLOAD),
                              message=title)
 
     # noinspection PyUnusedLocal

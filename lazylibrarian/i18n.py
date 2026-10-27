@@ -307,6 +307,38 @@ def get_language():
     return getattr(_local, 'lang', DEFAULT_LANGUAGE)
 
 
+@contextlib.contextmanager
+def language(lang):
+    """ Use lang for gettext() and friends inside the with block, then restore the previous language """
+    old_lang = getattr(_local, 'lang', None)
+    old_translations = getattr(_local, 'translations', None)
+    set_language(lang)
+    try:
+        yield
+    finally:
+        if old_lang is None:
+            del _local.lang
+            del _local.translations
+        else:
+            _local.lang = old_lang
+            _local.translations = old_translations
+
+
+def resolve_notify_language(setting, ui_setting):
+    """ The language for notifications (Telegram, email, ...), which are sent without a browser:
+        the NOTIFY_LANGUAGE setting, else UI_LANGUAGE unless that follows the browser, else English """
+    for lang in (setting, ui_setting):
+        lang = (lang or '').strip()
+        if lang and lang.lower() != AUTO:
+            return lang if lang in available_languages() else DEFAULT_LANGUAGE
+    return DEFAULT_LANGUAGE
+
+
+def notify_language():
+    from lazylibrarian.config2 import CONFIG
+    return resolve_notify_language(CONFIG.get_str('NOTIFY_LANGUAGE'), CONFIG.get_str('UI_LANGUAGE'))
+
+
 def _current():
     translations = getattr(_local, 'translations', None)
     if translations is None:

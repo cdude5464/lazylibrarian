@@ -26,7 +26,7 @@ from apscheduler.schedulers import SchedulerNotRunningError
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import lazylibrarian
-from lazylibrarian import database
+from lazylibrarian import database, i18n
 from lazylibrarian.bookwork import add_series_members
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.configtypes import ConfigScheduler
@@ -43,9 +43,15 @@ NOTIFY_SNATCH = 1
 NOTIFY_DOWNLOAD = 2
 NOTIFY_FAIL = 3
 
-notify_strings = {NOTIFY_SNATCH: "Started Download",
-                  NOTIFY_DOWNLOAD: "Added to Library",
-                  NOTIFY_FAIL: "Download failed"}
+# custom notification scripts get these in English, other notifiers translated by notify_event()
+notify_strings = {NOTIFY_SNATCH: i18n.N_("Started Download"),
+                  NOTIFY_DOWNLOAD: i18n.N_("Added to Library"),
+                  NOTIFY_FAIL: i18n.N_("Download failed")}
+
+
+def notify_event(event):
+    """ The name of a notification event, in the current language """
+    return i18n.gettext(notify_strings[event])
 
 # Scheduler
 SCHED: BackgroundScheduler

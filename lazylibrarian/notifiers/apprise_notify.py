@@ -7,7 +7,7 @@ import logging
 
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import plural
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 try:
     # noinspection PyUnresolvedReferences
@@ -49,9 +49,9 @@ class AppriseNotifier:
             apobj.add(url)
         else:
             for item in CONFIG.providers('APPRISE'):
-                if (event == notify_strings[NOTIFY_DOWNLOAD] and item['DOWNLOAD'] and item['URL']
-                        or event == notify_strings[NOTIFY_SNATCH] and item['SNATCH'] and item['URL']
-                        or event == notify_strings[NOTIFY_FAIL] and item['SNATCH'] and item['URL']
+                if (event == notify_event(NOTIFY_DOWNLOAD) and item['DOWNLOAD'] and item['URL']
+                        or event == notify_event(NOTIFY_SNATCH) and item['SNATCH'] and item['URL']
+                        or event == notify_event(NOTIFY_FAIL) and item['SNATCH'] and item['URL']
                         or event == 'Test' and item['URL']):
                     apobj.add(item['URL'])
 
@@ -70,9 +70,9 @@ class AppriseNotifier:
         logger.debug(f"Apprise: url: {str(url)}")
         logger.debug(f"Using {len(apobj)} notification {plural(len(apobj), 'service')}")
         logger.debug(str(asset.details()))
-        if event == notify_strings[NOTIFY_SNATCH]:
+        if event == notify_event(NOTIFY_SNATCH):
             notifytype = NotifyType.INFO
-        elif event == notify_strings[NOTIFY_DOWNLOAD]:
+        elif event == notify_event(NOTIFY_DOWNLOAD):
             notifytype = NotifyType.SUCCESS
         else:
             notifytype = NotifyType.WARNING
@@ -94,14 +94,14 @@ class AppriseNotifier:
     def notify_snatch(self, title, fail=False):
         if APPRISE_CANLOAD:
             if fail:
-                return self._notify(event=notify_strings[NOTIFY_FAIL], message=title, url=None)
-            return self._notify(event=notify_strings[NOTIFY_SNATCH], message=title, url=None)
+                return self._notify(event=notify_event(NOTIFY_FAIL), message=title, url=None)
+            return self._notify(event=notify_event(NOTIFY_SNATCH), message=title, url=None)
         return True
 
     def notify_download(self, title):
         # noinspection PyUnresolvedReferences
         if APPRISE_CANLOAD:
-            return self._notify(event=notify_strings[NOTIFY_DOWNLOAD], message=title, url=None)
+            return self._notify(event=notify_event(NOTIFY_DOWNLOAD), message=title, url=None)
         return True
 
     def test_notify(self, url=None):

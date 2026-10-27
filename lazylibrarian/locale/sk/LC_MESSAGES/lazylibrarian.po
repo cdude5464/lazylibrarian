@@ -1316,16 +1316,12 @@ msgid "Cancel"
 msgstr "Zrušiť"
 
 #: data/interfaces/bookstrap/base.html:180
-#, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to restart LazyLibrarian?"
-msgstr "Naozaj sa chcete odhlásiť?"
+msgstr "Naozaj chcete reštartovať LazyLibrarian?"
 
 #: data/interfaces/bookstrap/base.html:181
-#, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to shutdown LazyLibrarian?"
-msgstr "Naozaj sa chcete odhlásiť?"
+msgstr "Naozaj chcete vypnúť LazyLibrarian?"
 
 #: data/interfaces/bookstrap/base.html:285
 msgid "Toggle navigation"
@@ -1938,7 +1934,7 @@ msgstr "Domovská stránka:"
 
 #: data/interfaces/bookstrap/config.html:122
 msgid "Show in the menu:"
-msgstr ""
+msgstr "Zobraziť v ponuke:"
 
 #: data/interfaces/bookstrap/config.html:122
 msgid "Show eBooks"
@@ -1961,10 +1957,8 @@ msgid "Show Series"
 msgstr "Zobraziť série"
 
 #: data/interfaces/bookstrap/config.html:127
-#, fuzzy
-#| msgid "Listed:"
 msgid "Lists:"
-msgstr "Zaradené:"
+msgstr "Zoznamy:"
 
 #: data/interfaces/bookstrap/config.html:127
 msgid "Show rating as stars"
@@ -1995,10 +1989,8 @@ msgid "Ignore paused authors"
 msgstr "Ignorovať pozastavených autorov"
 
 #: data/interfaces/bookstrap/config.html:136
-#, fuzzy
-#| msgid "Settings"
 msgid "Settings page:"
-msgstr "Nastavenia"
+msgstr "Stránka nastavení:"
 
 #: data/interfaces/bookstrap/config.html:137
 msgid "Hide old notifiers"
@@ -2014,7 +2006,7 @@ msgstr "Dátumy autorov:"
 
 #: data/interfaces/bookstrap/config.html:158
 msgid "Author born and died dates, and release dates on the book page."
-msgstr ""
+msgstr "Dátumy narodenia a úmrtia autorov a dátumy vydania na stránke knihy."
 
 #: data/interfaces/bookstrap/config.html:159
 msgid "Added Dates:"
@@ -2024,7 +2016,7 @@ msgstr "Dátumy pridania:"
 msgid ""
 "The Added column of the author, book, magazine and comic lists, and the "
 "history."
-msgstr ""
+msgstr "Stĺpec Pridané v zoznamoch autorov, kníh, časopisov a komiksov a v histórii."
 
 #: data/interfaces/bookstrap/config.html:161
 msgid "Issue Dates:"
@@ -2032,11 +2024,11 @@ msgstr "Dátumy čísel:"
 
 #: data/interfaces/bookstrap/config.html:162
 msgid "Magazine and comic issue dates."
-msgstr ""
+msgstr "Dátumy čísel časopisov a komiksov."
 
 #: data/interfaces/bookstrap/config.html:178
 msgid "Month names follow the Date Language in the Languages tab."
-msgstr ""
+msgstr "Názvy mesiacov sa riadia jazykom dátumov na karte Jazyky."
 
 #: data/interfaces/bookstrap/config.html:181
 msgid "Server Details"
@@ -5185,7 +5177,7 @@ msgstr "Oznámiť stiahnutie zo zdroja"
 #: data/interfaces/bookstrap/config.html:3476
 msgctxt "apprise notifier"
 msgid "D"
-msgstr "S"
+msgstr "D"
 
 #: data/interfaces/bookstrap/config.html:3476
 msgid "Notify Download"
@@ -5508,26 +5500,23 @@ msgid "Import languages:"
 msgstr "Importované jazyky:"
 
 #: data/interfaces/bookstrap/config.html:3896
-#, fuzzy
-#| msgid "Show Series"
 msgid "Show fewer"
-msgstr "Zobraziť série"
+msgstr "Zobraziť menej"
 
 #: data/interfaces/bookstrap/config.html:3897
-#, fuzzy, python-format
-#| msgid "Show all authors"
+#, python-format
 msgid "Show all %d options"
-msgstr "Zobraziť všetkých autorov"
+msgstr "Zobraziť všetky možnosti (%d)"
 
 #: data/interfaces/bookstrap/config.html:3900
 msgid "Each language adds all of its codes, hover a language to see them."
-msgstr ""
+msgstr "Každý jazyk pridá všetky svoje kódy, zobrazíte ich podržaním kurzora nad jazykom."
 
 #: data/interfaces/bookstrap/config.html:3901
 msgid ""
 "Annas Archive and Z-Library search these languages too, unless you enter "
 "their own below."
-msgstr ""
+msgstr "Annas Archive a Z-Library vyhľadávajú tiež v týchto jazykoch, pokiaľ nižšie nezadáte ich vlastné."
 
 #: data/interfaces/bookstrap/config.html:3902
 #, fuzzy
@@ -5561,13 +5550,13 @@ msgstr "Krajina GoogleBooks:"
 
 #: data/interfaces/bookstrap/config.html:3910
 msgid "Automatic (where the server is)"
-msgstr ""
+msgstr "Automaticky (podľa umiestnenia servera)"
 
 #: data/interfaces/bookstrap/config.html:3915
 msgid ""
 "Country for geographically restricted content. GoogleBooks takes only one "
 "country. It does not limit the book languages."
-msgstr ""
+msgstr "Krajina pre geograficky obmedzený obsah. GoogleBooks prijíma len jednu krajinu. Neobmedzuje jazyky kníh."
 
 #: data/interfaces/bookstrap/config.html:3918
 msgid "Default language for magazines:"
@@ -5575,32 +5564,30 @@ msgstr "Predvolený jazyk časopisov:"
 
 #: data/interfaces/bookstrap/config.html:3922
 msgid "Not set"
-msgstr ""
+msgstr "Nenastavené"
 
 #: data/interfaces/bookstrap/config.html:3928
 msgid ""
 "The language a magazine gets when it is added. It is written into the "
 "metadata of every issue (the opf file and the pdf), so readers and Calibre "
 "show the right language."
-msgstr ""
+msgstr "Jazyk, ktorý časopis dostane pri pridaní. Zapisuje sa do metadát každého čísla (súbor opf a pdf), aby čítačky a Calibre zobrazovali správny jazyk."
 
 #: data/interfaces/bookstrap/config.html:3929
 msgid ""
 "It does not filter searches. Each magazine can have its own language, set it "
 "under Magazines below."
-msgstr ""
+msgstr "Nefiltruje vyhľadávanie. Každý časopis môže mať vlastný jazyk, nastavte ho nižšie v časti Časopisy."
 
 #: data/interfaces/bookstrap/config.html:3932
-#, fuzzy
-#| msgid "Annas Archive Search Language:"
 msgid "Annas Archive Search Languages:"
-msgstr "Jazyk vyhľadávania v Annas Archive:"
+msgstr "Jazyky vyhľadávania v Annas Archive:"
 
 #: data/interfaces/bookstrap/config.html:3934
 #: data/interfaces/bookstrap/config.html:3941
 #, python-format
 msgid "Automatic: %s"
-msgstr ""
+msgstr "Automaticky: %s"
 
 #: data/interfaces/bookstrap/config.html:3935
 #: data/interfaces/bookstrap/config.html:3942
@@ -5611,7 +5598,7 @@ msgstr ""
 msgid ""
 "Anything entered here replaces the Import languages for Annas Archive: comma "
 "separated language codes, e.g: EN, DE, or ANY for all languages."
-msgstr ""
+msgstr "Čokoľvek tu zadáte, nahradí importované jazyky pre Annas Archive: kódy jazykov oddelené čiarkou, napr. EN, DE, alebo ANY pre všetky jazyky."
 
 #: data/interfaces/bookstrap/config.html:3939
 msgid "Z-Library Search Languages:"
@@ -5621,7 +5608,7 @@ msgstr "Jazyky vyhľadávania v Z-Library:"
 msgid ""
 "Anything entered here replaces the Import languages for Z-Library: comma "
 "separated language names, e.g: spanish, german, or ANY for all languages."
-msgstr ""
+msgstr "Čokoľvek tu zadáte, nahradí importované jazyky pre Z-Library: anglické názvy jazykov oddelené čiarkou, napr. spanish, german, alebo ANY pre všetky jazyky."
 
 #: data/interfaces/bookstrap/config.html:3946
 msgid "Language Maintenance:"
@@ -7293,12 +7280,12 @@ msgstr "Kompletné"
 #: data/interfaces/bookstrap/series.html:76
 msgctxt "series status"
 msgid "Partial"
-msgstr "Čiastočné"
+msgstr "Čiastočná"
 
 #: data/interfaces/bookstrap/series.html:77
 msgctxt "series status"
 msgid "Empty"
-msgstr "Prázdne"
+msgstr "Prázdna"
 
 #: data/interfaces/bookstrap/series.html:120
 msgid "Change selected series to:"
@@ -7310,7 +7297,7 @@ msgstr "Nenašli sa žiadne série"
 
 #: data/interfaces/bookstrap/shutdown.html:38
 msgid "Server is taking longer than expected to respond. Check the log."
-msgstr ""
+msgstr "Odpoveď servera trvá dlhšie, ako sa čakalo. Pozrite si záznam."
 
 #: data/interfaces/bookstrap/users.html:14
 msgid "Select user"
@@ -7436,277 +7423,265 @@ msgstr "Vymazať používateľa"
 
 #: lazylibrarian/booklanguages.py:16
 msgid "English"
-msgstr ""
+msgstr "Angličtina"
 
 #: lazylibrarian/booklanguages.py:17
 msgid "Spanish"
-msgstr ""
+msgstr "Španielčina"
 
 #: lazylibrarian/booklanguages.py:18
 msgid "French"
-msgstr ""
+msgstr "Francúzština"
 
 #: lazylibrarian/booklanguages.py:19
 msgid "German"
-msgstr ""
+msgstr "Nemčina"
 
 #: lazylibrarian/booklanguages.py:20
 msgid "Italian"
-msgstr ""
+msgstr "Taliančina"
 
 #: lazylibrarian/booklanguages.py:21
 msgid "Portuguese"
-msgstr ""
+msgstr "Portugalčina"
 
 #: lazylibrarian/booklanguages.py:22
 msgid "Russian"
-msgstr ""
+msgstr "Ruština"
 
 #: lazylibrarian/booklanguages.py:23
 msgid "Chinese"
-msgstr ""
+msgstr "Čínština"
 
 #: lazylibrarian/booklanguages.py:24
 msgid "Japanese"
-msgstr ""
+msgstr "Japončina"
 
 #: lazylibrarian/booklanguages.py:25
 msgid "Dutch"
-msgstr ""
+msgstr "Holandčina"
 
 #: lazylibrarian/booklanguages.py:26
-#, fuzzy
-#| msgid "Publisher"
 msgid "Polish"
-msgstr "Vydavateľ"
+msgstr "Poľština"
 
 #: lazylibrarian/booklanguages.py:27
 msgid "Czech"
-msgstr ""
+msgstr "Čeština"
 
 #: lazylibrarian/booklanguages.py:28
 msgid "Slovak"
-msgstr ""
+msgstr "Slovenčina"
 
 #: lazylibrarian/booklanguages.py:29
 msgid "Swedish"
-msgstr ""
+msgstr "Švédčina"
 
 #: lazylibrarian/booklanguages.py:30
 msgid "Danish"
-msgstr ""
+msgstr "Dánčina"
 
 #: lazylibrarian/booklanguages.py:31
 msgid "Norwegian"
-msgstr ""
+msgstr "Nórčina"
 
 #: lazylibrarian/booklanguages.py:32
 msgid "Finnish"
-msgstr ""
+msgstr "Fínčina"
 
 #: lazylibrarian/booklanguages.py:33
 msgid "Hungarian"
-msgstr ""
+msgstr "Maďarčina"
 
 #: lazylibrarian/booklanguages.py:34
 msgid "Turkish"
-msgstr ""
+msgstr "Turečtina"
 
 #: lazylibrarian/booklanguages.py:35
 msgid "Korean"
-msgstr ""
+msgstr "Kórejčina"
 
 #: lazylibrarian/booklanguages.py:36
 msgid "Arabic"
-msgstr ""
+msgstr "Arabčina"
 
 #: lazylibrarian/booklanguages.py:37
 msgid "Hebrew"
-msgstr ""
+msgstr "Hebrejčina"
 
 #: lazylibrarian/booklanguages.py:38
 msgid "Greek"
-msgstr ""
+msgstr "Gréčtina"
 
 #: lazylibrarian/booklanguages.py:39
 msgid "Ukrainian"
-msgstr ""
+msgstr "Ukrajinčina"
 
 #: lazylibrarian/booklanguages.py:40
 msgid "Afrikaans"
-msgstr ""
+msgstr "Afrikánčina"
 
 #: lazylibrarian/booklanguages.py:41
 msgid "Albanian"
-msgstr ""
+msgstr "Albánčina"
 
 #: lazylibrarian/booklanguages.py:42
 msgid "Armenian"
-msgstr ""
+msgstr "Arménčina"
 
 #: lazylibrarian/booklanguages.py:43
 msgid "Basque"
-msgstr ""
+msgstr "Baskičtina"
 
 #: lazylibrarian/booklanguages.py:44
 msgid "Belarusian"
-msgstr ""
+msgstr "Bieloruština"
 
 #: lazylibrarian/booklanguages.py:45
 msgid "Bengali"
-msgstr ""
+msgstr "Bengálčina"
 
 #: lazylibrarian/booklanguages.py:46
 msgid "Bosnian"
-msgstr ""
+msgstr "Bosniačtina"
 
 #: lazylibrarian/booklanguages.py:47
 msgid "Bulgarian"
-msgstr ""
+msgstr "Bulharčina"
 
 #: lazylibrarian/booklanguages.py:48
 msgid "Catalan"
-msgstr ""
+msgstr "Katalánčina"
 
 #: lazylibrarian/booklanguages.py:49
 msgid "Croatian"
-msgstr ""
+msgstr "Chorvátčina"
 
 #: lazylibrarian/booklanguages.py:50
 msgid "Esperanto"
-msgstr ""
+msgstr "Esperanto"
 
 #: lazylibrarian/booklanguages.py:51
 msgid "Estonian"
-msgstr ""
+msgstr "Estónčina"
 
 #: lazylibrarian/booklanguages.py:52
 msgid "Filipino"
-msgstr ""
+msgstr "Filipínčina"
 
 #: lazylibrarian/booklanguages.py:53
 msgid "Galician"
-msgstr ""
+msgstr "Galícijčina"
 
 #: lazylibrarian/booklanguages.py:54
 msgid "Georgian"
-msgstr ""
+msgstr "Gruzínčina"
 
 #: lazylibrarian/booklanguages.py:55
 msgid "Hindi"
-msgstr ""
+msgstr "Hindčina"
 
 #: lazylibrarian/booklanguages.py:56
 msgid "Icelandic"
-msgstr ""
+msgstr "Islandčina"
 
 #: lazylibrarian/booklanguages.py:57
 msgid "Indonesian"
-msgstr ""
+msgstr "Indonézština"
 
 #: lazylibrarian/booklanguages.py:58
 msgid "Irish"
-msgstr ""
+msgstr "Írčina"
 
 #: lazylibrarian/booklanguages.py:59
-#, fuzzy
-#| msgid "Rating"
 msgid "Latin"
-msgstr "Hodnotenie"
+msgstr "Latinčina"
 
 #: lazylibrarian/booklanguages.py:60
 msgid "Latvian"
-msgstr ""
+msgstr "Lotyština"
 
 #: lazylibrarian/booklanguages.py:61
 msgid "Lithuanian"
-msgstr ""
+msgstr "Litovčina"
 
 #: lazylibrarian/booklanguages.py:62
 msgid "Macedonian"
-msgstr ""
+msgstr "Macedónčina"
 
 #: lazylibrarian/booklanguages.py:63
 msgid "Malay"
-msgstr ""
+msgstr "Malajčina"
 
 #: lazylibrarian/booklanguages.py:64
 msgid "Persian"
-msgstr ""
+msgstr "Perzština"
 
 #: lazylibrarian/booklanguages.py:65
 msgid "Romanian"
-msgstr ""
+msgstr "Rumunčina"
 
 #: lazylibrarian/booklanguages.py:66
 msgid "Serbian"
-msgstr ""
+msgstr "Srbčina"
 
 #: lazylibrarian/booklanguages.py:67
 msgid "Slovenian"
-msgstr ""
+msgstr "Slovinčina"
 
 #: lazylibrarian/booklanguages.py:68
 msgid "Swahili"
-msgstr ""
+msgstr "Svahilčina"
 
 #: lazylibrarian/booklanguages.py:69
 msgid "Tamil"
-msgstr ""
+msgstr "Tamilčina"
 
 #: lazylibrarian/booklanguages.py:70
 msgid "Thai"
-msgstr ""
+msgstr "Thajčina"
 
 #: lazylibrarian/booklanguages.py:71
 msgid "Urdu"
-msgstr ""
+msgstr "Urdčina"
 
 #: lazylibrarian/booklanguages.py:72
-#, fuzzy
-#| msgid "Rename"
 msgid "Vietnamese"
-msgstr "Premenovať"
+msgstr "Vietnamčina"
 
 #: lazylibrarian/booklanguages.py:73
 msgid "Welsh"
-msgstr ""
+msgstr "Waleština"
 
 #: lazylibrarian/booklanguages.py:74
 msgid "Yiddish"
-msgstr ""
+msgstr "Jidiš"
 
 #: lazylibrarian/deluge.py:684
-#, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
+#, python-format
 msgid ""
 "%(name)s: Connection FAILED\n"
 "Check debug log"
-msgstr "Test %(name)s ZLYHAL, pozrite si ladiaci záznam"
+msgstr ""
+"%(name)s: pripojenie ZLYHALO\n"
+"Pozrite si ladiaci záznam"
 
 #: lazylibrarian/deluge.py:685
-#, fuzzy, python-format
-#| msgid "%(name)s notification successful"
+#, python-format
 msgid "%(name)s: Connection successful"
-msgstr "Oznámenie %(name)s bolo úspešné"
+msgstr "%(name)s: pripojenie bolo úspešné"
 
 #: lazylibrarian/deluge.py:689
-#, fuzzy
-#| msgid "Label"
 msgid "Label is ok"
-msgstr "Štítok"
+msgstr "Štítok je v poriadku"
 
 #: lazylibrarian/deluge.py:691
-#, fuzzy
-#| msgid "Unable to send message"
 msgid "Unable to set label"
-msgstr "Správu sa nepodarilo odoslať"
+msgstr "Štítok sa nepodarilo nastaviť"
 
 #: lazylibrarian/deluge.py:693
-#, fuzzy
-#| msgid "rss label"
 msgid "No label"
-msgstr "štítok rss"
+msgstr "Bez štítka"
 
 #: lazylibrarian/i18n.py:344
 msgid "Failed"
@@ -7721,81 +7696,80 @@ msgid "Seeding"
 msgstr "Zdieľa sa"
 
 #: lazylibrarian/logconfig.py:476
-#, fuzzy, python-format
-#| msgid "Failed to email file %(file)s to %(addresses)s"
+#, python-format
 msgid "Failed to clear logfiles: %(error)s"
-msgstr "Súbor %(file)s sa nepodarilo odoslať e-mailom na %(addresses)s"
+msgstr "Súbory so záznamom sa nepodarilo vymazať: %(error)s"
 
 #: lazylibrarian/logconfig.py:477
 msgid "No log files to delete"
-msgstr ""
+msgstr "Žiadne súbory so záznamom na vymazanie"
 
 #: lazylibrarian/logconfig.py:479
 #, python-format
 msgid ""
 "%(count)s log file(s) deleted from %(folder)s. An error also occurred: "
 "%(error)s"
-msgstr ""
+msgstr "Počet vymazaných súborov so záznamom z %(folder)s: %(count)s. Vyskytla sa aj chyba: %(error)s"
 
 #: lazylibrarian/logconfig.py:481
 #, python-format
 msgid "%(count)s log file(s) deleted from %(folder)s"
-msgstr ""
+msgstr "Počet vymazaných súborov so záznamom z %(folder)s: %(count)s"
 
 #: lazylibrarian/nzbget.py:39 lazylibrarian/sabnzbd.py:48
-#, fuzzy, python-format
-#| msgid "Found %(name)s version %(version)s"
+#, python-format
 msgid "%(name)s connection successful, version %(version)s"
-msgstr "Nájdená verzia %(version)s aplikácie %(name)s"
+msgstr "%(name)s: pripojenie bolo úspešné, verzia %(version)s"
 
 #: lazylibrarian/nzbget.py:40
-#, fuzzy, python-format
-#| msgid "%(name)s Connection"
+#, python-format
 msgid ""
 "%(name)s connection FAILED\n"
 "%(error)s"
-msgstr "Pripojenie %(name)s"
+msgstr ""
+"%(name)s: pripojenie ZLYHALO\n"
+"%(error)s"
 
 #: lazylibrarian/qbittorrent.py:428
 #, python-format
 msgid "%(name)s login successful, api: %(api)s version: %(version)s"
-msgstr ""
+msgstr "%(name)s: prihlásenie bolo úspešné, api: %(api)s, verzia: %(version)s"
 
 #: lazylibrarian/qbittorrent.py:429 lazylibrarian/rtorrent.py:218
 #: lazylibrarian/synology.py:361 lazylibrarian/transmission.py:358
 #: lazylibrarian/utorrent.py:237
-#, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
+#, python-format
 msgid ""
 "%(name)s login FAILED\n"
 "Check debug log"
-msgstr "Test %(name)s ZLYHAL, pozrite si ladiaci záznam"
+msgstr ""
+"%(name)s: prihlásenie ZLYHALO\n"
+"Pozrite si ladiaci záznam"
 
 #: lazylibrarian/qbittorrent.py:431 lazylibrarian/utorrent.py:239
 #, python-format
 msgid "%(name)s login FAILED: %(error)s"
-msgstr ""
+msgstr "%(name)s: prihlásenie ZLYHALO: %(error)s"
 
 #: lazylibrarian/rtorrent.py:219
 #, python-format
 msgid "%(name)s login successful: %(name)s %(version)s"
-msgstr ""
+msgstr "%(name)s: prihlásenie bolo úspešné: %(name)s %(version)s"
 
 #: lazylibrarian/sabnzbd.py:30
 #, python-format
 msgid "Unable to talk to %(name)s, check HOST/PORT/SUBDIR"
-msgstr ""
+msgstr "Nedá sa spojiť s %(name)s, skontrolujte HOST/PORT/SUBDIR"
 
 #: lazylibrarian/sabnzbd.py:41
 #, python-format
 msgid "Unable to talk to %(name)s, check APIKEY"
-msgstr ""
+msgstr "Nedá sa spojiť s %(name)s, skontrolujte APIKEY"
 
 #: lazylibrarian/sabnzbd.py:45
-#, fuzzy, python-format
-#| msgid "Unable to complete the import: %(error)s"
+#, python-format
 msgid "Failed to get %(name)s categories: %(error)s"
-msgstr "Import sa nepodarilo dokončiť: %(error)s"
+msgstr "Kategórie %(name)s sa nepodarilo získať: %(error)s"
 
 #: lazylibrarian/sabnzbd.py:47
 #, python-format
@@ -7804,12 +7778,14 @@ msgid ""
 "Valid categories:\n"
 "%(valid)s"
 msgstr ""
+"%(name)s: neznáma kategória [%(category)s]\n"
+"Platné kategórie:\n"
+"%(valid)s"
 
 #: lazylibrarian/synology.py:360 lazylibrarian/utorrent.py:236
-#, fuzzy, python-format
-#| msgid "%(name)s notification successful"
+#, python-format
 msgid "%(name)s login successful"
-msgstr "Oznámenie %(name)s bolo úspešné"
+msgstr "%(name)s: prihlásenie bolo úspešné"
 
 #: lazylibrarian/telemetry.py:255
 #, python-format
@@ -7819,34 +7795,34 @@ msgid ""
 "Status:\n"
 "%(status)s"
 msgstr ""
+"ID servera: %(id)s\n"
+"\n"
+"Stav:\n"
+"%(status)s"
 
 #: lazylibrarian/telemetry.py:256
 #, python-format
 msgid "Error connecting to server: %(error)s"
-msgstr ""
+msgstr "Chyba pri pripájaní k serveru: %(error)s"
 
 #: lazylibrarian/telemetry.py:258
-#, fuzzy
-#| msgid "Error sending tweet"
 msgid "Error connecting to server"
-msgstr "Chyba pri odosielaní tweetu"
+msgstr "Chyba pri pripájaní k serveru"
 
 #: lazylibrarian/transmission.py:357
 #, python-format
 msgid "%(name)s login successful, v%(version)s, rpc v%(rpc)s"
-msgstr ""
+msgstr "%(name)s: prihlásenie bolo úspešné, v%(version)s, rpc v%(rpc)s"
 
 #: lazylibrarian/utorrent.py:229
-#, fuzzy, python-format
-#| msgid "%(name)s test FAILED, bad parameter: %(param)s"
+#, python-format
 msgid "%(name)s list FAILED: %(error)s"
-msgstr "Test %(name)s ZLYHAL, chybný parameter: %(param)s"
+msgstr "%(name)s: načítanie zoznamu ZLYHALO: %(error)s"
 
 #: lazylibrarian/utorrent.py:235
-#, fuzzy, python-format
-#| msgid "%(name)s notification successful"
+#, python-format
 msgid "%(name)s login successful, label not checked"
-msgstr "Oznámenie %(name)s bolo úspešné"
+msgstr "%(name)s: prihlásenie bolo úspešné, štítok nebol overený"
 
 #: lazylibrarian/webServe.py:403
 msgid "No items were processed."
@@ -8600,7 +8576,7 @@ msgstr "%(command)s zlyhal: %(error)s"
 #: lazylibrarian/webServe.py:9890
 #, python-format
 msgid "Preprocessor returned %(rc)s: res[%(res)s] err[%(err)s]"
-msgstr ""
+msgstr "Predspracovanie vrátilo %(rc)s: res[%(res)s] err[%(err)s]"
 
 #: lazylibrarian/webServe.py:9893
 msgid "No preprocessor set in config"
@@ -8623,6 +8599,264 @@ msgstr "Odoslať súbor"
 #: lazylibrarian/webServe.py:10007
 msgid "Thank you for enabling Telemetry"
 msgstr "Ďakujeme, že ste povolili telemetriu"
+
+#: data/interfaces/bookstrap/base.html:371
+#: data/interfaces/bookstrap/base.html:372
+#: data/interfaces/bookstrap/base.html:511 lazylibrarian/webServe.py:7876
+msgid "What's new"
+msgstr "Čo je nové"
+
+#: data/interfaces/bookstrap/base.html:507
+#, python-format
+msgid "One change since you last looked:"
+msgid_plural "%(count)d changes since you last looked:"
+msgstr[0] "%(count)d zmena od vašej poslednej návštevy:"
+msgstr[1] "%(count)d zmeny od vašej poslednej návštevy:"
+msgstr[2] "%(count)d zmien od vašej poslednej návštevy:"
+
+#: data/interfaces/bookstrap/base.html:512
+msgid "Dismiss"
+msgstr "Zavrieť"
+
+#: data/interfaces/bookstrap/base.html:515
+msgid "LazyLibrarian updated"
+msgstr "LazyLibrarian bol aktualizovaný"
+
+#: data/interfaces/bookstrap/config.html:748
+msgid "Martinus:"
+msgstr "Martinus:"
+
+#: data/interfaces/bookstrap/config.html:753
+msgid ""
+"Enable Martinus (martinus.sk bookshop, Slovak and Czech books) for book "
+"information. Add Slovak and/or Czech to the preferred languages to keep "
+"their books. Titles and ISBNs are only searched when you search yourself,"
+" the site does not allow automatic searches"
+msgstr "Povoliť Martinus (kníhkupectvo martinus.sk, slovenské a české knihy) ako zdroj informácií o knihách. Aby sa ich knihy ponechali, pridajte slovenčinu a/alebo češtinu medzi uprednostňované jazyky. Názvy a ISBN sa vyhľadávajú len pri vašom vlastnom vyhľadávaní, stránka nepovoľuje automatické vyhľadávanie"
+
+#: data/interfaces/bookstrap/config.html:2963
+msgid "Notification language:"
+msgstr "Jazyk oznámení:"
+
+#: data/interfaces/bookstrap/config.html:2966
+msgid "Same as the interface (English when it follows the browser)"
+msgstr "Rovnaký ako rozhranie (angličtina, ak sa riadi prehliadačom)"
+
+#: data/interfaces/bookstrap/config.html:3907
+msgid "Book Languages"
+msgstr "Jazyky kníh"
+
+#: data/interfaces/bookstrap/config.html:3922
+msgid "Other code, Enter to add"
+msgstr "Iný kód, pridajte klávesom Enter"
+
+#: data/interfaces/bookstrap/config.html:3922
+msgid "Other language code"
+msgstr "Iný kód jazyka"
+
+#: data/interfaces/bookstrap/config.html:3932
+msgid ""
+"All languages turns the language check off. Unknown also accepts books "
+"without a language, try it if GoodReads is missing results."
+msgstr "Všetky jazyky vypne kontrolu jazyka. Neznámy prijme aj knihy bez uvedeného jazyka, skúste ho, ak v GoodReads chýbajú výsledky."
+
+#: data/interfaces/bookstrap/config.html:3933
+msgid "A code not in the list can be added under Show all."
+msgstr "Kód, ktorý nie je v zozname, môžete pridať po kliknutí na Zobraziť všetky."
+
+#: data/interfaces/bookstrap/config.html:3946
+#, python-format
+msgid ""
+"Create a Translator resource in the %(portal)s, with Region set to "
+"Global, then copy one of its keys from Keys and Endpoint"
+msgstr "V %(portal)s vytvorte prostriedok Translator s oblasťou nastavenou na Global a potom skopírujte jeden z jeho kľúčov z časti Keys and Endpoint"
+
+#: data/interfaces/bookstrap/config.html:3946
+msgid "Azure portal"
+msgstr "portáli Azure"
+
+#: data/interfaces/bookstrap/config.html:3948
+msgid "The free tier (F0) is enough for language detection."
+msgstr "Na rozpoznávanie jazyka stačí bezplatná úroveň (F0)."
+
+#: data/interfaces/bookstrap/config.html:3961
+msgid "Search Languages"
+msgstr "Jazyky vyhľadávania"
+
+#: data/interfaces/bookstrap/config.html:3966
+#: data/interfaces/bookstrap/config.html:3974
+msgid ""
+"Leave empty to search the Import languages above. Magazines and comics "
+"are searched in all languages."
+msgstr "Ak necháte prázdne, vyhľadáva sa v importovaných jazykoch vyššie. Časopisy a komiksy sa vyhľadávajú vo všetkých jazykoch."
+
+#: data/interfaces/bookstrap/config.html:3968
+msgid ""
+"If one of the Import languages is not supported by Annas Archive, it "
+"searches all languages."
+msgstr "Ak Annas Archive niektorý z importovaných jazykov nepodporuje, vyhľadáva vo všetkých jazykoch."
+
+#: data/interfaces/bookstrap/config.html:3991
+msgid "Name and Title Languages"
+msgstr "Jazyky mien a názvov"
+
+#: data/interfaces/bookstrap/config.html:3996
+msgid "Languages of names, titles and dates:"
+msgstr "Jazyky mien, názvov a dátumov:"
+
+#: data/interfaces/bookstrap/config.html:4018
+msgid ""
+"Each language adds its month and season names to the Month Names and "
+"Season Names tables, and to Date Language."
+msgstr "Každý jazyk pridá svoje názvy mesiacov a ročných období do tabuliek Názvy mesiacov a Názvy ročných období a do jazyka dátumov."
+
+#: data/interfaces/bookstrap/config.html:4019
+msgid ""
+"It also adds its words for issue and volume numbers, words allowed in "
+"magazine titles, author name suffixes and articles for sorting titles. At"
+" least one language stays on."
+msgstr "Pridá aj svoje slová pre čísla a ročníky, slová povolené v názvoch časopisov, prípony mien autorov a členy pre triedenie názvov. Aspoň jeden jazyk zostane zapnutý."
+
+#: data/interfaces/bookstrap/config.html:4022
+msgid "Date Language (for issue names and shown dates):"
+msgstr "Jazyk dátumov (pre názvy čísel a zobrazené dátumy):"
+
+#: data/interfaces/bookstrap/config.html:4029
+msgid ""
+"The language LazyLibrarian writes month names in, e.g. \"The Magpi - "
+"January 2017\" or \"The Magpi - január 2017\"."
+msgstr "Jazyk, v ktorom LazyLibrarian píše názvy mesiacov, napr. „The Magpi - January 2017“ alebo „The Magpi - január 2017“."
+
+#: data/interfaces/bookstrap/config.html:4030
+msgid ""
+"Used for magazine issue file and folder names, issue titles in Calibre "
+"and OPF metadata, and dates shown with a month name (the date formats are"
+" under Interface)."
+msgstr "Používa sa v názvoch súborov a priečinkov čísel časopisov, v názvoch čísel v Calibre a v metadátach OPF a v dátumoch zobrazených s názvom mesiaca (formáty dátumov sú na karte Rozhranie)."
+
+#: data/interfaces/bookstrap/config.html:4031
+msgid ""
+"It does not affect reading dates: month names in magazine titles are "
+"recognised in all the languages switched on above."
+msgstr "Neovplyvňuje čítanie dátumov: názvy mesiacov v názvoch časopisov sa rozpoznávajú vo všetkých jazykoch zapnutých vyššie."
+
+#: data/interfaces/bookstrap/config.html:4036
+msgid "Author Names and Titles"
+msgstr "Mená autorov a názvy"
+
+#: data/interfaces/bookstrap/config.html:4055
+msgid "Magazine Titles"
+msgstr "Názvy časopisov"
+
+#: data/interfaces/bookstrap/config.html:4081
+msgid ""
+"Words a magazine title may contain besides its name and date, when the "
+"magazine uses strict rejection (* in its reject words). The season names "
+"below are always allowed too."
+msgstr "Slová, ktoré môže názov časopisu obsahovať okrem svojho mena a dátumu, keď časopis používa prísne odmietanie (* v odmietnutých slovách). Názvy ročných období nižšie sú povolené vždy."
+
+#: data/interfaces/bookstrap/config.html:4084
+msgid "Season Names:"
+msgstr "Názvy ročných období:"
+
+#: data/interfaces/bookstrap/config.html:4091
+msgid ""
+"An issue named after a season is dated to the month of its row, e.g. "
+"\"Winter 2017\" to January 2017."
+msgstr "Číslo pomenované podľa ročného obdobia dostane dátum mesiaca vo svojom riadku, napr. „Winter 2017“ dostane január 2017."
+
+#: data/interfaces/bookstrap/config.html:4094
+msgid "Month Names:"
+msgstr "Názvy mesiacov:"
+
+#: data/interfaces/bookstrap/config.html:4106
+msgid ""
+"Long and short month names of each language, in the order of the "
+"languages. Month names in magazine titles are recognised in all of them, "
+"and the Date Language picks the ones LazyLibrarian writes."
+msgstr "Dlhé a krátke názvy mesiacov každého jazyka v poradí jazykov. Názvy mesiacov v názvoch časopisov sa rozpoznávajú vo všetkých z nich a jazyk dátumov určuje, ktoré LazyLibrarian píše."
+
+#: data/interfaces/bookstrap/whatsnew.html:14
+msgid "New"
+msgstr "Nové"
+
+#: data/interfaces/bookstrap/whatsnew.html:27
+#, python-format
+msgid "Unable to get the list of changes from %(repo)s, try again later."
+msgstr "Zoznam zmien z %(repo)s sa nepodarilo získať, skúste to neskôr."
+
+#: data/interfaces/bookstrap/whatsnew.html:30
+msgid "Not installed yet"
+msgstr "Zatiaľ nenainštalované"
+
+#: data/interfaces/bookstrap/whatsnew.html:32
+msgid "These will be included in the next container image update."
+msgstr "Budú zahrnuté v nasledujúcej aktualizácii obrazu kontajnera."
+
+#: data/interfaces/bookstrap/whatsnew.html:37
+msgid "Installed"
+msgstr "Nainštalované"
+
+#: data/interfaces/bookstrap/whatsnew.html:39
+msgid "Recent changes"
+msgstr "Nedávne zmeny"
+
+#: data/interfaces/bookstrap/whatsnew.html:40
+msgid ""
+"The installed version is not known, so changes are not marked as "
+"installed."
+msgstr "Nainštalovaná verzia nie je známa, preto zmeny nie sú označené ako nainštalované."
+
+#: data/interfaces/bookstrap/whatsnew.html:44
+msgid "All changes on GitLab"
+msgstr "Všetky zmeny na GitLabe"
+
+#: lazylibrarian/booklanguages.py:66
+msgid "Malayalam"
+msgstr "Malajálamčina"
+
+#: lazylibrarian/booklanguages.py:67
+msgid "Odia"
+msgstr "Uríjčina"
+
+#: lazylibrarian/booklanguages.py:75
+msgid "Twi"
+msgstr "Twi"
+
+#: lazylibrarian/booklanguages.py:122
+msgid "All languages"
+msgstr "Všetky jazyky"
+
+#: lazylibrarian/notifiers/__init__.py:83
+#, python-format
+msgid "%(library)s %(title)s added manually at %(time)s"
+msgstr "%(library)s %(title)s (pridané ručne, %(time)s)"
+
+#: lazylibrarian/notifiers/__init__.py:85
+#, python-format
+msgid "%(library)s %(title)s from %(provider)s at %(time)s"
+msgstr "%(library)s %(title)s (zdroj: %(provider)s, %(time)s)"
+
+#: lazylibrarian/notifiers/__init__.py:86
+#, python-format
+msgid "%(title)s from %(provider)s at %(time)s"
+msgstr "%(title)s (zdroj: %(provider)s, %(time)s)"
+
+#: lazylibrarian/notifiers/telegram.py:73
+msgid "Testing Telegram settings from LazyLibrarian"
+msgstr "Test nastavení Telegramu z LazyLibrarian"
+
+#: lazylibrarian/scheduling.py:47
+msgid "Started Download"
+msgstr "Sťahovanie začalo"
+
+#: lazylibrarian/scheduling.py:48
+msgid "Added to Library"
+msgstr "Pridané do knižnice"
+
+#: lazylibrarian/scheduling.py:49
+msgid "Download failed"
+msgstr "Sťahovanie zlyhalo"
 
 #~ msgid "Import Languages"
 #~ msgstr "Importované jazyky"

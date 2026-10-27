@@ -29,7 +29,7 @@ from lazylibrarian.downloadmethods import (
     tor_dl_method,
 )
 from lazylibrarian.formatter import check_int, get_list, now, replace_all, unaccented
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import get_searchterm
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
 from lazylibrarian.webshare import valid_ident
@@ -494,9 +494,8 @@ def download_result(match, book):
                 f"Downloading {new_value_dict['AuxInfo']} {new_value_dict['NZBtitle']} from "
                 f"{new_value_dict['NZBprov']}")
             custom_notify_snatch(f"{new_value_dict['BookID']} {new_value_dict['AuxInfo']}")
-            notify_snatch(
-                f"{new_value_dict['AuxInfo']} {new_value_dict['NZBtitle']} from "
-                f"{CONFIG.disp_name(new_value_dict['NZBprov'])} at {now()}")
+            notify_snatch(notify_text(new_value_dict['NZBtitle'], CONFIG.disp_name(new_value_dict['NZBprov']),
+                                      new_value_dict['AuxInfo']))
             # at this point we could add NZBprov to the blocklist with a short timeout, a second or two?
             # This would implement a round-robin search system. Blocklist with an incremental counter.
             # If number of active providers == number blocklisted, so no unblocked providers are left,

@@ -188,7 +188,7 @@ msgstr "V knižnici"
 #: data/interfaces/bookstrap/series.html:78
 #: data/interfaces/bookstrap/series.html:124 lazylibrarian/i18n.py:343
 msgid "Ignored"
-msgstr "Ignorovaný"
+msgstr "Ignorované"
 
 #: data/interfaces/bookstrap/audio.html:69
 #: data/interfaces/bookstrap/books.html:69
@@ -1659,7 +1659,7 @@ msgstr "Vybrané čísla:"
 #: data/interfaces/bookstrap/issues.html:72
 #: data/interfaces/bookstrap/manageissues.html:32
 msgid "Issue"
-msgstr "Čislo"
+msgstr "Číslo"
 
 #: data/interfaces/bookstrap/comicissues.html:48
 #: data/interfaces/bookstrap/comicissues.html:68
@@ -1741,7 +1741,7 @@ msgstr "Pridať komiks"
 #: data/interfaces/bookstrap/comics.html:65
 #: data/interfaces/bookstrap/magazines.html:68
 msgid "Reset"
-msgstr "Obnoviť"
+msgstr "Resetovať"
 
 #: data/interfaces/bookstrap/comics.html:70
 #: data/interfaces/bookstrap/index.html:91
@@ -2006,7 +2006,7 @@ msgstr "Dátumy autorov:"
 
 #: data/interfaces/bookstrap/config.html:158
 msgid "Author born and died dates, and release dates on the book page."
-msgstr "Dátumy narodenia a úmrtia autorov a dátumy vydania na stránke knihy."
+msgstr "Dátumy narodenia a úmrtia autora a dátumy vydania na stránke knihy."
 
 #: data/interfaces/bookstrap/config.html:159
 msgid "Added Dates:"
@@ -5177,7 +5177,7 @@ msgstr "Oznámiť stiahnutie zo zdroja"
 #: data/interfaces/bookstrap/config.html:3476
 msgctxt "apprise notifier"
 msgid "D"
-msgstr "D"
+msgstr "S"
 
 #: data/interfaces/bookstrap/config.html:3476
 msgid "Notify Download"
@@ -5506,35 +5506,29 @@ msgstr "Zobraziť menej"
 #: data/interfaces/bookstrap/config.html:3897
 #, python-format
 msgid "Show all %d options"
-msgstr "Zobraziť všetky možnosti (%d)"
+msgstr "Zobraziť všetkých %d možností"
 
 #: data/interfaces/bookstrap/config.html:3900
 msgid "Each language adds all of its codes, hover a language to see them."
-msgstr "Každý jazyk pridá všetky svoje kódy, zobrazíte ich podržaním kurzora nad jazykom."
+msgstr "Každý jazyk pridá všetky svoje kódy, zobrazíte ich nastavením kurzora na jazyk."
 
 #: data/interfaces/bookstrap/config.html:3901
 msgid ""
 "Annas Archive and Z-Library search these languages too, unless you enter "
 "their own below."
-msgstr "Annas Archive a Z-Library vyhľadávajú tiež v týchto jazykoch, pokiaľ nižšie nezadáte ich vlastné."
+msgstr "Annas Archive a Z-Library vyhľadávajú aj v týchto jazykoch, pokiaľ nižšie nezadáte vlastné."
 
 #: data/interfaces/bookstrap/config.html:3902
-#, fuzzy
-#| msgid "Interface language:"
 msgid "Other language codes:"
-msgstr "Jazyk rozhrania:"
+msgstr "Ďalšie kódy jazykov:"
 
 #: data/interfaces/bookstrap/config.html:3903
-#, fuzzy
-#| msgid "Unknown"
 msgid "e.g: Unknown"
-msgstr "Neznámy"
+msgstr "napr.: Unknown"
 
 #: data/interfaces/bookstrap/config.html:3904
-#, fuzzy
-#| msgid "Comma separated country shortcodes:"
 msgid "Comma separated codes not covered above"
-msgstr "Skrátené kódy krajín oddelené čiarkami:"
+msgstr "Kódy oddelené čiarkami, ktoré nie sú uvedené vyššie"
 
 #: data/interfaces/bookstrap/config.html:3905
 msgid ""
@@ -5550,13 +5544,13 @@ msgstr "Krajina GoogleBooks:"
 
 #: data/interfaces/bookstrap/config.html:3910
 msgid "Automatic (where the server is)"
-msgstr "Automaticky (podľa umiestnenia servera)"
+msgstr "Automaticky (podľa polohy servera)"
 
 #: data/interfaces/bookstrap/config.html:3915
 msgid ""
 "Country for geographically restricted content. GoogleBooks takes only one "
 "country. It does not limit the book languages."
-msgstr "Krajina pre geograficky obmedzený obsah. GoogleBooks prijíma len jednu krajinu. Neobmedzuje jazyky kníh."
+msgstr "Krajina pre geograficky obmedzený obsah. GoogleBooks akceptuje iba jednu krajinu. Jazyky kníh to neobmedzuje."
 
 #: data/interfaces/bookstrap/config.html:3918
 msgid "Default language for magazines:"
@@ -5571,13 +5565,13 @@ msgid ""
 "The language a magazine gets when it is added. It is written into the "
 "metadata of every issue (the opf file and the pdf), so readers and Calibre "
 "show the right language."
-msgstr "Jazyk, ktorý časopis dostane pri pridaní. Zapisuje sa do metadát každého čísla (súbor opf a pdf), aby čítačky a Calibre zobrazovali správny jazyk."
+msgstr "Jazyk, ktorý časopis dostane pri pridaní. Zapíše sa do metadát každého čísla (súbor opf a pdf), takže čítačky a Calibre zobrazia správny jazyk."
 
 #: data/interfaces/bookstrap/config.html:3929
 msgid ""
 "It does not filter searches. Each magazine can have its own language, set it "
 "under Magazines below."
-msgstr "Nefiltruje vyhľadávanie. Každý časopis môže mať vlastný jazyk, nastavte ho nižšie v časti Časopisy."
+msgstr "Nefiltruje vyhľadávanie. Každý časopis môže mať vlastný jazyk, nastavíte ho nižšie v časti Časopisy."
 
 #: data/interfaces/bookstrap/config.html:3932
 msgid "Annas Archive Search Languages:"
@@ -5592,13 +5586,13 @@ msgstr "Automaticky: %s"
 #: data/interfaces/bookstrap/config.html:3935
 #: data/interfaces/bookstrap/config.html:3942
 msgid "Leave empty to search the Import languages above."
-msgstr ""
+msgstr "Ak chcete vyhľadávať v importovaných jazykoch uvedených vyššie, nechajte prázdne."
 
 #: data/interfaces/bookstrap/config.html:3936
 msgid ""
 "Anything entered here replaces the Import languages for Annas Archive: comma "
 "separated language codes, e.g: EN, DE, or ANY for all languages."
-msgstr "Čokoľvek tu zadáte, nahradí importované jazyky pre Annas Archive: kódy jazykov oddelené čiarkou, napr. EN, DE, alebo ANY pre všetky jazyky."
+msgstr "Čokoľvek sem zadáte, nahradí importované jazyky pre Annas Archive: kódy jazykov oddelené čiarkami, napr.: EN, DE, alebo ANY pre všetky jazyky."
 
 #: data/interfaces/bookstrap/config.html:3939
 msgid "Z-Library Search Languages:"
@@ -5608,7 +5602,7 @@ msgstr "Jazyky vyhľadávania v Z-Library:"
 msgid ""
 "Anything entered here replaces the Import languages for Z-Library: comma "
 "separated language names, e.g: spanish, german, or ANY for all languages."
-msgstr "Čokoľvek tu zadáte, nahradí importované jazyky pre Z-Library: anglické názvy jazykov oddelené čiarkou, napr. spanish, german, alebo ANY pre všetky jazyky."
+msgstr "Čokoľvek sem zadáte, nahradí importované jazyky pre Z-Library: názvy jazykov oddelené čiarkami (v angličtine), napr.: spanish, german, alebo ANY pre všetky jazyky."
 
 #: data/interfaces/bookstrap/config.html:3946
 msgid "Language Maintenance:"
@@ -5642,7 +5636,7 @@ msgstr "Jazyk dátumov:"
 msgid ""
 "The language of month names, both when reading magazine dates and when "
 "showing dates with a month name. The date formats are under Interface."
-msgstr ""
+msgstr "Jazyk názvov mesiacov pri čítaní dátumov časopisov aj pri zobrazovaní dátumov s názvom mesiaca. Formáty dátumov sú v časti Rozhranie."
 
 #: data/interfaces/bookstrap/config.html:3964
 msgid "Name Formatting"
@@ -6316,7 +6310,7 @@ msgstr "Zoznam žánrov oddelených čiarkou"
 
 #: data/interfaces/bookstrap/editbook.html:77
 msgid "Audiobook narrator"
-msgstr "Interpret audioknihy"
+msgstr "Rozprávač audioknihy"
 
 #: data/interfaces/bookstrap/editbook.html:81
 msgid "Added by"
@@ -6536,7 +6530,7 @@ msgstr "Veľkosť"
 
 #: data/interfaces/bookstrap/history.html:51
 msgid "percent"
-msgstr "percent"
+msgstr "Percento"
 
 #: data/interfaces/bookstrap/history.html:70
 msgid "Download "
@@ -7151,7 +7145,7 @@ msgstr "Potvrdiť heslo"
 
 #: data/interfaces/bookstrap/profile.html:76
 msgid "If changing password, enter new password  again here"
-msgstr "Ak meníte heslo, zadajte nové heslo ešte raz sem"
+msgstr "Ak meníte heslo, zadajte nové heslo ešte raz"
 
 #: data/interfaces/bookstrap/profile.html:79
 msgid "Subscriptions (for information only)"
@@ -7280,12 +7274,12 @@ msgstr "Kompletné"
 #: data/interfaces/bookstrap/series.html:76
 msgctxt "series status"
 msgid "Partial"
-msgstr "Čiastočná"
+msgstr "Čiastočné"
 
 #: data/interfaces/bookstrap/series.html:77
 msgctxt "series status"
 msgid "Empty"
-msgstr "Prázdna"
+msgstr "Prázdne"
 
 #: data/interfaces/bookstrap/series.html:120
 msgid "Change selected series to:"
@@ -7297,7 +7291,7 @@ msgstr "Nenašli sa žiadne série"
 
 #: data/interfaces/bookstrap/shutdown.html:38
 msgid "Server is taking longer than expected to respond. Check the log."
-msgstr "Odpoveď servera trvá dlhšie, ako sa čakalo. Pozrite si záznam."
+msgstr "Server odpovedá dlhšie, než sa očakávalo. Skontrolujte záznam."
 
 #: data/interfaces/bookstrap/users.html:14
 msgid "Select user"
@@ -7571,7 +7565,7 @@ msgstr "Filipínčina"
 
 #: lazylibrarian/booklanguages.py:53
 msgid "Galician"
-msgstr "Galícijčina"
+msgstr "Haličtina"
 
 #: lazylibrarian/booklanguages.py:54
 msgid "Georgian"
@@ -7681,7 +7675,7 @@ msgstr "Štítok sa nepodarilo nastaviť"
 
 #: lazylibrarian/deluge.py:693
 msgid "No label"
-msgstr "Bez štítka"
+msgstr "Žiadny štítok"
 
 #: lazylibrarian/i18n.py:344
 msgid "Failed"
@@ -7693,33 +7687,33 @@ msgstr "Spracované"
 
 #: lazylibrarian/i18n.py:344
 msgid "Seeding"
-msgstr "Zdieľa sa"
+msgstr "Seeduje sa"
 
 #: lazylibrarian/logconfig.py:476
 #, python-format
 msgid "Failed to clear logfiles: %(error)s"
-msgstr "Súbory so záznamom sa nepodarilo vymazať: %(error)s"
+msgstr "Súbory záznamov sa nepodarilo vymazať: %(error)s"
 
 #: lazylibrarian/logconfig.py:477
 msgid "No log files to delete"
-msgstr "Žiadne súbory so záznamom na vymazanie"
+msgstr "Nie sú žiadne súbory záznamov na vymazanie"
 
 #: lazylibrarian/logconfig.py:479
 #, python-format
 msgid ""
 "%(count)s log file(s) deleted from %(folder)s. An error also occurred: "
 "%(error)s"
-msgstr "Počet vymazaných súborov so záznamom z %(folder)s: %(count)s. Vyskytla sa aj chyba: %(error)s"
+msgstr "Súbory záznamov (%(count)s) boli vymazané z %(folder)s. Vyskytla sa aj chyba: %(error)s"
 
 #: lazylibrarian/logconfig.py:481
 #, python-format
 msgid "%(count)s log file(s) deleted from %(folder)s"
-msgstr "Počet vymazaných súborov so záznamom z %(folder)s: %(count)s"
+msgstr "Súbory záznamov (%(count)s) boli vymazané z %(folder)s"
 
 #: lazylibrarian/nzbget.py:39 lazylibrarian/sabnzbd.py:48
 #, python-format
 msgid "%(name)s connection successful, version %(version)s"
-msgstr "%(name)s: pripojenie bolo úspešné, verzia %(version)s"
+msgstr "Pripojenie %(name)s bolo úspešné, verzia %(version)s"
 
 #: lazylibrarian/nzbget.py:40
 #, python-format
@@ -7727,13 +7721,13 @@ msgid ""
 "%(name)s connection FAILED\n"
 "%(error)s"
 msgstr ""
-"%(name)s: pripojenie ZLYHALO\n"
+"Pripojenie %(name)s ZLYHALO\n"
 "%(error)s"
 
 #: lazylibrarian/qbittorrent.py:428
 #, python-format
 msgid "%(name)s login successful, api: %(api)s version: %(version)s"
-msgstr "%(name)s: prihlásenie bolo úspešné, api: %(api)s, verzia: %(version)s"
+msgstr "Prihlásenie do %(name)s bolo úspešné, API: %(api)s, verzia: %(version)s"
 
 #: lazylibrarian/qbittorrent.py:429 lazylibrarian/rtorrent.py:218
 #: lazylibrarian/synology.py:361 lazylibrarian/transmission.py:358
@@ -7743,28 +7737,28 @@ msgid ""
 "%(name)s login FAILED\n"
 "Check debug log"
 msgstr ""
-"%(name)s: prihlásenie ZLYHALO\n"
+"Prihlásenie do %(name)s ZLYHALO\n"
 "Pozrite si ladiaci záznam"
 
 #: lazylibrarian/qbittorrent.py:431 lazylibrarian/utorrent.py:239
 #, python-format
 msgid "%(name)s login FAILED: %(error)s"
-msgstr "%(name)s: prihlásenie ZLYHALO: %(error)s"
+msgstr "Prihlásenie do %(name)s ZLYHALO: %(error)s"
 
 #: lazylibrarian/rtorrent.py:219
 #, python-format
 msgid "%(name)s login successful: %(name)s %(version)s"
-msgstr "%(name)s: prihlásenie bolo úspešné: %(name)s %(version)s"
+msgstr "Prihlásenie do %(name)s bolo úspešné: %(name)s %(version)s"
 
 #: lazylibrarian/sabnzbd.py:30
 #, python-format
 msgid "Unable to talk to %(name)s, check HOST/PORT/SUBDIR"
-msgstr "Nedá sa spojiť s %(name)s, skontrolujte HOST/PORT/SUBDIR"
+msgstr "Nepodarilo sa spojiť s %(name)s, skontrolujte HOST/PORT/SUBDIR"
 
 #: lazylibrarian/sabnzbd.py:41
 #, python-format
 msgid "Unable to talk to %(name)s, check APIKEY"
-msgstr "Nedá sa spojiť s %(name)s, skontrolujte APIKEY"
+msgstr "Nepodarilo sa spojiť s %(name)s, skontrolujte APIKEY"
 
 #: lazylibrarian/sabnzbd.py:45
 #, python-format
@@ -7785,7 +7779,7 @@ msgstr ""
 #: lazylibrarian/synology.py:360 lazylibrarian/utorrent.py:236
 #, python-format
 msgid "%(name)s login successful"
-msgstr "%(name)s: prihlásenie bolo úspešné"
+msgstr "Prihlásenie do %(name)s bolo úspešné"
 
 #: lazylibrarian/telemetry.py:255
 #, python-format
@@ -7812,17 +7806,17 @@ msgstr "Chyba pri pripájaní k serveru"
 #: lazylibrarian/transmission.py:357
 #, python-format
 msgid "%(name)s login successful, v%(version)s, rpc v%(rpc)s"
-msgstr "%(name)s: prihlásenie bolo úspešné, v%(version)s, rpc v%(rpc)s"
+msgstr "Prihlásenie do %(name)s bolo úspešné, v%(version)s, rpc v%(rpc)s"
 
 #: lazylibrarian/utorrent.py:229
 #, python-format
 msgid "%(name)s list FAILED: %(error)s"
-msgstr "%(name)s: načítanie zoznamu ZLYHALO: %(error)s"
+msgstr "Získanie zoznamu z %(name)s ZLYHALO: %(error)s"
 
 #: lazylibrarian/utorrent.py:235
 #, python-format
 msgid "%(name)s login successful, label not checked"
-msgstr "%(name)s: prihlásenie bolo úspešné, štítok nebol overený"
+msgstr "Prihlásenie do %(name)s bolo úspešné, štítok sa neskontroloval"
 
 #: lazylibrarian/webServe.py:403
 msgid "No items were processed."
@@ -8086,7 +8080,7 @@ msgstr "Predvolený používateľ správcu je „admin“ a heslo je „admin“
 
 #: lazylibrarian/webServe.py:2403
 msgid "This is insecure, please change it on Config -> User Admin"
-msgstr "Toto je nezabezpečené, zmeňte to v Konfigurácia -> Správa používateľov"
+msgstr "Toto je nezabezpečené, zmeňte to v Nastavenia -> Správa používateľov"
 
 #: lazylibrarian/webServe.py:2630
 msgid "User Accounts"

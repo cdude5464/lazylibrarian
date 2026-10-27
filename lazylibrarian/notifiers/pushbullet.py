@@ -21,7 +21,7 @@ import logging
 
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import unaccented
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 from .pushbullet2 import PushBullet
 
@@ -91,13 +91,13 @@ class PushbulletNotifier:
     def notify_snatch(self, title, fail=False):
         if CONFIG.get_bool('PUSHBULLET_NOTIFY_ONSNATCH'):
             if fail:
-                self._notify(message=title, event=notify_strings[NOTIFY_FAIL])
+                self._notify(message=title, event=notify_event(NOTIFY_FAIL))
             else:
-                self._notify(message=title, event=notify_strings[NOTIFY_SNATCH])
+                self._notify(message=title, event=notify_event(NOTIFY_SNATCH))
 
     def notify_download(self, title):
         if CONFIG.get_bool('PUSHBULLET_NOTIFY_ONDOWNLOAD'):
-            self._notify(message=title, event=notify_strings[NOTIFY_DOWNLOAD])
+            self._notify(message=title, event=notify_event(NOTIFY_DOWNLOAD))
 
     def test_notify(self, title="Test"):
         res = self._notify("This test notification asks for the device list", event='DeviceList', force=True)

@@ -2943,6 +2943,17 @@
           <div class="configtable">
             <div class="row">
               <div class="col-md-6">
+                <div class="form-group">
+                  <label for="notify_language">${_('Notification language:')}</label>
+                  <select id="notify_language" name="notify_language" class="form-control">
+                    <% selected = 'selected="selected"' if not CONFIG['NOTIFY_LANGUAGE'] else '' %>
+                    <option value="" ${selected}>${_('Same as the interface (English when it follows the browser)')}</option>
+                    %for lang in i18n.available_languages():
+                    <% selected = 'selected="selected"' if CONFIG['NOTIFY_LANGUAGE'] == lang else '' %>
+                    <option value="${lang}" ${selected}>${i18n.language_name(lang)} (${lang})</option>
+                    %endfor
+                  </select>
+                </div>
               %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
                 <div class="checkbox">
                   <% checked = 'checked="checked"' if CONFIG['USE_TWITTER'] else '' %>

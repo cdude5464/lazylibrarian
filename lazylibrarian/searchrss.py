@@ -24,7 +24,6 @@ from lazylibrarian.downloadmethods import tor_dl_method
 from lazylibrarian.formatter import (
     format_author_name,
     get_list,
-    now,
     plural,
     split_author_names,
     split_title,
@@ -34,7 +33,7 @@ from lazylibrarian.formatter import (
 from lazylibrarian.images import get_book_cover
 from lazylibrarian.importer import add_author_name_to_db, import_book, search_for
 from lazylibrarian.librarysync import find_book_in_db
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import iterate_over_rss_sites, iterate_over_wishlists
 from lazylibrarian.resultlist import process_result_list
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
@@ -418,7 +417,7 @@ def search_wishlist():
                                          tor_url=item['link'], library='eBook', provider='mam')
             if success:
                 custom_notify_snatch(f"{item['BookID']} eBook")
-                notify_snatch(f"eBook {item['Title']} from mam at {now()}")
+                notify_snatch(notify_text(item['Title'], 'mam', 'eBook'))
                 schedule_job(SchedulerCommand.START, target='PostProcessor')
             else:
                 logger.error(f"Failed to download {item['Title']}: {msg}")
@@ -429,7 +428,7 @@ def search_wishlist():
                                          tor_url=item['link'], library='AudioBook', provider='mam')
             if success:
                 custom_notify_snatch(f"{item['BookID']} AudioBook")
-                notify_snatch(f"AudioBook {item['Title']} from mam at {now()}")
+                notify_snatch(notify_text(item['Title'], 'mam', 'AudioBook'))
                 schedule_job(SchedulerCommand.START, target='PostProcessor')
             else:
                 logger.error(f"Failed to download {item['Title']}: {msg}")

@@ -90,6 +90,7 @@ from lazylibrarian.notifiers import (
     custom_notify_snatch,
     notify_download,
     notify_snatch,
+    notify_text,
 )
 from lazylibrarian.postprocess_metadata import (
     BookMetadata,
@@ -1480,10 +1481,7 @@ def _send_download_notifications(
     dispname = book_state.get_display_name(CONFIG)
 
     custom_notify_download(f"{book_state.book_id} {book_type}")
-    notify_download(
-        f"{book_type} {global_name} from {dispname} at {now()}",
-        notification_id,
-    )
+    notify_download(notify_text(global_name, dispname, book_type), notification_id)
     mailing_list(book_type, global_name, notification_id)
     _update_downloads_provider_count(book_state.download_provider)
 
@@ -1520,10 +1518,7 @@ def _handle_failed_processing(
     # Send failure notifications
     dispname = book_state.get_display_name(CONFIG)
     custom_notify_snatch(f"{book_state.book_id} {book_type_str}", fail=True)
-    notify_snatch(
-        f"{book_type_str} {global_name} from {dispname} at {now()}",
-        fail=True,
-    )
+    notify_snatch(notify_text(global_name, dispname, book_type_str), fail=True)
 
     # Update database status to Failed
     control_value_dict = {
@@ -2705,9 +2700,7 @@ def _handle_aborted_download(
             dlresult = f"{book_state.download_title} was aborted by {book_state.source}"
 
     custom_notify_snatch(f"{book_state.book_id} {book_state.source}", fail=True)
-    notify_snatch(
-        f"{book_state.download_title} from {book_state.source} at {now()}", fail=True
-    )
+    notify_snatch(notify_text(book_state.download_title, book_state.source), fail=True)
 
     # change status to "Failed", and ask downloader to delete task and files
     # Only reset book status to wanted if still snatched in case another download task succeeded
@@ -3590,12 +3583,8 @@ def process_book(book_path: str, book_id: str, logger=None, library=""):
 
                 logger.info(f"Successfully processed: {global_name}")
                 custom_notify_download(f"{book_id} {book_type_aux}")
-                frm = "" if snatched_from == "manually added" else "from "
-
-                notify_download(
-                    f"{book_type_aux} {global_name} {frm}{snatched_from} at {now()}",
-                    book_id,
-                )
+                provider = None if snatched_from == "manually added" else snatched_from
+                notify_download(notify_text(global_name, provider, book_type_aux), book_id)
                 mailing_list(book_type_aux, global_name, book_id)
                 if was_snatched:
                     _update_downloads_provider_count(

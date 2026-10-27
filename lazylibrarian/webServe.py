@@ -45,6 +45,7 @@ from lazylibrarian import (
     database,
     dbk,
     deluge,
+    emailtemplates,
     grsync,
     hc,
     i18n,
@@ -535,11 +536,9 @@ def serve_template(templatename, **kwargs):
                             logger.debug(f"{CONFIG.get_str('PROXY_AUTH_NAME')}: {email}")
                             if fullname and email:
                                 new_pwd = pwd_generator()
-                                msg = lazylibrarian.NEWUSER_MSG.replace('{username}', user).replace(
-                                    '{password}', new_pwd).replace('{permission}', 'Friend')
+                                subject, msg = emailtemplates.login_message(user, new_pwd, lazylibrarian.perm_friend)
 
-                                result = notifiers.email_notifier.notify_message('LazyLibrarian New Account',
-                                                                                 msg, email)
+                                result = notifiers.email_notifier.notify_message(subject, msg, email)
                                 if result:
                                     cmd = ('INSERT into users (UserID, UserName, Name, Password, Email, '
                                            'SendTo, Perms) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -1544,23 +1543,11 @@ class WebInterface:
                 db.close()
                 return msg % {'reason': i18n.gettext("No password given")}
 
-            # perm_msg also goes into the welcome email, which stays in English
-            if perms == lazylibrarian.perm_admin:
-                perm_msg = 'ADMIN'
-            elif perms == lazylibrarian.perm_friend:
-                perm_msg = 'Friend'
-            elif perms == lazylibrarian.perm_guest:
-                perm_msg = 'Guest'
-            else:
-                perm_msg = f'Custom {perms}'
-
             self.validate_param("username", kwargs['username'], ['<', '>', '='], 404)
             self.validate_param("fullname", kwargs['fullname'], ['<', '>', '='], 404)
-            msg = lazylibrarian.NEWUSER_MSG.replace('{username}', kwargs['username']).replace(
-                '{password}', kwargs['password']).replace(
-                '{permission}', perm_msg)
+            subject, msg = emailtemplates.login_message(kwargs['username'], kwargs['password'], perms)
 
-            result = notifiers.email_notifier.notify_message('LazyLibrarian New Account', msg, kwargs['email'])
+            result = notifiers.email_notifier.notify_message(subject, msg, kwargs['email'])
 
             if result:
                 cmd = ("INSERT into users (UserID, UserName, Name, Password, Email, SendTo, Perms, hc_token) "
@@ -1568,7 +1555,8 @@ class WebInterface:
                 db.action(cmd, (pwd_generator(), kwargs['username'], kwargs['fullname'],
                                 md5_utf8(kwargs['password']), kwargs['email'], kwargs['sendto'], perms,
                                 kwargs.get('hc_token', '')))
-                msg = i18n.gettext("New user added: %(user)s: %(perm)s") % {'user': kwargs['username'], 'perm': perm_msg}
+                msg = i18n.gettext("New user added: %(user)s: %(perm)s") % {
+                    'user': kwargs['username'], 'perm': emailtemplates.permission_name(perms)}
                 msg += '<br>' + i18n.gettext("Email sent to %(email)s") % {'email': kwargs['email']}
                 cnt = db.match("select count(*) as counter from users")
                 if cnt['counter'] > 1:
@@ -9957,12 +9945,14 @@ class WebInterface:
                         addrs = get_list(res['SendTo'])
                     else:
                         addrs = [res['SendTo']]
+                    lang = emailtemplates.user_language(userid)
                     for addr in addrs:
                         logger.debug(f"Emailing {myfile} to {addr}")
+                        subject, file_msg = emailtemplates.file_message(name or '', emailtemplates.ATTACHED,
+                                                                        lang=lang)
                         if name:
-                            msg = lazylibrarian.NEWFILE_MSG.replace('{name}', name).replace(
-                                '{method}', ' is attached').replace('{link}', '')
-                        result = notifiers.email_notifier.email_file(subject="Message from LazyLibrarian",
+                            msg = file_msg
+                        result = notifiers.email_notifier.email_file(subject=subject,
                                                                      message=msg, to_addr=addr, files=[myfile])
                         if result:
                             db.action('INSERT into sent_file (WhenSent, UserID, Addr, FileName) VALUES (?, ?, ?, ?)',

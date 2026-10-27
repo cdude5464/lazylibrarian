@@ -28,7 +28,7 @@ from email.utils import formataddr, formatdate
 import cherrypy
 
 import lazylibrarian
-from lazylibrarian import database, ebook_convert
+from lazylibrarian import database, ebook_convert, emailtemplates
 from lazylibrarian.common import is_valid_email, mime_type, run_script
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, path_isfile, splitext, syspath
@@ -293,11 +293,10 @@ class EmailNotifier:
                             if force:
                                 event = title
                                 if filename:
-                                    title = lazylibrarian.NEWFILE_MSG.replace('{name}', data['BookName']).replace(
-                                        '{method}', ' is attached').replace('{link}', '')
+                                    _, title = emailtemplates.file_message(data['BookName'], emailtemplates.ATTACHED)
                                 else:
-                                    title = lazylibrarian.NEWFILE_MSG.replace('{name}', data['BookName']).replace(
-                                        '{method}', ' is not available').replace('{link}', '')
+                                    _, title = emailtemplates.file_message(data['BookName'],
+                                                                           emailtemplates.NOT_AVAILABLE)
                             else:
                                 title = data['BookName']
                             logger.debug(f'Found {filename} for bookid {bookid}')

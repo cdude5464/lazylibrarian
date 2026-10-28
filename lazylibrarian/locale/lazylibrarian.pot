@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-10-28 10:58+0000\n"
+"POT-Creation-Date: 2026-10-28 21:00+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -1882,7 +1882,7 @@ msgid "Filters"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:56
-#: data/interfaces/bookstrap/config.html:4119
+#: data/interfaces/bookstrap/config.html:4120
 msgid "Languages"
 msgstr ""
 
@@ -5222,8 +5222,8 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:3764
 #: data/interfaces/bookstrap/config.html:3774
 #: data/interfaces/bookstrap/config.html:3860
-#: data/interfaces/bookstrap/config.html:4152
-#: data/interfaces/bookstrap/config.html:4158
+#: data/interfaces/bookstrap/config.html:4153
+#: data/interfaces/bookstrap/config.html:4159
 msgid "Reject word list"
 msgstr ""
 
@@ -5415,14 +5415,14 @@ msgid "Other language code"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3911
-#: data/interfaces/bookstrap/config.html:3982
-#: data/interfaces/bookstrap/config.html:4035
+#: data/interfaces/bookstrap/config.html:3983
+#: data/interfaces/bookstrap/config.html:4036
 msgid "Show fewer"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3912
-#: data/interfaces/bookstrap/config.html:3983
-#: data/interfaces/bookstrap/config.html:4036
+#: data/interfaces/bookstrap/config.html:3984
+#: data/interfaces/bookstrap/config.html:4037
 #, python-format
 msgid "Show all %d options"
 msgstr ""
@@ -5433,56 +5433,63 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3916
 msgid ""
+"The numbers are the order: where a book is in more of these languages, "
+"the first one is preferred, eg Slovak before Czech on Databáze knih. "
+"Click a language off and on again to move it to the end."
+msgstr ""
+
+#: data/interfaces/bookstrap/config.html:3917
+msgid ""
 "All languages turns the language check off. Unknown also accepts books "
 "without a language, try it if GoodReads is missing results."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3917
+#: data/interfaces/bookstrap/config.html:3918
 msgid "A code not in the list can be added under Show all."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3918
+#: data/interfaces/bookstrap/config.html:3919
 msgid ""
 "Annas Archive and Z-Library search these languages too, unless you change"
 " theirs below."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3924
+#: data/interfaces/bookstrap/config.html:3925
 msgid "Use Google Translate to identify language from book title"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3928
+#: data/interfaces/bookstrap/config.html:3929
 msgid "Microsoft Azure key:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3930
+#: data/interfaces/bookstrap/config.html:3931
 #, python-format
 msgid ""
 "Create a Translator resource in the %(portal)s, with Region set to "
 "Global, then copy one of its keys from Keys and Endpoint"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3930
+#: data/interfaces/bookstrap/config.html:3931
 msgid "Azure portal"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3931
+#: data/interfaces/bookstrap/config.html:3932
 msgid "Microsoft Azure can be used to identify language from book title"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3932
+#: data/interfaces/bookstrap/config.html:3933
 msgid "The free tier (F0) is enough for language detection."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3935
+#: data/interfaces/bookstrap/config.html:3936
 msgid "Language Maintenance:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3937
+#: data/interfaces/bookstrap/config.html:3938
 msgid "Refresh Book Languages Now"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3939
+#: data/interfaces/bookstrap/config.html:3940
 msgid ""
 "Re-evaluates book languages across the database using title, description,"
 " and smart language heuristics. Corrects false-positive foreign "
@@ -5493,289 +5500,289 @@ msgid ""
 "background."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3945
+#: data/interfaces/bookstrap/config.html:3946
 msgid "Search Languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3948
+#: data/interfaces/bookstrap/config.html:3949
 msgid "Annas Archive Search Languages:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3950
+#: data/interfaces/bookstrap/config.html:3951
 msgid ""
 "If one of the Import languages is not supported by Annas Archive, it "
 "searches all languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3951
+#: data/interfaces/bookstrap/config.html:3952
 msgid "Z-Library Search Languages:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3959
-#: data/interfaces/bookstrap/config.html:3966
+#: data/interfaces/bookstrap/config.html:3960
+#: data/interfaces/bookstrap/config.html:3967
 #, python-format
 msgid "Automatic: %s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3961
-#: data/interfaces/bookstrap/config.html:3966
-#: data/interfaces/bookstrap/config.html:3987
+#: data/interfaces/bookstrap/config.html:3962
+#: data/interfaces/bookstrap/config.html:3967
+#: data/interfaces/bookstrap/config.html:3988
 #: lazylibrarian/booklanguages.py:122
 msgid "All languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3963
-#: data/interfaces/bookstrap/config.html:3966
+#: data/interfaces/bookstrap/config.html:3964
+#: data/interfaces/bookstrap/config.html:3967
 #, python-format
 msgid "Custom: %s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3971
+#: data/interfaces/bookstrap/config.html:3972
 msgid "Change"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3988
+#: data/interfaces/bookstrap/config.html:3989
 msgid "Back to Automatic"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3991
+#: data/interfaces/bookstrap/config.html:3992
 msgid ""
 "Automatic searches the Import languages above. Magazines and comics are "
 "searched in all languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3999
+#: data/interfaces/bookstrap/config.html:4000
 msgid "GoogleBooks Country:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4001
+#: data/interfaces/bookstrap/config.html:4002
 msgid "Automatic (where the server is)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4006
+#: data/interfaces/bookstrap/config.html:4007
 msgid ""
 "Country for geographically restricted content. GoogleBooks takes only one"
 " country. It does not limit the book languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4012
+#: data/interfaces/bookstrap/config.html:4013
 msgid "Name and Title Languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4017
+#: data/interfaces/bookstrap/config.html:4018
 msgid "Languages of names, titles and dates:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4039
+#: data/interfaces/bookstrap/config.html:4040
 msgid ""
 "Each language adds its month and season names to the Month Names and "
 "Season Names tables, and to Date Language."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4040
+#: data/interfaces/bookstrap/config.html:4041
 msgid ""
 "It also adds its words for issue and volume numbers, words allowed in "
 "magazine titles, author name suffixes and articles for sorting titles. At"
 " least one language stays on."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4043
+#: data/interfaces/bookstrap/config.html:4044
 msgid "Date Language (for issue names and shown dates):"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4050
+#: data/interfaces/bookstrap/config.html:4051
 msgid ""
 "The language LazyLibrarian writes month names in, e.g. \"The Magpi - "
 "January 2017\" or \"The Magpi - január 2017\"."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4051
+#: data/interfaces/bookstrap/config.html:4052
 msgid ""
 "Used for magazine issue file and folder names, issue titles in Calibre "
 "and OPF metadata, and dates shown with a month name (the date formats are"
 " under Interface)."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4052
+#: data/interfaces/bookstrap/config.html:4053
 msgid ""
 "It does not affect reading dates: month names in magazine titles are "
 "recognised in all the languages switched on above."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4057
+#: data/interfaces/bookstrap/config.html:4058
 msgid "Author Names and Titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4059
+#: data/interfaces/bookstrap/config.html:4060
 msgid "Author Name suffix"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4061
+#: data/interfaces/bookstrap/config.html:4062
 msgid "Comma separated list of suffixes to ignore when showing surname first"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4064
+#: data/interfaces/bookstrap/config.html:4065
 msgid "Definite Articles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4066
+#: data/interfaces/bookstrap/config.html:4067
 msgid "Comma separated list of definite articles for sorting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4069
+#: data/interfaces/bookstrap/config.html:4070
 msgid "Non-splitting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4071
+#: data/interfaces/bookstrap/config.html:4072
 msgid ""
 "Comma separated list of prefixes and (items in braces) to ignore when "
 "splitting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4076
+#: data/interfaces/bookstrap/config.html:4077
 msgid "Magazine Titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4078
+#: data/interfaces/bookstrap/config.html:4079
 msgid "Default language for magazines:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4082
+#: data/interfaces/bookstrap/config.html:4083
 msgid "Not set"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4088
+#: data/interfaces/bookstrap/config.html:4089
 msgid ""
 "The language a magazine gets when it is added. It is written into the "
 "metadata of every issue (the opf file and the pdf), so readers and "
 "Calibre show the right language."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4089
+#: data/interfaces/bookstrap/config.html:4090
 msgid ""
 "It does not filter searches. Each magazine can have its own language, set"
 " it under Magazines below."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4092
+#: data/interfaces/bookstrap/config.html:4093
 msgid "Issue Number Identifiers:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4093
+#: data/interfaces/bookstrap/config.html:4094
 msgid "Allowed issue identifiers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4096
+#: data/interfaces/bookstrap/config.html:4097
 msgid "Volume Number Identifiers:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4097
+#: data/interfaces/bookstrap/config.html:4098
 msgid "Allowed volume identifiers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4100
+#: data/interfaces/bookstrap/config.html:4101
 msgid "Words allowed in magazine titles:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4101
+#: data/interfaces/bookstrap/config.html:4102
 msgid "Allowed in magazine titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4102
+#: data/interfaces/bookstrap/config.html:4103
 msgid ""
 "Words a magazine title may contain besides its name and date, when the "
 "magazine uses strict rejection (* in its reject words). The season names "
 "below are always allowed too."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4105
+#: data/interfaces/bookstrap/config.html:4106
 msgid "Season Names:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4108
-#: data/interfaces/bookstrap/config.html:4122
+#: data/interfaces/bookstrap/config.html:4109
+#: data/interfaces/bookstrap/config.html:4123
 #, python-format
 msgid "Month %(number)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4112
+#: data/interfaces/bookstrap/config.html:4113
 msgid ""
 "An issue named after a season is dated to the month of its row, e.g. "
 "\"Winter 2017\" to January 2017."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4115
+#: data/interfaces/bookstrap/config.html:4116
 msgid "Month Names:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4127
+#: data/interfaces/bookstrap/config.html:4128
 msgid ""
 "Long and short month names of each language, in the order of the "
 "languages. Month names in magazine titles are recognised in all of them, "
 "and the Date Language picks the ones LazyLibrarian writes."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4138
+#: data/interfaces/bookstrap/config.html:4139
 msgid "Genre Settings"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4140
+#: data/interfaces/bookstrap/config.html:4141
 msgid "Genres per book"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4142
+#: data/interfaces/bookstrap/config.html:4143
 msgid "Genre Users"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4150
+#: data/interfaces/bookstrap/config.html:4151
 msgid "Reject Genres"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4153
+#: data/interfaces/bookstrap/config.html:4154
 msgid ""
 "Comma separated list of genres to reject: Results that match any of these"
 " words will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4156
+#: data/interfaces/bookstrap/config.html:4157
 msgid "Reject Parts"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4159
+#: data/interfaces/bookstrap/config.html:4160
 msgid ""
 "Comma separated list of part-words in genres to reject: Results that "
 "contain any of these part-words will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4162
+#: data/interfaces/bookstrap/config.html:4163
 msgid "Replace Genre"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4163
+#: data/interfaces/bookstrap/config.html:4164
 msgid ""
 "Replace one genre name with another (replace happens before processing "
 "reject lists)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4166
+#: data/interfaces/bookstrap/config.html:4167
 msgid "Replace genre"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4168
+#: data/interfaces/bookstrap/config.html:4169
 msgid "with"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4172
+#: data/interfaces/bookstrap/config.html:4173
 msgid "To remove an existing entry leave the text box below it empty"
 msgstr ""
 
 #. TRANSLATORS: placeholder of an empty replacement, an empty value deletes the
 #. entry
-#: data/interfaces/bookstrap/config.html:4178
+#: data/interfaces/bookstrap/config.html:4179
 msgid "<delete>"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4188
+#: data/interfaces/bookstrap/config.html:4189
 msgid ""
 "LazyLibrarian has the ability to send basic information about the "
 "installation, how it is configured, and how it is used to a server. This "
@@ -5783,83 +5790,83 @@ msgid ""
 "improving, and which parts nobody uses."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4190
+#: data/interfaces/bookstrap/config.html:4191
 msgid ""
 "All telemetry information is 100% anonymized. You can press the button "
 "below to see what telemetry data would be sent for your system."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4194
+#: data/interfaces/bookstrap/config.html:4195
 msgid "Telemetry Settings"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4199
+#: data/interfaces/bookstrap/config.html:4200
 msgid "Enable sending anonymous telemetry data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4204
+#: data/interfaces/bookstrap/config.html:4205
 msgid "Telemetry server"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4206
+#: data/interfaces/bookstrap/config.html:4207
 msgid "Test telemetry server"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4210
+#: data/interfaces/bookstrap/config.html:4211
 msgid "Telemetry send interval (hours)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4218
+#: data/interfaces/bookstrap/config.html:4219
 msgid "Include configuration summary"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4225
+#: data/interfaces/bookstrap/config.html:4226
 msgid "Include usage summary"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4232
+#: data/interfaces/bookstrap/config.html:4233
 msgid ""
 "Refresh to see the current telemetry data that will be sent when "
 "telemetry is enabled:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4234
+#: data/interfaces/bookstrap/config.html:4235
 msgid "Click Refresh Telemetry to see the current data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4238
+#: data/interfaces/bookstrap/config.html:4239
 msgid "Refresh telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4239
+#: data/interfaces/bookstrap/config.html:4240
 msgid "Reset usage data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4241
+#: data/interfaces/bookstrap/config.html:4242
 msgid "Submit telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4252
+#: data/interfaces/bookstrap/config.html:4253
 #, python-format
 msgid "Repo: %(repo)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4252
+#: data/interfaces/bookstrap/config.html:4253
 #, python-format
 msgid "Updated: %(date)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4252 lazylibrarian/webServe.py:7847
+#: data/interfaces/bookstrap/config.html:4253 lazylibrarian/webServe.py:7847
 #, python-format
 msgid "Branch: %(branch)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4253
+#: data/interfaces/bookstrap/config.html:4254
 #, python-format
 msgid "Current Version: %(version)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4253
+#: data/interfaces/bookstrap/config.html:4254
 #, python-format
 msgid "Latest Version: %(version)s"
 msgstr ""

@@ -18,6 +18,7 @@ import platform
 import re
 import subprocess
 import tarfile
+import tempfile
 import threading
 import time
 from shutil import move, rmtree
@@ -29,7 +30,7 @@ from lazylibrarian import database, version, whatsnew
 from lazylibrarian.common import dbbackup, docker, proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, listdir, path_isdir, syspath
-from lazylibrarian.formatter import check_int, make_unicode, thread_name
+from lazylibrarian.formatter import make_unicode, thread_name
 from lazylibrarian.telemetry import TELEMETRY
 
 
@@ -327,58 +328,18 @@ def get_latest_version_from_git():
             if branch.lower() in ['package']:  # check against master
                 branch = 'master'
 
-            project = CONFIG['GIT_PROJECT']
-            if not project:
-                project = '9317860'  # default lazylibrarian
-
-            url = f"https://gitlab.com/api/v4/projects/{project}/repository/branches"
-
-            # Get the latest commit available from git
-            logger.debug(f'Retrieving latest version information from git command=[{url}]')
-
-            timestamp = CONFIG.get_int('GIT_UPDATED')
-            age = ''
-            if timestamp:
-                # timestring for 'If-Modified-Since' needs to be english short day/month names and in gmt
-                daynames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-                monnames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                tm = time.gmtime(timestamp)
-                age = (f"{daynames[tm.tm_wday]}, {tm.tm_mday:02d} {monnames[tm.tm_mon]} {tm.tm_year:04d} "
-                       f"{tm.tm_hour:02d}:{tm.tm_min:02d}:{tm.tm_sec:02d} GMT")
+            url = 'https://gitlab.com/LazyLibrarian/LazyLibrarian.git/'
             try:
-                headers = {}
-                if age:
-                    logger.debug(f'Checking if modified since {age}')
-                    headers.update({'If-Modified-Since': age})
-                proxies = proxy_list()
-                timeout = CONFIG.get_int('HTTP_TIMEOUT')
-                if url.startswith('https') and CONFIG['SSL_VERIFY']:
-                    r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies,
-                                     impersonate='chrome',
-                                     verify=CONFIG['SSL_CERTS']
-                                     if CONFIG['SSL_CERTS'] else True)
+                latest_version, _ = run_git(f'ls-remote {url} {branch}')
+                if not latest_version:
+                    logger.warning('Could not get the latest commit from git')
+                    latest_version = f'Not_Available_From_Git : {url}'
                 else:
-                    r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies, impersonate='chrome', verify=False)
-
-                if r.status_code == 200:
-                    try:
-                        res = r.json()
-                        for item in res:
-                            if item['name'] == branch:
-                                latest_version = item['commit']['id']
-                                created_at = item['commit']['created_at']
-                                logger.debug(f"Branch {branch} Latest Version [{latest_version}] {created_at}")
-                                break
-                    except Exception as err:
-                        logger.warning(f'Error {type(err).__name__} reading json response')
-                        logger.error(f'{r.json()}')
-                elif str(r.status_code) == '304':
-                    latest_version = CONFIG['CURRENT_VERSION']
-                    logger.debug('Not modified, currently on Latest Version')
-                else:
-                    logger.warning(f'Could not get the latest commit from git ({r.status_code})')
-                    logger.error(f'{url}')
-                    latest_version = f'Not_Available_From_Git : {r.status_code} : {url}'
+                    latest_version = latest_version.split('\t')[0]
+                     # should really be the hash creation datetime, but we don't have that
+                     # and looking it up eats into the api limit.
+                     # Only used as a marker for when we last checked for update
+                    created_at = datetime.datetime.now().isoformat()
             except Exception as err:
                 logger.warning(f'Could not get the latest commit from git: {type(err).__name__}')
                 logger.error(f'for {url}: {str(err)}')
@@ -392,75 +353,80 @@ def get_commit_difference_from_git() -> tuple[int, str]:
     Takes current latest version value and tries to diff it with the latest version in the current branch.
     Returns # of commits behind, and the list of commits as a string """
     logger = logging.getLogger(__name__)
-    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
     commit_list = ''
     commits = -1
+    result = None
+
     if CONFIG['LATEST_VERSION'] and CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
         CONFIG.set_str('LATEST_VERSION', 'HEAD')
         commit_list = f"Unable to get latest version from {CONFIG['GIT_HOST']}"
         logger.info(commit_list)
-    if re.match('^[a-z0-9]+$', CONFIG['CURRENT_VERSION']):  # does it look like a hash, not an error message
-        url = (f'https://{lazylibrarian.GITLAB_TOKEN}/api/v4/projects/{CONFIG["GIT_USER"]}%2F'
-               f'{CONFIG["GIT_REPO"]}/repository/compare?from={CONFIG["CURRENT_VERSION"]}'
-               f'&to={CONFIG["LATEST_VERSION"]}')
-        logger.debug(f'Check for differences between local & repo by [{url}]')
+        return commits, commit_list
 
-        try:
-            proxies = proxy_list()
-            timeout = CONFIG.get_int('HTTP_TIMEOUT')
-            if url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
-                r = requests.get(url, timeout=timeout, proxies=proxies,
-                                 impersonate='chrome',
-                                 verify=CONFIG['SSL_CERTS']
-                                 if CONFIG['SSL_CERTS'] else True)
-            else:
-                r = requests.get(url, timeout=timeout, proxies=proxies, impersonate='chrome', verify=False)
-            git = r.json()
-            # for gitlab, commits = len(git['commits'])  no status/ahead/behind
-            if 'commits' in git:
-                commits = len(git['commits'])
-                st = ''
-                ahead = 0
-                behind = 0
-                if CONFIG['INSTALL_TYPE'] == 'git':
-                    branch = CONFIG['GIT_BRANCH']
-                    output, _ = run_git(f'rev-list --left-right --count {branch}...origin/{branch}')
-                    if output:
-                        a, b = output.split(None, 1)
-                        ahead = check_int(a, 0)
-                        behind = check_int(b, 0)
-                        if ahead + behind:
-                            st = "Differ"
-                        else:
-                            st = "Even"
-                if st:
-                    msg = f'Git: Status [{st}] - Ahead [{ahead}] - Behind [{behind}] - Total Commits [{commits}]'
-                else:
-                    msg = f'Git: Total Commits [{commits}]'
-                logger.debug(msg)
-            else:
-                logger.warning(f'Could not get difference status from git: {str(git)}')
-            if commits > 0:
-                if CONFIG['LATEST_VERSION'] == 'HEAD':
-                    CONFIG.set_str('LATEST_VERSION', git['commit']['id'])
-                for item in git['commits']:
-                    commit_list = f"{item['title']}\n{commit_list}"
-        except Exception as err:
-            logger.warning(f'Could not get difference status from git: {type(err).__name__}')
-
-    if commits > 1:
-        logger.info(f'New version is available. You are {commits} commits behind')
-    elif commits == 1:
-        logger.info('New version is available. You are one commit behind')
-    elif commits == 0:
-        logger.info('Lazylibrarian is up to date')
-        if CONFIG['LATEST_VERSION'] == 'HEAD':
-            commit_list = ''
-            CONFIG.set_str('LATEST_VERSION', CONFIG['CURRENT_VERSION'])
+    if CONFIG['GIT_PROGRAM']:
+        git_locations = [f"\"{CONFIG['GIT_PROGRAM']}\""]
     else:
-        commit_list = (f"Unknown version of lazylibrarian ({CONFIG['CURRENT_VERSION']})\n"
-                       f"Run lazylibrarian with --update to identify your version")
-        logger.info(commit_list)
+        git_locations = ['git']
+
+    if platform.system().lower() == 'darwin':
+        git_locations.append('/usr/local/git/bin/git')
+
+    repo_url = 'https://gitlab.com/LazyLibrarian/LazyLibrarian.git/'
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        try:
+            for cur_git in git_locations:
+                # Initialize a temporary bare repository
+                subprocess.run([cur_git, "init"], cwd=tmp_dir, check=True, capture_output=True)
+                logger.debug("Initialised temporary repository")
+                # Add the GitLab remote URL
+                subprocess.run(
+                    [cur_git, "remote", "add", "origin", repo_url],
+                    cwd=tmp_dir,
+                    check=True,
+                    capture_output=True,
+                )
+                logger.debug("Added remote url")
+                # Perform a blobless fetch for the tracking branches.
+                # This pulls commit logs/skeletons but skips all file downloads (blobs).
+                fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin"] + [CONFIG['GIT_BRANCH']]
+                subprocess.run(fetch_cmd, cwd=tmp_dir, check=True, capture_output=True)
+                logger.debug("Repository fetched")
+                # Get the subject lines of log differences between the two hashes
+                log_cmd = [
+                    cur_git,
+                    "log",
+                    f"{CONFIG['CURRENT_VERSION']}..{CONFIG['LATEST_VERSION']}",
+                    "--pretty=format:%s",
+                ]
+                result = subprocess.run(
+                    log_cmd, cwd=tmp_dir, check=True, capture_output=True, text=True
+                )
+                logger.debug("Differences collected")
+                if result:
+                    break
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git execution failed: {e.stderr.strip()}")
+            return commits, commit_list
+
+        # Clean and split the output into a structured list
+        temp_list = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        commits = len(temp_list)
+        commit_list = '\n'.join(temp_list)
+        print(commit_list)
+        if commits > 1:
+            logger.info(f'New version is available. You are {commits} commits behind')
+        elif commits == 1:
+            logger.info('New version is available. You are one commit behind')
+        elif commits == 0:
+            logger.info('Lazylibrarian is up to date')
+            if CONFIG['LATEST_VERSION'] == 'HEAD':
+                commit_list = ''
+                CONFIG.set_str('LATEST_VERSION', CONFIG['CURRENT_VERSION'])
+        else:
+            commit_list = (f"Unknown version of lazylibrarian ({CONFIG['CURRENT_VERSION']})\n"
+                           "or error talking to the server, check the log for details")
+            logger.info(commit_list)
     return commits, commit_list
 
 

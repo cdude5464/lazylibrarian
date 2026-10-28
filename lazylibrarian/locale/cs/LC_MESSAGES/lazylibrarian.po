@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-28 21:00+0000\n"
+"POT-Creation-Date: 2026-10-28 21:01+0000\n"
 "PO-Revision-Date: 2026-10-28 20:59+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Czech <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -1316,13 +1316,11 @@ msgstr "Zrušit"
 
 #: data/interfaces/bookstrap/base.html:184
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to restart LazyLibrarian?"
 msgstr "Opravdu se chcete odhlásit?"
 
 #: data/interfaces/bookstrap/base.html:185
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to shutdown LazyLibrarian?"
 msgstr "Opravdu se chcete odhlásit?"
 
@@ -1537,7 +1535,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/base.html:515
 #, fuzzy
-#| msgid "LazyLibrarian Update"
 msgid "LazyLibrarian updated"
 msgstr "Aktualizace LazyLibrarian"
 
@@ -1986,7 +1983,6 @@ msgstr "Zobrazovat série"
 
 #: data/interfaces/bookstrap/config.html:127
 #, fuzzy
-#| msgid "Listed:"
 msgid "Lists:"
 msgstr "V seznamu:"
 
@@ -2020,7 +2016,6 @@ msgstr "Ignorovat pozastavené autory"
 
 #: data/interfaces/bookstrap/config.html:136
 #, fuzzy
-#| msgid "Settings"
 msgid "Settings page:"
 msgstr "Nastavení"
 
@@ -4821,7 +4816,6 @@ msgstr "Označit soubor PDF štítky"
 
 #: data/interfaces/bookstrap/config.html:2947
 #, fuzzy
-#| msgid "Notifications"
 msgid "Notification language:"
 msgstr "Oznámení"
 
@@ -5522,7 +5516,6 @@ msgstr "Pro OPF/PDF"
 
 #: data/interfaces/bookstrap/config.html:3891
 #, fuzzy
-#| msgid "Languages"
 msgid "Book Languages"
 msgstr "Jazyky"
 
@@ -5542,7 +5535,6 @@ msgstr "Jazyk rozhraní"
 #: data/interfaces/bookstrap/config.html:3983
 #: data/interfaces/bookstrap/config.html:4036
 #, fuzzy
-#| msgid "Show Series"
 msgid "Show fewer"
 msgstr "Zobrazovat série"
 
@@ -5637,7 +5629,6 @@ msgstr "Jazyky hledání"
 
 #: data/interfaces/bookstrap/config.html:3949
 #, fuzzy
-#| msgid "Annas Archive Search Language:"
 msgid "Annas Archive Search Languages:"
 msgstr "Jazyk hledání v Annas Archive:"
 
@@ -5662,7 +5653,6 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:3988
 #: lazylibrarian/booklanguages.py:122
 #, fuzzy
-#| msgid "Languages"
 msgid "All languages"
 msgstr "Jazyky"
 
@@ -5674,7 +5664,6 @@ msgstr "Vlastní: %s"
 
 #: data/interfaces/bookstrap/config.html:3972
 #, fuzzy
-#| msgid "Channel"
 msgid "Change"
 msgstr "Kanál"
 
@@ -5748,7 +5737,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4058
 #, fuzzy
-#| msgid "Author Name"
 msgid "Author Names and Titles"
 msgstr "Jméno autora"
 
@@ -5784,7 +5772,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4077
 #, fuzzy
-#| msgid "Magazine Title"
 msgid "Magazine Titles"
 msgstr "Název časopisu"
 
@@ -5858,7 +5845,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4116
 #, fuzzy
-#| msgid "Month Names"
 msgid "Month Names:"
 msgstr "Názvy měsíců"
 
@@ -7574,7 +7560,6 @@ msgstr "Nepodařilo se získat seznam změn z %(repo)s, zkuste to později."
 
 #: data/interfaces/bookstrap/whatsnew.html:30
 #, fuzzy
-#| msgid "not fetched yet"
 msgid "Not installed yet"
 msgstr "zatím nezískáno"
 
@@ -7588,7 +7573,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/whatsnew.html:39
 #, fuzzy
-#| msgid "Save changes"
 msgid "Recent changes"
 msgstr "Uložit změny"
 
@@ -7643,7 +7627,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:28 lazylibrarian/monthlanguages.py:57
 #, fuzzy
-#| msgid "Publisher"
 msgid "Polish"
 msgstr "Nakladatel"
 
@@ -7777,7 +7760,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:61
 #, fuzzy
-#| msgid "Rating"
 msgid "Latin"
 msgstr "Hodnocení"
 
@@ -7843,7 +7825,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:77
 #, fuzzy
-#| msgid "Rename"
 msgid "Vietnamese"
 msgstr "Přejmenovat"
 
@@ -7866,19 +7847,16 @@ msgstr ""
 
 #: lazylibrarian/deluge.py:685
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s: Connection successful"
 msgstr "Oznámení %(name)s úspěšné"
 
 #: lazylibrarian/deluge.py:689
 #, fuzzy
-#| msgid "Label"
 msgid "Label is ok"
 msgstr "Štítek"
 
 #: lazylibrarian/deluge.py:691
 #, fuzzy
-#| msgid "Unable to send message"
 msgid "Unable to set label"
 msgstr "Zprávu nelze odeslat"
 
@@ -7888,7 +7866,6 @@ msgstr "Žádný štítek"
 
 #: lazylibrarian/emailtemplates.py:32
 #, fuzzy
-#| msgid "Snatched"
 msgid "is attached"
 msgstr "Zachycené"
 
@@ -7898,7 +7875,6 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:34
 #, fuzzy
-#| msgid "Not Available"
 msgid "is not available"
 msgstr "Není k dispozici"
 
@@ -7924,13 +7900,11 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:108
 #, fuzzy
-#| msgid "LazyLibrarian User Login"
 msgid "LazyLibrarian New Account"
 msgstr "Přihlášení do LazyLibrarian"
 
 #: lazylibrarian/emailtemplates.py:121
 #, fuzzy
-#| msgid "Translate LazyLibrarian"
 msgid "Message from LazyLibrarian"
 msgstr "Přeložit LazyLibrarian"
 
@@ -7967,16 +7941,19 @@ msgstr ""
 msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:86
 #: lazylibrarian/notifiers/__init__.py:83
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:88
 #: lazylibrarian/notifiers/__init__.py:85
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:89
 #: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
@@ -7988,7 +7965,6 @@ msgstr ""
 
 #: lazylibrarian/nzbget.py:39 lazylibrarian/sabnzbd.py:48
 #, fuzzy, python-format
-#| msgid "Found %(name)s version %(version)s"
 msgid "%(name)s connection successful, version %(version)s"
 msgstr "Nalezen %(name)s verze %(version)s"
 
@@ -8052,25 +8028,21 @@ msgstr ""
 
 #: lazylibrarian/scheduling.py:47
 #, fuzzy
-#| msgid "Notify Download"
 msgid "Started Download"
 msgstr "Oznámit stažení"
 
 #: lazylibrarian/scheduling.py:48
 #, fuzzy
-#| msgid "Added by"
 msgid "Added to Library"
 msgstr "Přidal(a)"
 
 #: lazylibrarian/scheduling.py:49
 #, fuzzy
-#| msgid "Downloaded"
 msgid "Download failed"
 msgstr "Staženo"
 
 #: lazylibrarian/synology.py:360 lazylibrarian/utorrent.py:236
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful"
 msgstr "Oznámení %(name)s úspěšné"
 
@@ -8090,7 +8062,6 @@ msgstr ""
 
 #: lazylibrarian/telemetry.py:258
 #, fuzzy
-#| msgid "Error sending tweet"
 msgid "Error connecting to server"
 msgstr "Chyba při odesílání tweetu"
 
@@ -8106,7 +8077,6 @@ msgstr "%(name)s: načtení seznamu SELHALO: %(error)s"
 
 #: lazylibrarian/utorrent.py:235
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful, label not checked"
 msgstr "Oznámení %(name)s úspěšné"
 
@@ -8888,12 +8858,10 @@ msgid "Thank you for enabling Telemetry"
 msgstr "Děkujeme za povolení telemetrie"
 
 #, fuzzy
-#~| msgid "Unknown"
 #~ msgid "e.g: Unknown"
 #~ msgstr "Neznámé"
 
 #, fuzzy
-#~| msgid "Comma separated country shortcodes:"
 #~ msgid "Comma separated codes not covered above"
 #~ msgstr "Krátké kódy zemí oddělené čárkami:"
 

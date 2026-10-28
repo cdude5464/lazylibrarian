@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-28 21:00+0000\n"
+"POT-Creation-Date: 2026-10-28 21:01+0000\n"
 "PO-Revision-Date: 2026-10-25 08:51+0000\n"
 "Last-Translator: Priit Jõerüüt <jrthwlate@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Estonian <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -1313,13 +1313,11 @@ msgstr "Tühista"
 
 #: data/interfaces/bookstrap/base.html:184
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to restart LazyLibrarian?"
 msgstr "Kas soovite kindlasti välja logida?"
 
 #: data/interfaces/bookstrap/base.html:185
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to shutdown LazyLibrarian?"
 msgstr "Kas soovite kindlasti välja logida?"
 
@@ -1531,7 +1529,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/base.html:515
 #, fuzzy
-#| msgid "LazyLibrarian Update"
 msgid "LazyLibrarian updated"
 msgstr "LazyLibrariani uuendus"
 
@@ -1979,7 +1976,6 @@ msgstr "Näita sarju"
 
 #: data/interfaces/bookstrap/config.html:127
 #, fuzzy
-#| msgid "Listed:"
 msgid "Lists:"
 msgstr "Loetletud:"
 
@@ -2013,7 +2009,6 @@ msgstr "Eira peatatud autoreid"
 
 #: data/interfaces/bookstrap/config.html:136
 #, fuzzy
-#| msgid "Settings"
 msgid "Settings page:"
 msgstr "Seaded"
 
@@ -4819,7 +4814,6 @@ msgstr "Lisa PDF-failile sildid"
 
 #: data/interfaces/bookstrap/config.html:2947
 #, fuzzy
-#| msgid "Notifications"
 msgid "Notification language:"
 msgstr "Teavitused"
 
@@ -5521,7 +5515,6 @@ msgstr "OPF/PDF jaoks"
 
 #: data/interfaces/bookstrap/config.html:3891
 #, fuzzy
-#| msgid "Languages"
 msgid "Book Languages"
 msgstr "Keeled"
 
@@ -5535,7 +5528,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3906
 #, fuzzy
-#| msgid "Interface language:"
 msgid "Other language code"
 msgstr "Liidese keel:"
 
@@ -5543,7 +5535,6 @@ msgstr "Liidese keel:"
 #: data/interfaces/bookstrap/config.html:3983
 #: data/interfaces/bookstrap/config.html:4036
 #, fuzzy
-#| msgid "Show Series"
 msgid "Show fewer"
 msgstr "Näita sarju"
 
@@ -5551,7 +5542,6 @@ msgstr "Näita sarju"
 #: data/interfaces/bookstrap/config.html:3984
 #: data/interfaces/bookstrap/config.html:4037
 #, fuzzy, python-format
-#| msgid "Show all authors"
 msgid "Show all %d options"
 msgstr "Näita kõiki autoreid"
 
@@ -5636,13 +5626,11 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3946
 #, fuzzy
-#| msgid "Z-Library Search Languages:"
 msgid "Search Languages"
 msgstr "Z-Library otsingukeeled:"
 
 #: data/interfaces/bookstrap/config.html:3949
 #, fuzzy
-#| msgid "Annas Archive Search Language:"
 msgid "Annas Archive Search Languages:"
 msgstr "Annas Archive'i otsingukeel:"
 
@@ -5667,20 +5655,17 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:3988
 #: lazylibrarian/booklanguages.py:122
 #, fuzzy
-#| msgid "Languages"
 msgid "All languages"
 msgstr "Keeled"
 
 #: data/interfaces/bookstrap/config.html:3964
 #: data/interfaces/bookstrap/config.html:3967
 #, fuzzy, python-format
-#| msgid "Custom"
 msgid "Custom: %s"
 msgstr "Kohandatud"
 
 #: data/interfaces/bookstrap/config.html:3972
 #, fuzzy
-#| msgid "Channel"
 msgid "Change"
 msgstr "Kanal"
 
@@ -5710,7 +5695,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4013
 #, fuzzy
-#| msgid "Date Language:"
 msgid "Name and Title Languages"
 msgstr "Kuupäevade keel:"
 
@@ -5756,7 +5740,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4058
 #, fuzzy
-#| msgid "Author Name"
 msgid "Author Names and Titles"
 msgstr "Autori nimi"
 
@@ -5793,7 +5776,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4077
 #, fuzzy
-#| msgid "Magazine Title"
 msgid "Magazine Titles"
 msgstr "Ajakirja pealkiri"
 
@@ -5851,7 +5833,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4106
 #, fuzzy
-#| msgid "Season Names"
 msgid "Season Names:"
 msgstr "Aastaaegade nimed"
 
@@ -5869,7 +5850,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4116
 #, fuzzy
-#| msgid "Month Names"
 msgid "Month Names:"
 msgstr "Kuude nimed"
 
@@ -7571,13 +7551,11 @@ msgstr ""
 
 #: data/interfaces/bookstrap/whatsnew.html:27
 #, fuzzy, python-format
-#| msgid "Unable to get the latest version from git"
 msgid "Unable to get the list of changes from %(repo)s, try again later."
 msgstr "Uusimat versiooni ei õnnestunud gitist hankida"
 
 #: data/interfaces/bookstrap/whatsnew.html:30
 #, fuzzy
-#| msgid "not fetched yet"
 msgid "Not installed yet"
 msgstr "pole veel hangitud"
 
@@ -7591,7 +7569,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/whatsnew.html:39
 #, fuzzy
-#| msgid "Save changes"
 msgid "Recent changes"
 msgstr "Salvesta muudatused"
 
@@ -7646,7 +7623,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:28 lazylibrarian/monthlanguages.py:57
 #, fuzzy
-#| msgid "Publisher"
 msgid "Polish"
 msgstr "Kirjastaja"
 
@@ -7780,7 +7756,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:61
 #, fuzzy
-#| msgid "Rating"
 msgid "Latin"
 msgstr "Hinnang"
 
@@ -7846,7 +7821,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:77
 #, fuzzy
-#| msgid "Rename"
 msgid "Vietnamese"
 msgstr "Nimeta ümber"
 
@@ -7860,7 +7834,6 @@ msgstr ""
 
 #: lazylibrarian/deluge.py:684
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
 msgid ""
 "%(name)s: Connection FAILED\n"
 "Check debug log"
@@ -7868,31 +7841,26 @@ msgstr "%(name)s test EBAÕNNESTUS, vaadake silumislogi"
 
 #: lazylibrarian/deluge.py:685
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s: Connection successful"
 msgstr "%(name)s teavitus õnnestus"
 
 #: lazylibrarian/deluge.py:689
 #, fuzzy
-#| msgid "Label"
 msgid "Label is ok"
 msgstr "Silt"
 
 #: lazylibrarian/deluge.py:691
 #, fuzzy
-#| msgid "Unable to send message"
 msgid "Unable to set label"
 msgstr "Sõnumit ei saa saata"
 
 #: lazylibrarian/deluge.py:693
 #, fuzzy
-#| msgid "rss label"
 msgid "No label"
 msgstr "RSS-i silt"
 
 #: lazylibrarian/emailtemplates.py:32
 #, fuzzy
-#| msgid "Snatched"
 msgid "is attached"
 msgstr "Haaratud"
 
@@ -7902,7 +7870,6 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:34
 #, fuzzy
-#| msgid "Not Available"
 msgid "is not available"
 msgstr "Pole saadaval"
 
@@ -7928,13 +7895,11 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:108
 #, fuzzy
-#| msgid "LazyLibrarian User Login"
 msgid "LazyLibrarian New Account"
 msgstr "LazyLibrariani sisselogimine"
 
 #: lazylibrarian/emailtemplates.py:121
 #, fuzzy
-#| msgid "Translate LazyLibrarian"
 msgid "Message from LazyLibrarian"
 msgstr "Tõlgi LazyLibrarian"
 
@@ -7952,7 +7917,6 @@ msgstr "Jagamine"
 
 #: lazylibrarian/logconfig.py:476
 #, fuzzy, python-format
-#| msgid "Failed to email file %(file)s to %(addresses)s"
 msgid "Failed to clear logfiles: %(error)s"
 msgstr "Faili %(file)s saatmine e-postiga aadressile %(addresses)s ebaõnnestus"
 
@@ -7972,16 +7936,19 @@ msgstr ""
 msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:86
 #: lazylibrarian/notifiers/__init__.py:83
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:88
 #: lazylibrarian/notifiers/__init__.py:85
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:89
 #: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
@@ -7993,13 +7960,11 @@ msgstr ""
 
 #: lazylibrarian/nzbget.py:39 lazylibrarian/sabnzbd.py:48
 #, fuzzy, python-format
-#| msgid "Found %(name)s version %(version)s"
 msgid "%(name)s connection successful, version %(version)s"
 msgstr "Leiti %(name)s versioon %(version)s"
 
 #: lazylibrarian/nzbget.py:40
 #, fuzzy, python-format
-#| msgid "%(name)s Connection"
 msgid ""
 "%(name)s connection FAILED\n"
 "%(error)s"
@@ -8014,7 +7979,6 @@ msgstr ""
 #: lazylibrarian/synology.py:361 lazylibrarian/transmission.py:358
 #: lazylibrarian/utorrent.py:237
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
 msgid ""
 "%(name)s login FAILED\n"
 "Check debug log"
@@ -8042,7 +8006,6 @@ msgstr ""
 
 #: lazylibrarian/sabnzbd.py:45
 #, fuzzy, python-format
-#| msgid "Unable to complete the import: %(error)s"
 msgid "Failed to get %(name)s categories: %(error)s"
 msgstr "Importi ei saa lõpetada: %(error)s"
 
@@ -8056,25 +8019,21 @@ msgstr ""
 
 #: lazylibrarian/scheduling.py:47
 #, fuzzy
-#| msgid "Notify Download"
 msgid "Started Download"
 msgstr "Teavita allalaadimisest"
 
 #: lazylibrarian/scheduling.py:48
 #, fuzzy
-#| msgid "Added by"
 msgid "Added to Library"
 msgstr "Lisaja"
 
 #: lazylibrarian/scheduling.py:49
 #, fuzzy
-#| msgid "Downloaded"
 msgid "Download failed"
 msgstr "Alla laaditud"
 
 #: lazylibrarian/synology.py:360 lazylibrarian/utorrent.py:236
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful"
 msgstr "%(name)s teavitus õnnestus"
 
@@ -8094,7 +8053,6 @@ msgstr ""
 
 #: lazylibrarian/telemetry.py:258
 #, fuzzy
-#| msgid "Error sending tweet"
 msgid "Error connecting to server"
 msgstr "Viga säutsu saatmisel"
 
@@ -8105,13 +8063,11 @@ msgstr ""
 
 #: lazylibrarian/utorrent.py:229
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, bad parameter: %(param)s"
 msgid "%(name)s list FAILED: %(error)s"
 msgstr "%(name)s test EBAÕNNESTUS, vigane parameeter: %(param)s"
 
 #: lazylibrarian/utorrent.py:235
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful, label not checked"
 msgstr "%(name)s teavitus õnnestus"
 
@@ -8884,12 +8840,10 @@ msgid "Thank you for enabling Telemetry"
 msgstr "Täname telemeetria lubamise eest"
 
 #, fuzzy
-#~| msgid "Unknown"
 #~ msgid "e.g: Unknown"
 #~ msgstr "Tundmatu"
 
 #, fuzzy
-#~| msgid "Comma separated country shortcodes:"
 #~ msgid "Comma separated codes not covered above"
 #~ msgstr "Komadega eraldatud riigikoodid:"
 

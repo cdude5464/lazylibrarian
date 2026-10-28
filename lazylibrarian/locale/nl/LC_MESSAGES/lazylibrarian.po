@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-28 21:00+0000\n"
+"POT-Creation-Date: 2026-10-28 21:01+0000\n"
 "PO-Revision-Date: 2026-10-23 22:52+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Dutch <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -1319,13 +1319,11 @@ msgstr "Annuleren"
 
 #: data/interfaces/bookstrap/base.html:184
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to restart LazyLibrarian?"
 msgstr "Weet je zeker dat je je wilt afmelden?"
 
 #: data/interfaces/bookstrap/base.html:185
 #, fuzzy
-#| msgid "Are you sure you want to logout?"
 msgid "Are you sure you want to shutdown LazyLibrarian?"
 msgstr "Weet je zeker dat je je wilt afmelden?"
 
@@ -1539,7 +1537,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/base.html:515
 #, fuzzy
-#| msgid "LazyLibrarian Update"
 msgid "LazyLibrarian updated"
 msgstr "LazyLibrarian-update"
 
@@ -1994,7 +1991,6 @@ msgstr "Series tonen"
 
 #: data/interfaces/bookstrap/config.html:127
 #, fuzzy
-#| msgid "Listed:"
 msgid "Lists:"
 msgstr "Vermeld:"
 
@@ -2028,7 +2024,6 @@ msgstr "Gepauzeerde auteurs negeren"
 
 #: data/interfaces/bookstrap/config.html:136
 #, fuzzy
-#| msgid "Settings"
 msgid "Settings page:"
 msgstr "Instellingen"
 
@@ -4844,7 +4839,6 @@ msgstr "PDF-bestand taggen"
 
 #: data/interfaces/bookstrap/config.html:2947
 #, fuzzy
-#| msgid "Notifications"
 msgid "Notification language:"
 msgstr "Meldingen"
 
@@ -5550,7 +5544,6 @@ msgstr "Voor OPF/PDF"
 
 #: data/interfaces/bookstrap/config.html:3891
 #, fuzzy
-#| msgid "Languages"
 msgid "Book Languages"
 msgstr "Talen"
 
@@ -5564,7 +5557,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3906
 #, fuzzy
-#| msgid "Interface language:"
 msgid "Other language code"
 msgstr "Interfacetaal:"
 
@@ -5572,7 +5564,6 @@ msgstr "Interfacetaal:"
 #: data/interfaces/bookstrap/config.html:3983
 #: data/interfaces/bookstrap/config.html:4036
 #, fuzzy
-#| msgid "Show Series"
 msgid "Show fewer"
 msgstr "Series tonen"
 
@@ -5580,7 +5571,6 @@ msgstr "Series tonen"
 #: data/interfaces/bookstrap/config.html:3984
 #: data/interfaces/bookstrap/config.html:4037
 #, fuzzy, python-format
-#| msgid "Show all authors"
 msgid "Show all %d options"
 msgstr "Alle auteurs tonen"
 
@@ -5666,13 +5656,11 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3946
 #, fuzzy
-#| msgid "Z-Library Search Languages:"
 msgid "Search Languages"
 msgstr "Zoektalen Z-Library:"
 
 #: data/interfaces/bookstrap/config.html:3949
 #, fuzzy
-#| msgid "Annas Archive Search Language:"
 msgid "Annas Archive Search Languages:"
 msgstr "Zoektaal Annas Archive:"
 
@@ -5697,20 +5685,17 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:3988
 #: lazylibrarian/booklanguages.py:122
 #, fuzzy
-#| msgid "Languages"
 msgid "All languages"
 msgstr "Talen"
 
 #: data/interfaces/bookstrap/config.html:3964
 #: data/interfaces/bookstrap/config.html:3967
 #, fuzzy, python-format
-#| msgid "Custom"
 msgid "Custom: %s"
 msgstr "Eigen"
 
 #: data/interfaces/bookstrap/config.html:3972
 #, fuzzy
-#| msgid "Channel"
 msgid "Change"
 msgstr "Kanaal"
 
@@ -5740,7 +5725,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4013
 #, fuzzy
-#| msgid "Date Language:"
 msgid "Name and Title Languages"
 msgstr "Datumtaal:"
 
@@ -5786,7 +5770,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4058
 #, fuzzy
-#| msgid "Author Name"
 msgid "Author Names and Titles"
 msgstr "Naam auteur"
 
@@ -5823,7 +5806,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4077
 #, fuzzy
-#| msgid "Magazine Title"
 msgid "Magazine Titles"
 msgstr "Tijdschrifttitel"
 
@@ -5881,7 +5863,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4106
 #, fuzzy
-#| msgid "Season Names"
 msgid "Season Names:"
 msgstr "Namen van seizoenen"
 
@@ -5899,7 +5880,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/config.html:4116
 #, fuzzy
-#| msgid "Month Names"
 msgid "Month Names:"
 msgstr "Namen van maanden"
 
@@ -7617,13 +7597,11 @@ msgstr ""
 
 #: data/interfaces/bookstrap/whatsnew.html:27
 #, fuzzy, python-format
-#| msgid "Unable to get the latest version from git"
 msgid "Unable to get the list of changes from %(repo)s, try again later."
 msgstr "Kan de nieuwste versie niet ophalen uit git"
 
 #: data/interfaces/bookstrap/whatsnew.html:30
 #, fuzzy
-#| msgid "not fetched yet"
 msgid "Not installed yet"
 msgstr "nog niet opgehaald"
 
@@ -7637,7 +7615,6 @@ msgstr ""
 
 #: data/interfaces/bookstrap/whatsnew.html:39
 #, fuzzy
-#| msgid "Save changes"
 msgid "Recent changes"
 msgstr "Wijzigingen opslaan"
 
@@ -7692,7 +7669,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:28 lazylibrarian/monthlanguages.py:57
 #, fuzzy
-#| msgid "Publisher"
 msgid "Polish"
 msgstr "Uitgever"
 
@@ -7826,7 +7802,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:61
 #, fuzzy
-#| msgid "Rating"
 msgid "Latin"
 msgstr "Waardering"
 
@@ -7892,7 +7867,6 @@ msgstr ""
 
 #: lazylibrarian/booklanguages.py:77
 #, fuzzy
-#| msgid "Rename"
 msgid "Vietnamese"
 msgstr "Hernoemen"
 
@@ -7906,7 +7880,6 @@ msgstr ""
 
 #: lazylibrarian/deluge.py:684
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
 msgid ""
 "%(name)s: Connection FAILED\n"
 "Check debug log"
@@ -7914,31 +7887,26 @@ msgstr "%(name)s-test MISLUKT, bekijk het debuglogboek"
 
 #: lazylibrarian/deluge.py:685
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s: Connection successful"
 msgstr "%(name)s-melding geslaagd"
 
 #: lazylibrarian/deluge.py:689
 #, fuzzy
-#| msgid "Label"
 msgid "Label is ok"
 msgstr "Label"
 
 #: lazylibrarian/deluge.py:691
 #, fuzzy
-#| msgid "Unable to send message"
 msgid "Unable to set label"
 msgstr "Kan bericht niet versturen"
 
 #: lazylibrarian/deluge.py:693
 #, fuzzy
-#| msgid "rss label"
 msgid "No label"
 msgstr "RSS-label"
 
 #: lazylibrarian/emailtemplates.py:32
 #, fuzzy
-#| msgid "Snatched"
 msgid "is attached"
 msgstr "Binnengehaald"
 
@@ -7948,7 +7916,6 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:34
 #, fuzzy
-#| msgid "Not Available"
 msgid "is not available"
 msgstr "Niet beschikbaar"
 
@@ -7974,13 +7941,11 @@ msgstr ""
 
 #: lazylibrarian/emailtemplates.py:108
 #, fuzzy
-#| msgid "LazyLibrarian User Login"
 msgid "LazyLibrarian New Account"
 msgstr "LazyLibrarian-aanmelding"
 
 #: lazylibrarian/emailtemplates.py:121
 #, fuzzy
-#| msgid "Translate LazyLibrarian"
 msgid "Message from LazyLibrarian"
 msgstr "LazyLibrarian vertalen"
 
@@ -7998,7 +7963,6 @@ msgstr "Bezig met seeden"
 
 #: lazylibrarian/logconfig.py:476
 #, fuzzy, python-format
-#| msgid "Failed to email file %(file)s to %(addresses)s"
 msgid "Failed to clear logfiles: %(error)s"
 msgstr "Kan bestand %(file)s niet mailen naar %(addresses)s"
 
@@ -8018,16 +7982,19 @@ msgstr ""
 msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:86
 #: lazylibrarian/notifiers/__init__.py:83
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:88
 #: lazylibrarian/notifiers/__init__.py:85
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr ""
 
+#: lazylibrarian/notifiers/__init__.py:89
 #: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
@@ -8039,13 +8006,11 @@ msgstr ""
 
 #: lazylibrarian/nzbget.py:39 lazylibrarian/sabnzbd.py:48
 #, fuzzy, python-format
-#| msgid "Found %(name)s version %(version)s"
 msgid "%(name)s connection successful, version %(version)s"
 msgstr "%(name)s versie %(version)s gevonden"
 
 #: lazylibrarian/nzbget.py:40
 #, fuzzy, python-format
-#| msgid "%(name)s Connection"
 msgid ""
 "%(name)s connection FAILED\n"
 "%(error)s"
@@ -8060,7 +8025,6 @@ msgstr ""
 #: lazylibrarian/synology.py:361 lazylibrarian/transmission.py:358
 #: lazylibrarian/utorrent.py:237
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, check debug log"
 msgid ""
 "%(name)s login FAILED\n"
 "Check debug log"
@@ -8088,7 +8052,6 @@ msgstr ""
 
 #: lazylibrarian/sabnzbd.py:45
 #, fuzzy, python-format
-#| msgid "Unable to complete the import: %(error)s"
 msgid "Failed to get %(name)s categories: %(error)s"
 msgstr "Kan de import niet voltooien: %(error)s"
 
@@ -8102,25 +8065,21 @@ msgstr ""
 
 #: lazylibrarian/scheduling.py:47
 #, fuzzy
-#| msgid "Notify Download"
 msgid "Started Download"
 msgstr "Melden bij download"
 
 #: lazylibrarian/scheduling.py:48
 #, fuzzy
-#| msgid "Added by"
 msgid "Added to Library"
 msgstr "Toegevoegd door"
 
 #: lazylibrarian/scheduling.py:49
 #, fuzzy
-#| msgid "Downloaded"
 msgid "Download failed"
 msgstr "Gedownload"
 
 #: lazylibrarian/synology.py:360 lazylibrarian/utorrent.py:236
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful"
 msgstr "%(name)s-melding geslaagd"
 
@@ -8140,7 +8099,6 @@ msgstr ""
 
 #: lazylibrarian/telemetry.py:258
 #, fuzzy
-#| msgid "Error sending tweet"
 msgid "Error connecting to server"
 msgstr "Fout bij versturen van tweet"
 
@@ -8151,13 +8109,11 @@ msgstr ""
 
 #: lazylibrarian/utorrent.py:229
 #, fuzzy, python-format
-#| msgid "%(name)s test FAILED, bad parameter: %(param)s"
 msgid "%(name)s list FAILED: %(error)s"
 msgstr "%(name)s-test MISLUKT, ongeldige parameter: %(param)s"
 
 #: lazylibrarian/utorrent.py:235
 #, fuzzy, python-format
-#| msgid "%(name)s notification successful"
 msgid "%(name)s login successful, label not checked"
 msgstr "%(name)s-melding geslaagd"
 
@@ -8931,12 +8887,10 @@ msgid "Thank you for enabling Telemetry"
 msgstr "Bedankt voor het inschakelen van telemetrie"
 
 #, fuzzy
-#~| msgid "Unknown"
 #~ msgid "e.g: Unknown"
 #~ msgstr "Onbekend"
 
 #, fuzzy
-#~| msgid "Comma separated country shortcodes:"
 #~ msgid "Comma separated codes not covered above"
 #~ msgstr "Kommagescheiden landcodes:"
 

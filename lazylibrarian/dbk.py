@@ -10,9 +10,11 @@
 #   https://www.databazeknih.cz/book-detail-more-info/30482               pages, original title, isbn
 #   https://www.databazeknih.cz/search?in=authors&q=sapkowski             search for authors
 #   https://www.databazeknih.cz/autori/andrzej-sapkowski-269              author, with schema.org json-ld
-#   https://www.databazeknih.cz/vydane-knihy/andrzej-sapkowski-269        an author's books, 20 per page
+#   https://www.databazeknih.cz/vydane-knihy/andrzej-sapkowski-269?lang=sk  an author's books, 20 per page,
+#                                                                         in Czech without lang
 #   https://www.databazeknih.cz/serie/zaklinac-saga---7063                books in a series
-# Each edition of a book has its own id. The author and series pages list one edition of each book
+# Each edition of a book has its own id. The author and series pages list one edition of each book.
+# Czech and Slovak translations are separate books, with the same original title
 # Author ids are plain numbers like GoodReads and HardCover ones, so LazyLibrarian stores them
 # as DBK<number> to keep them apart in the lookups that match an id against every source column
 
@@ -308,7 +310,7 @@ class DBK:
         return series
 
     def _parse_more_info(self, more: str) -> dict:
-        """ Return pages, original year, isbn and language from the book-detail-more-info fragment """
+        """ Return pages, original title and year, isbn and language from the book-detail-more-info fragment """
         soup = BeautifulSoup(more, 'html.parser')
         details = {}
         for row in soup.find_all('div', class_='book-details__row'):
@@ -324,6 +326,7 @@ class DBK:
                     details['pages'] = int(match.group())
             elif label == 'Originální název':
                 # eg 'Krew elfów, 1994'
+                details['original'] = text
                 match = re.search(r'\b(1\d{3}|20\d{2})\s*$', text)
                 if match:
                     details['original_year'] = match.group(1)
@@ -553,9 +556,69 @@ class DBK:
         """ Name without diacritics, unaccented() drops 'ł' as it has no separate accent """
         return unaccented(name.translate({0x141: 'L', 0x142: 'l'}))
 
-    def _author_books(self, dbk_author_id: str) -> list:
-        """ Return [(bookid, bookname, year)] for all books of a databazeknih author """
+    def _author_languages(self) -> list:
+        """ Return the languages of an author's books page in IMP_PREFLANG order, eg ['sk', 'cz'],
+            or an empty list for both without a preference. The page only has Czech and Slovak """
+        languages = []
+        for pref in get_list(CONFIG['IMP_PREFLANG']):
+            pref = pref.lower()
+            if pref == 'all':
+                return []
+            for language in ('cz', 'sk'):
+                if pref in self.DBK_LANGUAGES[language] and language not in languages:
+                    languages.append(language)
+        return languages
+
+    def _prefer_languages(self, books: list, languages: list) -> list:
+        """ Keep one translation of each work from [(bookid, bookname, year)], in the first of the
+            languages it was published in. Books without an original title, eg by Czech and
+            Slovak authors, are all kept """
+        names = {'cz': 'Czech', 'sk': 'Slovak'}
+        rank = {names[language]: position for position, language in enumerate(languages)}
+        chosen = {}
+        for book in books:
+            if lazylibrarian.STOPTHREADS and thread_name() == "AUTHORUPDATE":
+                break
+            more, _ = self._fetch(self.MOREURL % book[0])
+            details = self._parse_more_info(more) if more else {}
+            key = unaccented(details.get('original', '')).lower() or f"id {book[0]}"
+            score = rank.get(details.get('language', ''), len(rank))
+            if key not in chosen or score < chosen[key][0]:
+                chosen[key] = (score, book)
+        kept = [book for _, book in chosen.values()]
+        if len(kept) < len(books):
+            self.logger.debug(f"Kept {len(kept)} of {len(books)} databazeknih books, "
+                              f"one translation of each in {', '.join(languages)}")
+        return kept
+
+    def _author_books(self, dbk_author_id: str, prefer_language: bool = False) -> list:
+        """ Return [(bookid, bookname, year)] for all books of a databazeknih author in the
+            preferred languages. With both Czech and Slovak, prefer_language keeps one
+            translation of each work, in the language that comes first in IMP_PREFLANG """
+        languages = self._author_languages()
+        books = []
+        seen = set()
+        # the czsk list has only one of a work's Czech and Slovak translations, mostly the
+        # Czech one, so the preferred languages are listed one by one
+        for lang in languages or ['czsk']:
+            for book in self._author_book_list(dbk_author_id, lang):
+                if book[0] not in seen:
+                    seen.add(book[0])
+                    books.append(book)
+        if prefer_language and len(languages) > 1:
+            books = self._prefer_languages(books, languages)
+        return books
+
+    def _author_book_list(self, dbk_author_id: str, lang: str) -> list:
+        """ Return [(bookid, bookname, year)] from an author's books pages in one site language """
         url = self.AUTHORBOOKSURL % dbk_author_id
+        if lang != 'cz':
+            # the short page name redirects to the full one and drops lang, the page lists
+            # the Czech books and links to the others by the full name
+            page, _ = self._fetch(url)
+            match = re.search(rf'/vydane-knihy/([\w-]*-{re.escape(dbk_author_id)})\b', page or '')
+            if match:
+                url = f"{self.BASEURL}/vydane-knihy/{match.group(1)}?{urlencode({'lang': lang})}"
         books = []
         pages = 0
         while url and pages < self.cfg_max_author_pages:
@@ -637,7 +700,8 @@ class DBK:
 
             results = []
             cache_hits = 0
-            for bookid, bookname, year in self._author_books(self._author_number(dbk_author_id)):
+            for bookid, bookname, year in self._author_books(self._author_number(dbk_author_id),
+                                                             prefer_language=True):
                 if lazylibrarian.STOPTHREADS and thread_name() == "AUTHORUPDATE":
                     break
                 # skip the more-info request, the list already has the first publication year

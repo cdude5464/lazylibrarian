@@ -1137,9 +1137,19 @@
     function initLanguagePicker()
     {
         "use strict";
+        // selected languages are numbered in the order they are saved in
+        function numberLanguages() {
+            $("#langpicker .langchip").removeAttr("data-order");
+            $("#langpicker .langchip.btn-primary").each(function(index) {
+                $(this).attr("data-order", index + 1);
+            });
+        }
+        numberLanguages();
+
         // imp_preflang keeps the saved value until the user changes the picker,
         // so saving other settings doesn't rewrite the language list
         function updatePreflang() {
+            numberLanguages();
             const codes = [];
             $("#langpicker .langchip.btn-primary").each(function() {
                 codes.push(...String($(this).data("codes")).split(","));

@@ -64,6 +64,42 @@ def _has_comic_genre(book):
     return False
 
 
+def _search_providers(book, searchtype, rss_resultlist):
+    """ Search every provider mode for book, return the good enough matches """
+    logger = logging.getLogger(__name__)
+    searches = []
+    if CONFIG.use_nzb():
+        searches.append(('nzb', 'NZB', iterate_over_znab_sites))
+    if CONFIG.use_tor():
+        searches.append(('tor', 'Torrent', iterate_over_torrent_sites))
+    if CONFIG.use_direct():
+        searches.append(('direct', 'Direct', iterate_over_direct_sites))
+    if CONFIG.use_irc():
+        searches.append(('irc', 'IRC', iterate_over_irc_sites))
+    matches = []
+    for mode, name, iterate in searches:
+        resultlist, nprov = iterate(book, searchtype)
+        if not nprov:
+            warn_mode(mode)
+        elif resultlist:
+            match = find_best_result(resultlist, book, searchtype, mode)
+            if not good_enough(match):
+                logger.info(f"{name} search for {book['library']} {book['searchterm']} returned no results.")
+            else:
+                logger.info(f"Found {name} result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
+                            f"priority {match[3]}")
+                matches.append(match)
+    if CONFIG.use_rss() and rss_resultlist:
+        match = find_best_result(rss_resultlist, book, searchtype, 'rss')
+        if not good_enough(match):
+            logger.info(f"RSS search for {book['library']} {book['searchterm']} returned no results.")
+        else:
+            logger.info(f"Found RSS result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
+                        f"priority {match[3]}")
+            matches.append(match)
+    return matches
+
+
 def warn_mode(mode):
     # don't nag. Show warning messages no more than every 20 mins
     logger = logging.getLogger(__name__)
@@ -137,7 +173,7 @@ def search_book(books=None, library=None):
         if not books:
             # We are performing a backlog search
             cmd = ("SELECT BookID, AuthorName, Bookname, BookSub, BookAdded, books.Status, AudioStatus, "
-                   "BookGenre from books,authors WHERE (books.Status='Wanted' OR AudioStatus='Wanted') "
+                   "BookGenre, OtherTitles from books,authors WHERE (books.Status='Wanted' OR AudioStatus='Wanted') "
                    "and books.AuthorID = authors.AuthorID order by BookAdded desc")
             results = db.select(cmd)
             for terms in results:
@@ -150,7 +186,7 @@ def search_book(books=None, library=None):
             for book in books:
                 if book['bookid'] not in ['booklang', 'library', 'ignored']:
                     cmd = ("SELECT BookID, AuthorName, BookName, BookSub, books.Status, AudioStatus, "
-                           "BookGenre from books,authors WHERE BookID=? AND books.AuthorID = authors.AuthorID")
+                           "BookGenre, OtherTitles from books,authors WHERE BookID=? AND books.AuthorID = authors.AuthorID")
                     results = db.select(cmd, (book['bookid'],))
                     if results:
                         for terms in results:
@@ -221,6 +257,10 @@ def search_book(books=None, library=None):
                     searchterm += ': '
                 searchterm += searchbook['BookSub']
 
+            # titles of other translations, eg the Czech one of a Slovak book, see dbk.get_author_books
+            other_titles = searchbook['OtherTitles'] if 'OtherTitles' in searchbook.keys() else ''
+            other_titles = [title for title in (other_titles or '').splitlines() if title.strip()]
+
             if search_ebook and searchbook['Status'] == "Wanted":
                 cmd = "SELECT BookID from wanted WHERE BookID=? and AuxInfo='eBook' and Status='Snatched'"
                 snatched = db.match(cmd, (searchbook["BookID"],))
@@ -236,6 +276,7 @@ def search_book(books=None, library=None):
                          "authorName": searchbook['AuthorName'],
                          "library": "eBook",
                          "searchterm": searchterm,
+                         "otherTitles": other_titles,
                          "genre": (searchbook['BookGenre'] if 'BookGenre' in searchbook.keys() else '')})
 
             if search_audio and searchbook['AudioStatus'] == "Wanted":
@@ -253,6 +294,7 @@ def search_book(books=None, library=None):
                          "authorName": searchbook['AuthorName'],
                          "library": "AudioBook",
                          "searchterm": searchterm,
+                         "otherTitles": other_titles,
                          "genre": (searchbook['BookGenre'] if 'BookGenre' in searchbook.keys() else '')})
 
         # only get rss results once per run, as they are not search specific
@@ -549,6 +591,15 @@ def search_book(books=None, library=None):
                                 f"Found RSS result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
                                 f"priority {match[3]}")
                             matches.append(match)
+
+                # if still not found, try the titles of other translations, eg the Czech one of a
+                # Slovak book. A match is still downloaded as this book
+                for title in book.get('otherTitles', []):
+                    if matches:
+                        break
+                    other = dict(book, bookName=title, bookSub='', searchterm=f"{book['authorName']} {title}")
+                    logger.info(f"Trying {book['library']} {book['searchterm']} as {title}")
+                    matches = _search_providers(other, searchtype, rss_resultlist)
 
                 # if still not found and the book's genre suggests it is a graphic novel
                 # or comic, also try comic provider categories

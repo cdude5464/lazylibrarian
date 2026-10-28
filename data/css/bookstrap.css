@@ -108,6 +108,10 @@ textarea#telemetry_data {
 .langpicker .langchip.btn-primary::before {
     content: "\2713\00a0";
 }
+/* import languages show their order instead, the first one is preferred */
+.langpicker .langchip.btn-primary[data-order]::before {
+    content: attr(data-order) ".\00a0";
+}
 .langpicker-more {
     margin-bottom: 10px;
 }

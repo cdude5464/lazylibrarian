@@ -120,6 +120,35 @@ AUTHOR_BOOKS_PAGE = """<html><body>
 <div class="pager"><div class="pagination"></div></div>
 </body></html>"""
 
+# Edgar Wallace's Czech and Slovak books, the same work is a separate book in each language
+WALLACE_BOOKS_PAGE = """<html><body>
+<select name="lang"><option value="/vydane-knihy/edgar-wallace-4308?lang=czsk">český + slovenský jazyk</option>
+<option value="/vydane-knihy/edgar-wallace-4308?lang=cz" selected>český jazyk</option>
+<option value="/vydane-knihy/edgar-wallace-4308?lang=sk">slovenský jazyk</option></select>
+<h3><a href='/prehled-knihy/andel-hruzy-99197'>Anděl hrůzy</a><span class='pozn'> 1931 (1. vydání 1922) </span></h3>
+<h3><a href='/prehled-knihy/bily-tvar-99150'>Bílá tvář</a><span class='pozn'> 1930 (1. vydání) </span></h3>
+<h3><a href='/prehled-knihy/hlasy-noci-555'>Hlasy noci</a><span class='pozn'> 1999 (1. vydání) </span></h3>
+<div class="pager"><div class="pagination"></div></div>
+</body></html>"""
+
+WALLACE_SK_PAGE = """<html><body>
+<h3><a href='/prehled-knihy/anjel-hrozy-99198'>Anjel hrôzy</a><span class='pozn'> 1969 (1. vydání 1922) </span></h3>
+<div class="pager"><div class="pagination"></div></div>
+</body></html>"""
+
+
+def more_info(original, language):
+    original = f"<div class='book-details__row'><dt>Originální název</dt><dd>{original}</dd></div>" if original else ''
+    return f"{original}<div class='book-details__row'><dt>Jazyk vydání</dt><dd>{language}</dd></div>"
+
+
+WALLACE_MORE = {
+    '99197': more_info('The Angel of Terror, 1922', 'český'),
+    '99198': more_info('The Angel of Terror, 1922', 'slovenský'),
+    '99150': more_info('The Face in the Night, 1924', 'český'),
+    '555': more_info('', 'český'),
+}
+
 SERIES_PAGE = """<html><body>
 <div itemprop="hasPart" itemscope itemtype="https://schema.org/Book">
     <span class="gray odright_pet">2. v sérii</span>
@@ -242,6 +271,88 @@ class DBKTest(LLTestCaseWithStartup):
                 self.assertEqual(dbk_api._search_language(), expected, prefs)
         finally:
             CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+
+    def test_author_languages(self):
+        dbk_api = dbk.DBK()
+        try:
+            for prefs, expected in [('cs, Czech', ['cz']), ('sk, Slovak', ['sk']), ('sk, Slovak, cs, Czech', ['sk', 'cz']),
+                                    ('Czech, en, Slovak', ['cz', 'sk']), ('All', []), ('en, English', []),
+                                    ('sk, All', [])]:
+                CONFIG.set_csv('IMP_PREFLANG', prefs)
+                self.assertEqual(dbk_api._author_languages(), expected, prefs)
+        finally:
+            CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+
+    def test_author_books_language(self):
+        """ Without lang the site lists only the Czech books. The short page name redirects
+            to the full one without lang, so other languages use the full name """
+        try:
+            for prefs, urls in [('cs, Czech', ['autor-4308']),
+                                ('sk, Slovak', ['autor-4308', 'edgar-wallace-4308?lang=sk']),
+                                # the czsk list has only one of the Czech and Slovak translations
+                                ('sk, cs', ['autor-4308', 'edgar-wallace-4308?lang=sk', 'autor-4308']),
+                                ('All', ['autor-4308', 'edgar-wallace-4308?lang=czsk'])]:
+                CONFIG.set_csv('IMP_PREFLANG', prefs)
+                with mock.patch.object(dbk.DBK, '_fetch', return_value=(WALLACE_BOOKS_PAGE, True)) as fetch:
+                    dbk.DBK()._author_books('4308')
+                self.assertEqual([c[0][0] for c in fetch.call_args_list],
+                                 [f'https://www.databazeknih.cz/vydane-knihy/{url}' for url in urls], prefs)
+        finally:
+            CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+
+    def test_author_books_prefer_language(self):
+        """ One translation of each work, in the language that comes first in the preferences """
+        pages = {'https://www.databazeknih.cz/vydane-knihy/autor-4308': WALLACE_BOOKS_PAGE,
+                 'https://www.databazeknih.cz/vydane-knihy/edgar-wallace-4308?lang=sk': WALLACE_SK_PAGE}
+        pages.update({f'https://www.databazeknih.cz/book-detail-more-info/{bookid}': more
+                      for bookid, more in WALLACE_MORE.items()})
+        try:
+            for prefs, expected, others in [
+                    ('sk, Slovak, cs, Czech', ['99198', '99150', '555'], {'99198': ['Anděl hrůzy']}),
+                    ('cs, Czech, sk, Slovak', ['99197', '99150', '555'], {'99197': ['Anjel hrôzy']})]:
+                CONFIG.set_csv('IMP_PREFLANG', prefs)
+                with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), True)):
+                    other_titles = {}
+                    books = dbk.DBK()._author_books('4308', prefer_language=True, other_titles=other_titles)
+                    self.assertEqual([b[0] for b in books], expected, prefs)
+                    # the translation left out is searched for when a download finds nothing
+                    self.assertEqual(other_titles, others, prefs)
+                    # searches list every book, without reading each one
+                    self.assertEqual(len(dbk.DBK()._author_books('4308')), 4)
+        finally:
+            CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+
+    def test_get_author_books_other_titles(self):
+        """ A refresh stores the title of the translation left out with the book that was kept """
+        pages = {'https://www.databazeknih.cz/vydane-knihy/autor-4308': WALLACE_BOOKS_PAGE,
+                 'https://www.databazeknih.cz/vydane-knihy/edgar-wallace-4308?lang=sk': WALLACE_SK_PAGE}
+        pages.update({f'https://www.databazeknih.cz/book-detail-more-info/{bookid}': more
+                      for bookid, more in WALLACE_MORE.items()})
+        pages.update({f'https://www.databazeknih.cz/prehled-knihy/kniha-{bookid}': BOOK_PAGE
+                      for bookid in WALLACE_MORE})
+        db = DBConnection()
+        try:
+            CONFIG.set_csv('IMP_PREFLANG', 'sk, Slovak, cs, Czech')
+            db.action("DELETE FROM authors WHERE AuthorID='DBK4308'")
+            db.action("DELETE FROM books WHERE BookID IN ('99198', '99150')")
+            db.action("INSERT INTO authors (AuthorID, AuthorName, dbk_id, Status) VALUES "
+                      "('DBK4308', 'Edgar Wallace', 'DBK4308', 'Active')")
+            # what add_author_books_to_db stores, here under another source's id
+            db.action("INSERT INTO books (AuthorID, BookName, BookID, dbk_id) VALUES "
+                      "('DBK4308', 'Anjel hrôzy', '99198', '99198')")
+            db.action("INSERT INTO books (AuthorID, BookName, BookID, dbk_id) VALUES "
+                      "('DBK4308', 'Bílá tvář', '99150', '99150')")
+            with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), True)), \
+                    mock.patch.object(dbk, 'add_author_books_to_db'):
+                dbk.DBK().get_author_books('DBK4308', 'Edgar Wallace', entrystatus='Active')
+            self.assertEqual(db.match("SELECT OtherTitles FROM books WHERE BookID='99198'")['OtherTitles'],
+                             'Anděl hrůzy')
+            self.assertIsNone(db.match("SELECT OtherTitles FROM books WHERE BookID='99150'")['OtherTitles'])
+        finally:
+            CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+            db.action("DELETE FROM books WHERE BookID IN ('99198', '99150')")
+            db.action("DELETE FROM authors WHERE AuthorID='DBK4308'")
+            db.close()
 
     def test_find_results(self):
         pages = {'https://www.databazeknih.cz/vyhledavani/knihy?q=Krev+elf%C5%AF&lang=cz': SEARCH_PAGE}

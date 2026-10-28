@@ -1154,39 +1154,96 @@
                 return true;
             });
             $("#imp_preflang").val(unique.join(", "));
+            $(".searchlang").each(function() { updateSearchSummary($(this)); });
+        }
 
-            // Annas Archive and Z-Library search the import languages unless they have their own,
-            // show what that is, matching anna_search_languages() and zlib_search_languages()
-            const chips = $("#langpicker .langchip.btn-primary");
-            const all = unique.some(code => code.toLowerCase() === "all");
-            // All, Unknown and codes the picker doesn't know have no Z-Library name, they aren't
-            // languages of either site, as in anna_search_languages() and zlib_search_languages()
-            const languages = chips.filter(function() { return $(this).data("zlib"); });
-            // a language Annas Archive doesn't support searches all languages, so it isn't dropped
-            const annaCodes = languages.map(function() { return $(this).data("anna"); }).get();
-            const anna = all || annaCodes.some(code => !code) ? [] : annaCodes;
-            const zlib = all ? [] : languages.map(function() { return $(this).data("zlib"); }).get();
-            $.each({"#anna_search_lang": anna, "#bok_search_lang": zlib}, function(id, langs) {
-                const field = $(id);
-                field.attr("placeholder", field.data("auto").replace("%s", langs.length ? langs.join(", ") : "ANY"));
-            });
+        // turn a chip on or off, selected chips stay first in the order they were picked
+        function toggleChip(chip) {
+            const selected = !chip.hasClass("btn-primary");
+            if (selected) {
+                const last = chip.siblings(".langchip.btn-primary").last();
+                if (last.length) {
+                    chip.insertAfter(last);
+                } else {
+                    chip.prependTo(chip.parent());
+                }
+            }
+            chip.toggleClass("btn-primary", selected).toggleClass("btn-default", !selected)
+                .attr("aria-pressed", selected ? "true" : "false");
         }
 
         // delegated, so codes added below work like the other chips
         $("#langpicker").on("click", ".langchip", function() {
-            const selected = !$(this).hasClass("btn-primary");
-            if (selected) {
-                // keep selected languages in the order they were picked
-                const last = $("#langpicker .langchip.btn-primary").last();
-                if (last.length) {
-                    $(this).insertAfter(last);
-                } else {
-                    $(this).prependTo("#langpicker");
-                }
-            }
-            $(this).toggleClass("btn-primary", selected).toggleClass("btn-default", !selected)
-                .attr("aria-pressed", selected ? "true" : "false");
+            toggleChip($(this));
             updatePreflang();
+        });
+
+        // What Annas Archive ('anna') or Z-Library ('zlib') search when they are automatic, as names,
+        // matching anna_search_languages() and zlib_search_languages(). Empty means all languages.
+        function autoLanguages(source) {
+            const chips = $("#langpicker .langchip.btn-primary");
+            const all = chips.filter(function() { return String($(this).data("codes")).toLowerCase() === "all"; });
+            // All, Unknown and codes the picker doesn't know have no Z-Library name, they aren't
+            // languages of either site
+            const languages = chips.filter(function() { return $(this).data("zlib"); });
+            // a language Annas Archive doesn't support searches all languages, so it isn't dropped
+            const unsupported = source === "anna" && languages.filter(function() { return !$(this).data("anna"); }).length;
+            if (all.length || unsupported) {
+                return [];
+            }
+            return languages.map(function() { return $(this).text().trim(); }).get();
+        }
+
+        // The Annas Archive and Z-Library fields keep the saved value until their picker changes.
+        // Empty is automatic (the Import languages), ANY is all languages, else what is picked.
+        function updateSearchSummary(group) {
+            const value = $(group.data("field")).val().trim();
+            let text;
+            if (!value) {
+                const langs = autoLanguages(group.data("source"));
+                text = group.data("auto").replace("%s", langs.length ? langs.join(", ") : group.data("all"));
+            } else if (value.split(",").some(item => item.trim().toUpperCase() === "ANY")) {
+                text = group.data("all");
+            } else {
+                const labels = group.find(".langchip.btn-primary").map(function() { return $(this).text().trim(); }).get();
+                text = group.data("custom").replace("%s", labels.length ? labels.join(", ") : value);
+            }
+            group.find(".searchlang-text").text(text);
+        }
+
+        $(".searchlang").each(function() {
+            const group = $(this);
+            const field = $(group.data("field"));
+            const chips = () => group.find(".langchip");
+            function setValue(value) {
+                field.val(value);
+                updateSearchSummary(group);
+            }
+            group.find(".searchlang-change").on("click", function(e) {
+                e.preventDefault();
+                const editor = group.find(".searchlang-editor");
+                editor.toggleClass("hidden");
+                $(this).attr("aria-expanded", editor.hasClass("hidden") ? "false" : "true");
+            });
+            group.find(".langpicker").on("click", ".langchip", function() {
+                toggleChip($(this));
+                // no language picked is automatic again
+                setValue(chips().filter(".btn-primary").map(function() { return $(this).data("value"); }).get().join(", "));
+            });
+            function clearChips() {
+                chips().filter(".btn-primary").each(function() { toggleChip($(this)); });
+            }
+            group.find(".searchlang-any").on("click", function() {
+                clearChips();
+                setValue("ANY");
+            });
+            group.find(".searchlang-auto").on("click", function() {
+                clearChips();
+                setValue("");
+                group.find(".searchlang-editor").addClass("hidden");
+                group.find(".searchlang-change").attr("aria-expanded", "false");
+            });
+            updateSearchSummary(group);
         });
 
         // a code the picker doesn't know becomes a chip of its own, Enter must not submit the form
@@ -1227,7 +1284,7 @@
             // older browsers keep the codes
         }
 
-        // used by the import and the month name language pickers
+        // used by the import, search and month name language pickers
         $(".langpicker-more a").on("click", function(e) {
             e.preventDefault();
             const label = $(this).find("span");

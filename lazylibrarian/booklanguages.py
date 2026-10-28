@@ -186,6 +186,63 @@ def zlib_search_languages(bok_search_lang: str, preflang: str, searchtype: str =
     return ', '.join(name.lower() for name, _ in _search_languages(preflang) or []) or 'ANY'
 
 
+def search_language_picker(search_lang: str, source: str, preflang: str = '',
+                           browser_languages: list | tuple = ()) -> dict:
+    """ The languages of an ANNA_SEARCH_LANG (source 'anna') or BOK_SEARCH_LANG (source 'zlib')
+        value for their pickers. 'value' is what the setting stores for a language: the upper case
+        code for Anna's Archive, which only lists the languages it supports, the lower case English
+        name for Z-Library. Matching is case insensitive.
+        The mode is 'auto' for an empty value (the Import languages), 'any' if ANY is in it, else 'custom'.
+        Each entry of the value the picker doesn't know is an entry of its own, so saving keeps it.
+        Before "Show all" the picker shows the selected entries in the order they appear in the
+        value, then the Import languages and the browser_languages, sorted by their translated name.
+        Returns {'mode': str, 'languages': [{'value', 'label', 'selected', 'shown'}]} """
+    from lazylibrarian.annas import Language as AnnaLanguage
+
+    wanted = [item for item in get_list(search_lang, ',') if item]
+    position = {}
+    for idx, item in enumerate(wanted):
+        position.setdefault(item.lower(), idx)
+    if not wanted:
+        mode = 'auto'
+    elif 'any' in position:
+        mode = 'any'
+    else:
+        mode = 'custom'
+    imported = {name for name, _ in _search_languages(preflang) or []}
+    browser = {lang.split('_')[0].lower() for lang in browser_languages}
+    languages = []
+    for name, codes in BOOK_LANGUAGES:
+        if source == 'anna':
+            value = codes[0].upper()
+            if value not in AnnaLanguage.__members__:
+                continue
+        else:
+            value = name.lower()
+        selected = value.lower() in position
+        languages.append({
+            'value': value,
+            'label': i18n.gettext(name),
+            'selected': selected,
+            'position': position.get(value.lower(), 0),
+            'shown': selected or name in imported or bool({code.lower() for code in codes} & browser),
+        })
+    languages.sort(key=lambda lang: lang['label'].lower())
+
+    known = {lang['value'].lower() for lang in languages} | {'any'}
+    other = []
+    for item in wanted:
+        if item.lower() not in known:
+            known.add(item.lower())
+            other.append({'value': item, 'label': item, 'selected': True, 'position': position[item.lower()],
+                          'shown': True})
+
+    selected = sorted((lang for lang in other + languages if lang['selected']), key=lambda lang: lang['position'])
+    ordered = (selected + [lang for lang in languages if lang['shown'] and not lang['selected']]
+               + [lang for lang in languages if not lang['shown']])
+    return {'mode': mode, 'languages': ordered}
+
+
 # ISO 3166-1 alpha-2 codes for the GoogleBooks country setting, the browser shows their names
 GB_COUNTRIES = [
     'AD', 'AE', 'AF', 'AG', 'AI', 'AL', 'AM', 'AO', 'AQ', 'AR', 'AS', 'AT', 'AU', 'AW', 'AX',

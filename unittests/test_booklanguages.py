@@ -14,6 +14,7 @@ from lazylibrarian.booklanguages import (
     country_picker,
     language_picker,
     magazine_language_picker,
+    search_language_picker,
     zlib_search_languages,
 )
 
@@ -161,3 +162,36 @@ class BookLanguagesTest(unittest.TestCase):
     def test_zlib_override(self):
         self.assertEqual(zlib_search_languages('english', 'sk, cs'), 'english')
         self.assertEqual(zlib_search_languages('ANY', 'sk, cs'), 'ANY')
+
+    def test_search_picker_modes(self):
+        self.assertEqual(search_language_picker('', 'anna')['mode'], 'auto')
+        self.assertEqual(search_language_picker('ANY', 'zlib')['mode'], 'any')
+        self.assertEqual(search_language_picker('EN, any', 'anna')['mode'], 'any')
+        self.assertEqual(search_language_picker('DE', 'anna')['mode'], 'custom')
+
+    def test_search_picker_values(self):
+        # Annas Archive stores upper case codes and only offers the languages it supports
+        anna = search_language_picker('', 'anna')['languages']
+        self.assertTrue(all(lang['value'] in Language.__members__ for lang in anna))
+        self.assertNotIn('DA', [lang['value'] for lang in anna])
+        # Z-Library stores lower case names and offers every language
+        zlib = search_language_picker('', 'zlib')['languages']
+        self.assertEqual(len(zlib), len(BOOK_LANGUAGES))
+        self.assertIn('danish', [lang['value'] for lang in zlib])
+
+    def test_search_picker_keeps_stored_value(self):
+        # selected entries come first in stored order, matched case insensitively,
+        # and entries the picker doesn't know are kept so saving doesn't lose them
+        picker = search_language_picker('sk, xx, DE', 'anna')
+        selected = [lang['value'] for lang in picker['languages'] if lang['selected']]
+        self.assertEqual(selected, ['SK', 'xx', 'DE'])
+        picker = search_language_picker('spanish,klingon', 'zlib')
+        selected = [lang['value'] for lang in picker['languages'] if lang['selected']]
+        self.assertEqual(selected, ['spanish', 'klingon'])
+
+    def test_search_picker_shown(self):
+        # before "Show all": selected, import and browser languages
+        picker = search_language_picker('DE', 'anna', 'sk, slo, Slovak', ['cs_CZ'])
+        shown = [lang['value'] for lang in picker['languages'] if lang['shown']]
+        self.assertEqual(shown[0], 'DE')
+        self.assertEqual(sorted(shown), ['CS', 'DE', 'SK'])

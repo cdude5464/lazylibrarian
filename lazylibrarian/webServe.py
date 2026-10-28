@@ -74,6 +74,7 @@ from lazylibrarian.booklanguages import (
     country_picker,
     language_picker,
     magazine_language_picker,
+    search_language_picker,
     zlib_search_languages,
 )
 from lazylibrarian.bookrename import name_vars
@@ -2368,6 +2369,10 @@ class WebInterface:
             "iss_formats": date_format_picker(CONFIG['ISS_FORMAT'], ISSUE_DATE_FORMATS, CONFIG['DATE_LANG']),
             "anna_auto": anna_search_languages('', CONFIG['IMP_PREFLANG']),
             "zlib_auto": zlib_search_languages('', CONFIG['IMP_PREFLANG']),
+            "anna_languages": search_language_picker(CONFIG['ANNA_SEARCH_LANG'], 'anna', CONFIG['IMP_PREFLANG'],
+                                                     browser_languages()),
+            "zlib_languages": search_language_picker(CONFIG['BOK_SEARCH_LANG'], 'zlib', CONFIG['IMP_PREFLANG'],
+                                                     browser_languages()),
             "updated": time.ctime(CONFIG.get_int('GIT_UPDATED'))
         }
         for itm in CONFIG.config.values():

@@ -7,10 +7,9 @@
 msgid ""
 msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
-"Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
-"issues\n"
+"Report-Msgid-Bugs-To: phil.borman@gmail.com\n"
 "POT-Creation-Date: 2026-10-27 19:15+0000\n"
-"PO-Revision-Date: 2026-10-27 16:15+0000\n"
+"PO-Revision-Date: 2026-10-28 09:17+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Slovak <https://hosted.weblate.org/projects/lazylibrarian/"
 "webui/sk/>\n"
@@ -7906,7 +7905,7 @@ msgstr "Stiahnuté zo zdroja"
 
 #: lazylibrarian/emailtemplates.py:33
 msgid "is available for download"
-msgstr ""
+msgstr "je dostupný na stiahnutie"
 
 #: lazylibrarian/emailtemplates.py:34
 #, fuzzy
@@ -7917,7 +7916,7 @@ msgstr "Nedostupné"
 #: lazylibrarian/emailtemplates.py:35
 #, python-format
 msgid "is available for download, but not as %(format)s"
-msgstr ""
+msgstr "je dostupný na stiahnutie, ale nie ako %(format)s"
 
 #: lazylibrarian/emailtemplates.py:54
 #, python-brace-format

@@ -569,32 +569,40 @@ class DBK:
                     languages.append(language)
         return languages
 
-    def _prefer_languages(self, books: list, languages: list) -> list:
+    def _prefer_languages(self, books: list, languages: list, other_titles: dict | None = None) -> list:
         """ Keep one translation of each work from [(bookid, bookname, year)], in the first of the
             languages it was published in. Books without an original title, eg by Czech and
-            Slovak authors, are all kept """
+            Slovak authors, are all kept. other_titles gets {kept bookid: [titles of the
+            translations left out]}, in the order of the languages """
         names = {'cz': 'Czech', 'sk': 'Slovak'}
         rank = {names[language]: position for position, language in enumerate(languages)}
-        chosen = {}
+        works = {}
         for book in books:
             if lazylibrarian.STOPTHREADS and thread_name() == "AUTHORUPDATE":
                 break
             more, _ = self._fetch(self.MOREURL % book[0])
             details = self._parse_more_info(more) if more else {}
             key = unaccented(details.get('original', '')).lower() or f"id {book[0]}"
-            score = rank.get(details.get('language', ''), len(rank))
-            if key not in chosen or score < chosen[key][0]:
-                chosen[key] = (score, book)
-        kept = [book for _, book in chosen.values()]
+            works.setdefault(key, []).append((rank.get(details.get('language', ''), len(rank)), book))
+        kept = []
+        for translations in works.values():
+            translations.sort(key=lambda item: item[0])
+            book = translations[0][1]
+            kept.append(book)
+            titles = list(dict.fromkeys(other[1] for _, other in translations[1:] if other[1] != book[1]))
+            if titles and other_titles is not None:
+                other_titles[book[0]] = titles
         if len(kept) < len(books):
             self.logger.debug(f"Kept {len(kept)} of {len(books)} databazeknih books, "
                               f"one translation of each in {', '.join(languages)}")
         return kept
 
-    def _author_books(self, dbk_author_id: str, prefer_language: bool = False) -> list:
+    def _author_books(self, dbk_author_id: str, prefer_language: bool = False,
+                      other_titles: dict | None = None) -> list:
         """ Return [(bookid, bookname, year)] for all books of a databazeknih author in the
             preferred languages. With both Czech and Slovak, prefer_language keeps one
-            translation of each work, in the language that comes first in IMP_PREFLANG """
+            translation of each work, in the language that comes first in IMP_PREFLANG,
+            and other_titles gets the titles of the others, see _prefer_languages """
         languages = self._author_languages()
         books = []
         seen = set()
@@ -606,7 +614,7 @@ class DBK:
                     seen.add(book[0])
                     books.append(book)
         if prefer_language and len(languages) > 1:
-            books = self._prefer_languages(books, languages)
+            books = self._prefer_languages(books, languages, other_titles)
         return books
 
     def _author_book_list(self, dbk_author_id: str, lang: str) -> list:
@@ -700,8 +708,9 @@ class DBK:
 
             results = []
             cache_hits = 0
+            other_titles = {}
             for bookid, bookname, year in self._author_books(self._author_number(dbk_author_id),
-                                                             prefer_language=True):
+                                                             prefer_language=True, other_titles=other_titles):
                 if lazylibrarian.STOPTHREADS and thread_name() == "AUTHORUPDATE":
                     break
                 # skip the more-info request, the list already has the first publication year
@@ -730,6 +739,10 @@ class DBK:
             _ = add_author_books_to_db(resultqueue, bookstatus, audiostatus, entrystatus, reason,
                                        auth_id, self.get_series_members, self.get_bookdict_for_bookid,
                                        cache_hits=cache_hits)
+            # the translations left out are searched for when a download finds nothing,
+            # the book may have been added under another source's id, so match on dbk_id
+            for bookid, titles in other_titles.items():
+                db.action("UPDATE books SET OtherTitles=? WHERE dbk_id=?", ('\n'.join(titles), bookid))
         except Exception:
             self.logger.error(f'Unhandled exception in dbk.get_author_books: {traceback.format_exc()}')
         finally:

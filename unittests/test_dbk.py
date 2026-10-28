@@ -307,16 +307,52 @@ class DBKTest(LLTestCaseWithStartup):
         pages.update({f'https://www.databazeknih.cz/book-detail-more-info/{bookid}': more
                       for bookid, more in WALLACE_MORE.items()})
         try:
-            for prefs, expected in [('sk, Slovak, cs, Czech', ['99198', '99150', '555']),
-                                    ('cs, Czech, sk, Slovak', ['99197', '99150', '555'])]:
+            for prefs, expected, others in [
+                    ('sk, Slovak, cs, Czech', ['99198', '99150', '555'], {'99198': ['Anděl hrůzy']}),
+                    ('cs, Czech, sk, Slovak', ['99197', '99150', '555'], {'99197': ['Anjel hrôzy']})]:
                 CONFIG.set_csv('IMP_PREFLANG', prefs)
                 with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), True)):
-                    books = dbk.DBK()._author_books('4308', prefer_language=True)
+                    other_titles = {}
+                    books = dbk.DBK()._author_books('4308', prefer_language=True, other_titles=other_titles)
                     self.assertEqual([b[0] for b in books], expected, prefs)
+                    # the translation left out is searched for when a download finds nothing
+                    self.assertEqual(other_titles, others, prefs)
                     # searches list every book, without reading each one
                     self.assertEqual(len(dbk.DBK()._author_books('4308')), 4)
         finally:
             CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+
+    def test_get_author_books_other_titles(self):
+        """ A refresh stores the title of the translation left out with the book that was kept """
+        pages = {'https://www.databazeknih.cz/vydane-knihy/autor-4308': WALLACE_BOOKS_PAGE,
+                 'https://www.databazeknih.cz/vydane-knihy/edgar-wallace-4308?lang=sk': WALLACE_SK_PAGE}
+        pages.update({f'https://www.databazeknih.cz/book-detail-more-info/{bookid}': more
+                      for bookid, more in WALLACE_MORE.items()})
+        pages.update({f'https://www.databazeknih.cz/prehled-knihy/kniha-{bookid}': BOOK_PAGE
+                      for bookid in WALLACE_MORE})
+        db = DBConnection()
+        try:
+            CONFIG.set_csv('IMP_PREFLANG', 'sk, Slovak, cs, Czech')
+            db.action("DELETE FROM authors WHERE AuthorID='DBK4308'")
+            db.action("DELETE FROM books WHERE BookID IN ('99198', '99150')")
+            db.action("INSERT INTO authors (AuthorID, AuthorName, dbk_id, Status) VALUES "
+                      "('DBK4308', 'Edgar Wallace', 'DBK4308', 'Active')")
+            # what add_author_books_to_db stores, here under another source's id
+            db.action("INSERT INTO books (AuthorID, BookName, BookID, dbk_id) VALUES "
+                      "('DBK4308', 'Anjel hrôzy', '99198', '99198')")
+            db.action("INSERT INTO books (AuthorID, BookName, BookID, dbk_id) VALUES "
+                      "('DBK4308', 'Bílá tvář', '99150', '99150')")
+            with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), True)), \
+                    mock.patch.object(dbk, 'add_author_books_to_db'):
+                dbk.DBK().get_author_books('DBK4308', 'Edgar Wallace', entrystatus='Active')
+            self.assertEqual(db.match("SELECT OtherTitles FROM books WHERE BookID='99198'")['OtherTitles'],
+                             'Anděl hrůzy')
+            self.assertIsNone(db.match("SELECT OtherTitles FROM books WHERE BookID='99150'")['OtherTitles'])
+        finally:
+            CONFIG.set_csv('IMP_PREFLANG', 'cs, Czech')
+            db.action("DELETE FROM books WHERE BookID IN ('99198', '99150')")
+            db.action("DELETE FROM authors WHERE AuthorID='DBK4308'")
+            db.close()
 
     def test_find_results(self):
         pages = {'https://www.databazeknih.cz/vyhledavani/knihy?q=Krev+elf%C5%AF&lang=cz': SEARCH_PAGE}

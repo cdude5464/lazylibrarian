@@ -3822,6 +3822,8 @@ class WebInterface:
                         sitelink = f'<a href="{row[9]}"><small><i>GoodReads</i></small></a>'
                     elif 'hardcover' in row[9]:
                         sitelink = f'<a href="{row[9]}"><small><i>HardCover</i></small></a>'
+                    elif 'databazeknih' in row[9]:
+                        sitelink = f'<a href="{row[9]}"><small><i>Databáze knih</i></small></a>'
                     elif 'books.google.com' in row[9] or 'market.android.com' in row[9]:
                         sitelink = f'<a href="{row[9]}"><small><i>GoogleBooks</i></small></a>'
 

@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-10-28 21:00+0000\n"
+"POT-Creation-Date: 2026-10-28 21:01+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -7752,17 +7752,17 @@ msgstr ""
 msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr ""
 
-#: lazylibrarian/notifiers/__init__.py:83
+#: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr ""
 
-#: lazylibrarian/notifiers/__init__.py:85
+#: lazylibrarian/notifiers/__init__.py:88
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr ""
 
-#: lazylibrarian/notifiers/__init__.py:86
+#: lazylibrarian/notifiers/__init__.py:89
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
 msgstr ""

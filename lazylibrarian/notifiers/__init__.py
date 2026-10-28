@@ -21,7 +21,7 @@ import traceback
 
 from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.formatter import now
+from lazylibrarian.formatter import date_format, now
 
 from ..telemetry import TELEMETRY
 from . import (
@@ -77,8 +77,11 @@ def notify_text(title, provider='', library=''):
     with i18n.language(i18n.notify_language()):
         libraries = {'ebook': i18n.gettext('eBook'), 'audiobook': i18n.gettext('AudioBook'),
                      'magazine': i18n.gettext('Magazine'), 'comic': i18n.gettext('Comic')}
+        timestamp = now()
+        # the date part in the user's display date format, the time of day as is
+        when = f"{date_format(timestamp, CONFIG['DATE_FORMAT'], datelang=CONFIG['DATE_LANG'])} {timestamp[11:]}"
         params = {'library': libraries.get(library.lower(), library), 'title': title,
-                  'provider': provider, 'time': now()}
+                  'provider': provider, 'time': when}
         if provider is None:
             return i18n.gettext('%(library)s %(title)s added manually at %(time)s') % params
         if library:

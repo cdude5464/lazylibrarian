@@ -7987,16 +7987,19 @@ msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr "Súbory záznamov (%(count)s) boli vymazané z %(folder)s"
 
 #: lazylibrarian/notifiers/__init__.py:86
+#: lazylibrarian/notifiers/__init__.py:83
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr "%(library)s %(title)s (pridané ručne, %(time)s)"
 
 #: lazylibrarian/notifiers/__init__.py:88
+#: lazylibrarian/notifiers/__init__.py:85
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr "%(library)s %(title)s (zdroj: %(provider)s, %(time)s)"
 
 #: lazylibrarian/notifiers/__init__.py:89
+#: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
 msgstr "%(title)s (zdroj: %(provider)s, %(time)s)"
@@ -9050,3 +9053,17 @@ msgstr "Ďakujeme, že ste povolili telemetriu"
 #~ "štýlovať // a niektoré prehliadače ich nezobrazujú, napr. Firefox na "
 #~ "Linuxe, Chrome na Androide // Ikony zobrazujú len v zatvorenom výbere, "
 #~ "nie v rozbalenom zozname"
+
+#~ msgid ""
+#~ "Annas Archive and Z-Library search these languages too, unless you enter "
+#~ "their own below."
+#~ msgstr ""
+#~ "Annas Archive a Z-Library vyhľadávajú aj v týchto jazykoch, pokiaľ nižšie "
+#~ "nezadáte vlastné."
+
+#~ msgid ""
+#~ "Leave empty to search the Import languages above. Magazines and comics "
+#~ "are searched in all languages."
+#~ msgstr ""
+#~ "Ak necháte prázdne, vyhľadáva sa v importovaných jazykoch vyššie. "
+#~ "Časopisy a komiksy sa vyhľadávajú vo všetkých jazykoch."

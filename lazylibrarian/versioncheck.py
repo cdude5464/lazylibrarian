@@ -215,6 +215,51 @@ def get_current_git_branch():
     return current_branch
 
 
+def git_programs() -> list:
+    """ git executables to try, unquoted for subprocess argument lists """
+    programs = [CONFIG['GIT_PROGRAM'] or 'git']
+    if platform.system().lower() == 'darwin':
+        programs.append('/usr/local/git/bin/git')
+    return programs
+
+
+def git_remote_url() -> str:
+    return f"https://{CONFIG['GIT_HOST']}/{CONFIG['GIT_USER']}/{CONFIG['GIT_REPO']}.git/"
+
+
+def git_remote_branch() -> str:
+    """ The branch to compare against, package installs follow master """
+    branch = CONFIG['GIT_BRANCH'] or 'master'
+    return 'master' if branch.lower() == 'package' else branch
+
+
+def git_run_args() -> dict:
+    """ subprocess.run arguments for git calls that reach the remote: never wait on a password prompt or a dead
+        connection """
+    return {'check': True, 'capture_output': True, 'text': True, 'timeout': 300,
+            'env': {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}}
+
+
+def remote_head(url: str, branch: str) -> str:
+    """ Latest commit on the remote branch, or empty if git can't tell us.
+        An argument list rather than run_git, as url and branch come from config and run_git uses a shell """
+    logger = logging.getLogger(__name__)
+    for cur_git in git_programs():
+        try:
+            result = subprocess.run([cur_git, 'ls-remote', url, f'refs/heads/{branch}'], **git_run_args())
+            return result.stdout.split('\t')[0].strip()
+        except OSError as err:
+            logger.debug(f"Unable to run {cur_git}: {err}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git execution failed: {(e.stderr or '').strip()}")
+            return ''
+        except subprocess.TimeoutExpired:
+            logger.error(f'Git timed out reading {url}')
+            return ''
+    logger.warning('git not found - please ensure git executable is in your PATH')
+    return ''
+
+
 def check_for_updates():
     """ Called at startup, from webserver with thread name WEBSERVER, or as a cron job """
     logger = logging.getLogger(__name__)
@@ -325,17 +370,14 @@ def get_latest_version_from_git():
         if branch == 'InvalidBranch':
             logger.debug('Failed to get a valid branch name from local repo')
         else:
-            if branch.lower() in ['package']:  # check against master
-                branch = 'master'
-
-            url = 'https://gitlab.com/LazyLibrarian/LazyLibrarian.git/'
+            branch = git_remote_branch()
+            url = git_remote_url()
             try:
-                latest_version, _ = run_git(f'ls-remote {url} {branch}')
+                latest_version = remote_head(url, branch)
                 if not latest_version:
                     logger.warning('Could not get the latest commit from git')
                     latest_version = f'Not_Available_From_Git : {url}'
                 else:
-                    latest_version = latest_version.split('\t')[0]
                      # should really be the hash creation datetime, but we don't have that
                      # and looking it up eats into the api limit.
                      # Only used as a marker for when we last checked for update
@@ -358,38 +400,32 @@ def get_commit_difference_from_git() -> tuple[int, str]:
     result = None
 
     if CONFIG['LATEST_VERSION'] and CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
-        CONFIG.set_str('LATEST_VERSION', 'HEAD')
         commit_list = f"Unable to get latest version from {CONFIG['GIT_HOST']}"
         logger.info(commit_list)
         return commits, commit_list
 
-    if CONFIG['GIT_PROGRAM']:
-        git_locations = [f"\"{CONFIG['GIT_PROGRAM']}\""]
-    else:
-        git_locations = ['git']
+    if not re.fullmatch('[0-9a-f]{7,40}', CONFIG['CURRENT_VERSION']) or \
+            not re.fullmatch('[0-9a-f]{7,40}', CONFIG['LATEST_VERSION']):
+        # eg 'No Version File', nothing git can compare
+        commit_list = (f"Unknown version of lazylibrarian ({CONFIG['CURRENT_VERSION']})\n"
+                       f"Run lazylibrarian with --update to identify your version")
+        logger.info(commit_list)
+        return commits, commit_list
 
-    if platform.system().lower() == 'darwin':
-        git_locations.append('/usr/local/git/bin/git')
-
-    repo_url = 'https://gitlab.com/LazyLibrarian/LazyLibrarian.git/'
+    branch = git_remote_branch()
     with tempfile.TemporaryDirectory() as tmp_dir:
-        try:
-            for cur_git in git_locations:
+        for cur_git in git_programs():
+            try:
                 # Initialize a temporary bare repository
-                subprocess.run([cur_git, "init"], cwd=tmp_dir, check=True, capture_output=True)
+                subprocess.run([cur_git, "init"], cwd=tmp_dir, **git_run_args())
                 logger.debug("Initialised temporary repository")
                 # Add the GitLab remote URL
-                subprocess.run(
-                    [cur_git, "remote", "add", "origin", repo_url],
-                    cwd=tmp_dir,
-                    check=True,
-                    capture_output=True,
-                )
+                subprocess.run([cur_git, "remote", "add", "origin", git_remote_url()], cwd=tmp_dir, **git_run_args())
                 logger.debug("Added remote url")
                 # Perform a blobless fetch for the tracking branches.
                 # This pulls commit logs/skeletons but skips all file downloads (blobs).
-                fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin"] + [CONFIG['GIT_BRANCH']]
-                subprocess.run(fetch_cmd, cwd=tmp_dir, check=True, capture_output=True)
+                fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin", f"refs/heads/{branch}"]
+                subprocess.run(fetch_cmd, cwd=tmp_dir, **git_run_args())
                 logger.debug("Repository fetched")
                 # Get the subject lines of log differences between the two hashes
                 log_cmd = [
@@ -398,22 +434,27 @@ def get_commit_difference_from_git() -> tuple[int, str]:
                     f"{CONFIG['CURRENT_VERSION']}..{CONFIG['LATEST_VERSION']}",
                     "--pretty=format:%s",
                 ]
-                result = subprocess.run(
-                    log_cmd, cwd=tmp_dir, check=True, capture_output=True, text=True
-                )
+                result = subprocess.run(log_cmd, cwd=tmp_dir, **git_run_args())
                 logger.debug("Differences collected")
-                if result:
-                    break
+                break
+            except OSError as err:
+                # not installed there, try the next one
+                logger.debug(f"Unable to run {cur_git}: {err}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Git execution failed: {(e.stderr or '').strip()}")
+                return commits, commit_list
+            except subprocess.TimeoutExpired:
+                logger.error('Git timed out reading the commit list')
+                return commits, commit_list
 
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Git execution failed: {e.stderr.strip()}")
+        if result is None:
+            logger.warning('git not found - please ensure git executable is in your PATH')
             return commits, commit_list
 
         # Clean and split the output into a structured list
         temp_list = [line.strip() for line in result.stdout.splitlines() if line.strip()]
         commits = len(temp_list)
         commit_list = '\n'.join(temp_list)
-        print(commit_list)
         if commits > 1:
             logger.info(f'New version is available. You are {commits} commits behind')
         elif commits == 1:

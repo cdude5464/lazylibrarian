@@ -4828,8 +4828,8 @@ msgid "Notification language:"
 msgstr "Jazyk oznámení:"
 
 #: data/interfaces/bookstrap/config.html:2950
-msgid "Same as the interface (English when it follows the browser)"
-msgstr "Rovnaký ako rozhranie (angličtina, ak sa riadi prehliadačom)"
+msgid "Same as the interface"
+msgstr "Rovnaký ako rozhranie"
 
 #: data/interfaces/bookstrap/config.html:2962
 msgid "Enable Twitter Notifications"

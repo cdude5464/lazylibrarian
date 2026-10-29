@@ -372,6 +372,7 @@ def set_request_language():
         browserlang = unquote(cookie[i18n.BROWSER_COOKIE].value)
     lang = i18n.resolve_language(uilang, cherrypy.request.headers.get('Accept-Language', ''), browserlang)
     i18n.set_language(lang)
+    i18n.remember_ui_language(lang)
     cherrypy.request.ui_lang_auto = uilang.strip().lower() in ('', i18n.AUTO)
     return lang
 

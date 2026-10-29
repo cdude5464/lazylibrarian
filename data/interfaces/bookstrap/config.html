@@ -1005,7 +1005,8 @@
                       <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_SABNZBD'] else '' %>
                       <label for="nzb_downloader_sabnzbd" class="control-label">
                         <input type="checkbox" id="nzb_downloader_sabnzbd" name="nzb_downloader_sabnzbd" value="1" ${checked} />
-                        ${_('Use Sabnzbd+')}</label>
+                        ## TRANSLATORS: %(name)s is the name of a download client, e.g. Deluge or NZBGet
+                        ${_('Use %(name)s') % {'name': 'Sabnzbd+'}}</label>
                     </div>
                     <fieldset id="sabnzbd_options">
                       <legend>SABnzbd+</legend>
@@ -1078,7 +1079,7 @@
                       <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_NZBGET'] else '' %>
                       <label for="nzb_downloader_nzbget" class="control-label">
                       <input type="checkbox" id="nzb_downloader_nzbget" name="nzb_downloader_nzbget" value="1" ${checked} />
-                      ${_('Use NZBGet')}</label>
+                      ${_('Use %(name)s') % {'name': 'NZBGet'}}</label>
                     </div>
                     <fieldset id="nzbget_options">
                       <legend>NZBGet</legend>
@@ -1135,7 +1136,7 @@
                       <% checked = 'checked="checked"' if CONFIG['USE_SYNOLOGY'] else '' %>
                       <label for="use_synology" class="control-label">
                         <input type="checkbox" id="use_synology" name="use_synology" value="1" ${checked} />
-                        ${_('Use Synology DownloadStation')}</label>
+                        ${_('Use %(name)s') % {'name': 'Synology DownloadStation'}}</label>
                     </div>
                     <fieldset id="synology_options">
                       <legend>Synology</legend>
@@ -1198,7 +1199,7 @@
                       <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_BLACKHOLE'] else '' %>
                       <label for="nzb_downloader_blackhole" class="control-label">
                         <input type="checkbox" id="nzb_downloader_blackhole" name="nzb_downloader_blackhole" value="1" ${checked} />
-                        ${_('Use NZB Blackhole')}</label>
+                        ${_('Use %(name)s') % {'name': 'NZB Blackhole'}}</label>
                     </div>
                     <fieldset id="nzb_blackhole_options">
                       <legend>${_('NZB Blackhole')}</legend>
@@ -1229,7 +1230,7 @@
                   <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_DELUGE'] else '' %>
                   <label for="tor_downloader_deluge" class="control-label">
                     <input type="checkbox" id="tor_downloader_deluge" name="tor_downloader_deluge" value="1" ${checked} />
-                    ${_('Use Deluge')}</label>
+                    ${_('Use %(name)s') % {'name': 'Deluge'}}</label>
                 </div>
                   <fieldset id="deluge_options">
                     <legend>Deluge</legend>
@@ -1292,7 +1293,7 @@
                     <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_TRANSMISSION'] else '' %>
                     <label for="tor_downloader_transmission" class="control-label">
                     <input type="checkbox" id="tor_downloader_transmission" name="tor_downloader_transmission" value="1" ${checked} />
-                    ${_('Use Transmission')}</label>
+                    ${_('Use %(name)s') % {'name': 'Transmission'}}</label>
                   </div>
                   <fieldset id="transmission_options">
                     <legend>Transmission</legend>
@@ -1349,7 +1350,7 @@
                     <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_RTORRENT'] else '' %>
                     <label for="tor_downloader_rtorrent" class="control-label">
                       <input type="checkbox" id="tor_downloader_rtorrent" name="tor_downloader_rtorrent" value="1" ${checked} />
-                      ${_('Use rTorrent')}</label>
+                      ${_('Use %(name)s') % {'name': 'rTorrent'}}</label>
                   </div>
                   <fieldset id="rtorrent_options">
                     <legend>rTorrent</legend>
@@ -1398,7 +1399,7 @@
                     <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_UTORRENT'] else '' %>
                     <label for="tor_downloader_utorrent" class="control-label">
                     <input type="checkbox" id="tor_downloader_utorrent" name="tor_downloader_utorrent" value="1" ${checked} />
-                    ${_('Use uTorrent')}</label>
+                    ${_('Use %(name)s') % {'name': 'uTorrent'}}</label>
                   </div>
                   <fieldset id="utorrent_options">
                     <legend>uTorrent</legend>
@@ -1451,7 +1452,7 @@
                     <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_QBITTORRENT'] else '' %>
                     <label for="tor_downloader_qbittorrent" class="control-label">
                     <input type="checkbox" id="tor_downloader_qbittorrent" name="tor_downloader_qbittorrent" value="1" ${checked} />
-                    ${_('Use qBitTorrent')}</label>
+                    ${_('Use %(name)s') % {'name': 'qBitTorrent'}}</label>
                   </div>
                     <fieldset id="qbittorrent_options">
                       <legend>qBitTorrent</legend>
@@ -1530,7 +1531,7 @@
                       <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_BLACKHOLE'] else '' %>
                       <label for="tor_downloader_blackhole" class="control-label">
                         <input type="checkbox" id="tor_downloader_blackhole" name="tor_downloader_blackhole" value="1" ${checked} />
-                        ${_('Use Torrent Blackhole')}</label>
+                        ${_('Use %(name)s') % {'name': 'Torrent Blackhole'}}</label>
                     </div>
                     <fieldset id="tor_blackhole_options">
                       <legend>${_('Torrent Blackhole')}</legend>

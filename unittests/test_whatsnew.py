@@ -48,6 +48,10 @@ class WhatsNewTest(LLTestCase):
         lazylibrarian.WHATS_NEW = []
         whatsnew._checked.clear()
         whatsnew._page_cache.clear()
+        # no git unless a test gives one, so the gitlab api path is what runs
+        no_git = mock.patch.object(whatsnew, 'git_commits', return_value=None)
+        self.git = no_git.start()
+        self.addCleanup(no_git.stop)
 
     def tearDown(self):
         lazylibrarian.WHATS_NEW = []
@@ -243,3 +247,43 @@ class WhatsNewTest(LLTestCase):
         bell = page[page.index('id="whatsnew"'):]
         bell = bell[:bell.index('</a>')]
         self.assertIn('<span class="visible-xs-inline">${_("What\'s new") | h}</span>', bell)
+
+    def test_new_version_read_from_git(self):
+        commits = [commit('1' * 40, 'Fix series numbers'), commit(NEW, 'Show the date in the date format')]
+        self.git.return_value = [commits]
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'compare') as api:
+            whatsnew.check_whats_new()
+        self.git.assert_called_once_with(['--reverse', f'{OLD}..{NEW}'])
+        api.assert_not_called()
+        self.assertEqual([c['title'] for c in lazylibrarian.WHATS_NEW],
+                         ['Show the date in the date format', 'Fix series numbers'])
+
+    def test_api_used_without_git(self):
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'compare', return_value=[commit(NEW, 'From the api')]) as api:
+            whatsnew.check_whats_new()
+        api.assert_called_once_with(OLD, NEW)
+        self.assertEqual([c['title'] for c in lazylibrarian.WHATS_NEW], ['From the api'])
+
+    def test_recent_changes_from_git(self):
+        upcoming = commit('c' * 40, 'Not installed yet')
+        recent = [upcoming, commit(NEW, 'Running version'), commit(OLD, 'Older')]
+        self.git.return_value = [recent, [upcoming]]
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'gitlab_get') as api:
+            data = whatsnew.recent_changes()
+        api.assert_not_called()
+        self.git.assert_called_once_with(['-n', '100', 'FETCH_HEAD'], [f'{NEW}..FETCH_HEAD'], ref='master')
+        self.assertEqual([c['title'] for c in data['upcoming']], ['Not installed yet'])
+        self.assertEqual([c['title'] for c in data['installed']], ['Running version', 'Older'])
+        self.assertEqual(data['branch'], 'master')
+
+    def test_recent_changes_from_git_local_branch(self):
+        self.git.side_effect = [None, [[commit(NEW, 'Running version')], []]]
+        with mock.patch.object(whatsnew, 'CONFIG', config(GIT_BRANCH='feature/local')), \
+                mock.patch.object(whatsnew, 'gitlab_get') as api:
+            data = whatsnew.recent_changes()
+        api.assert_not_called()
+        self.assertEqual([c.kwargs['ref'] for c in self.git.call_args_list], ['feature/local', 'master'])
+        self.assertEqual(data['branch'], 'master')

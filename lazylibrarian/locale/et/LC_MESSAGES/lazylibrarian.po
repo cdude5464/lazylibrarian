@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-29 09:38+0000\n"
+"POT-Creation-Date: 2026-10-29 10:52+0000\n"
 "PO-Revision-Date: 2026-10-25 08:51+0000\n"
 "Last-Translator: Priit Jõerüüt <jrthwlate@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Estonian <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -347,7 +347,7 @@ msgstr "Pealkiri"
 #: data/interfaces/bookstrap/author.html:313
 #: data/interfaces/bookstrap/author.html:329
 #: data/interfaces/bookstrap/author_detail.html:41
-#: data/interfaces/bookstrap/base.html:382
+#: data/interfaces/bookstrap/base.html:389
 #: data/interfaces/bookstrap/books.html:90
 #: data/interfaces/bookstrap/books.html:111
 #: data/interfaces/bookstrap/config.html:110
@@ -487,7 +487,7 @@ msgstr[1] "Kas soovite %(count)s valitud audioraamatut jäädavalt kustutada?"
 #: data/interfaces/bookstrap/audio.html:298
 #: data/interfaces/bookstrap/author.html:355
 #: data/interfaces/bookstrap/author_detail.html:80
-#: data/interfaces/bookstrap/base.html:644
+#: data/interfaces/bookstrap/base.html:651
 #: data/interfaces/bookstrap/books.html:318
 #: data/interfaces/bookstrap/comicissues.html:185
 #: data/interfaces/bookstrap/comics.html:268
@@ -504,7 +504,7 @@ msgstr "Jah"
 #: data/interfaces/bookstrap/audio.html:302
 #: data/interfaces/bookstrap/author.html:359
 #: data/interfaces/bookstrap/author_detail.html:81
-#: data/interfaces/bookstrap/base.html:648
+#: data/interfaces/bookstrap/base.html:655
 #: data/interfaces/bookstrap/books.html:322
 #: data/interfaces/bookstrap/comicissues.html:189
 #: data/interfaces/bookstrap/comics.html:272
@@ -637,9 +637,9 @@ msgstr "Tekkis viga:"
 #: data/interfaces/bookstrap/audio.html:391
 #: data/interfaces/bookstrap/author.html:606
 #: data/interfaces/bookstrap/author.html:679
-#: data/interfaces/bookstrap/base.html:604
-#: data/interfaces/bookstrap/base.html:629
-#: data/interfaces/bookstrap/base.html:808
+#: data/interfaces/bookstrap/base.html:611
+#: data/interfaces/bookstrap/base.html:636
+#: data/interfaces/bookstrap/base.html:815
 #: data/interfaces/bookstrap/books.html:411
 #: data/interfaces/bookstrap/choosetype.html:48
 #: data/interfaces/bookstrap/config_functions.js:172
@@ -1348,92 +1348,92 @@ msgstr "Ruudustikuvaade"
 msgid "View:"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:350
+#: data/interfaces/bookstrap/base.html:357
 msgid "Toggle navigation"
 msgstr "Lülita navigeerimist"
 
-#: data/interfaces/bookstrap/base.html:370
+#: data/interfaces/bookstrap/base.html:377
 #: data/interfaces/bookstrap/config.html:110 lazylibrarian/webServe.py:799
 #: lazylibrarian/webServe.py:870
 msgid "Authors"
 msgstr "Autorid"
 
-#: data/interfaces/bookstrap/base.html:375
+#: data/interfaces/bookstrap/base.html:382
 #: data/interfaces/bookstrap/config.html:110 lazylibrarian/webServe.py:3553
 msgid "eBooks"
 msgstr "E-raamatud"
 
-#: data/interfaces/bookstrap/base.html:390
+#: data/interfaces/bookstrap/base.html:397
 msgid "Audio"
 msgstr "Audio"
 
-#: data/interfaces/bookstrap/base.html:391
+#: data/interfaces/bookstrap/base.html:398
 #: data/interfaces/bookstrap/config.html:111 lazylibrarian/webServe.py:3531
 msgid "AudioBooks"
 msgstr "Audioraamatud"
 
-#: data/interfaces/bookstrap/base.html:401
+#: data/interfaces/bookstrap/base.html:408
 msgid "Mags"
 msgstr "Ajakirjad"
 
-#: data/interfaces/bookstrap/base.html:402
+#: data/interfaces/bookstrap/base.html:409
 #: data/interfaces/bookstrap/config.html:111 lazylibrarian/webServe.py:6629
 msgid "Magazines"
 msgstr "Ajakirjad"
 
-#: data/interfaces/bookstrap/base.html:411
+#: data/interfaces/bookstrap/base.html:418
 #: data/interfaces/bookstrap/config.html:112 lazylibrarian/webServe.py:5919
 #: lazylibrarian/webServe.py:6280
 msgid "Comics"
 msgstr "Koomiksid"
 
-#: data/interfaces/bookstrap/base.html:417
-#: data/interfaces/bookstrap/base.html:419
+#: data/interfaces/bookstrap/base.html:424
+#: data/interfaces/bookstrap/base.html:426
 msgid "Manage"
 msgstr "Halda"
 
-#: data/interfaces/bookstrap/base.html:423 lazylibrarian/webServe.py:8299
+#: data/interfaces/bookstrap/base.html:430 lazylibrarian/webServe.py:8299
 msgid "History"
 msgstr "Ajalugu"
 
-#: data/interfaces/bookstrap/base.html:426
+#: data/interfaces/bookstrap/base.html:433
 #: data/interfaces/bookstrap/config.html:235
 msgid "Logs"
 msgstr "Logid"
 
-#: data/interfaces/bookstrap/base.html:429
+#: data/interfaces/bookstrap/base.html:436
 msgid "Config"
 msgstr "Seaded"
 
-#: data/interfaces/bookstrap/base.html:432
-#: data/interfaces/bookstrap/base.html:433
-#: data/interfaces/bookstrap/base.html:572 lazylibrarian/webServe.py:7863
+#: data/interfaces/bookstrap/base.html:439
+#: data/interfaces/bookstrap/base.html:440
+#: data/interfaces/bookstrap/base.html:579 lazylibrarian/webServe.py:7863
 msgid "What's new"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:439
+#: data/interfaces/bookstrap/base.html:446
 msgid "Help"
 msgstr "Abi"
 
-#: data/interfaces/bookstrap/base.html:443
+#: data/interfaces/bookstrap/base.html:450
 #: data/interfaces/bookstrap/config.html:467
 #: data/interfaces/bookstrap/config.html:551
 msgid "User"
 msgstr "Kasutaja"
 
-#: data/interfaces/bookstrap/base.html:446
+#: data/interfaces/bookstrap/base.html:453
 msgid "Logout"
 msgstr "Logi välja"
 
-#: data/interfaces/bookstrap/base.html:463
+#: data/interfaces/bookstrap/base.html:470
 msgid "Go to top"
 msgstr "Üles"
 
-#: data/interfaces/bookstrap/base.html:469
+#: data/interfaces/bookstrap/base.html:476
 msgid "LazyLibrarian Telemetry"
 msgstr "LazyLibrariani telemeetria"
 
-#: data/interfaces/bookstrap/base.html:470
+#: data/interfaces/bookstrap/base.html:477
 msgid ""
 "LazyLibrarian has the ability to send basic information about the "
 "installation, how it is configured, and how it is used to a server. This "
@@ -1444,40 +1444,40 @@ msgstr ""
 "ja kasutamise kohta. See aitab arendajatel mõista, mida tasub parandada ja "
 "milliseid osi keegi ei kasuta. Kõik telemeetriaandmed on 100% anonüümsed."
 
-#: data/interfaces/bookstrap/base.html:471
+#: data/interfaces/bookstrap/base.html:478
 msgid "Turn on"
 msgstr "Lülita sisse"
 
-#: data/interfaces/bookstrap/base.html:471
-#: data/interfaces/bookstrap/base.html:600
+#: data/interfaces/bookstrap/base.html:478
+#: data/interfaces/bookstrap/base.html:607
 msgid "Enable Telemetry"
 msgstr "Luba telemeetria"
 
-#: data/interfaces/bookstrap/base.html:472
+#: data/interfaces/bookstrap/base.html:479
 msgid "Ask me again later"
 msgstr "Küsi hiljem uuesti"
 
-#: data/interfaces/bookstrap/base.html:472
+#: data/interfaces/bookstrap/base.html:479
 msgid "Maybe Later"
 msgstr "Võib-olla hiljem"
 
-#: data/interfaces/bookstrap/base.html:475
+#: data/interfaces/bookstrap/base.html:482
 msgid "LazyLibrarian Update"
 msgstr "LazyLibrariani uuendus"
 
-#: data/interfaces/bookstrap/base.html:477
+#: data/interfaces/bookstrap/base.html:484
 msgid "You are running an unknown version of lazylibrarian"
 msgstr "Kasutate LazyLibrariani tundmatut versiooni"
 
-#: data/interfaces/bookstrap/base.html:479
+#: data/interfaces/bookstrap/base.html:486
 msgid "You are running an unknown version via source install"
 msgstr "Kasutate lähtekoodist paigaldatud tundmatut versiooni"
 
-#: data/interfaces/bookstrap/base.html:482
+#: data/interfaces/bookstrap/base.html:489
 msgid "Unable to get the latest version from git"
 msgstr "Uusimat versiooni ei õnnestunud gitist hankida"
 
-#: data/interfaces/bookstrap/base.html:484
+#: data/interfaces/bookstrap/base.html:491
 msgid ""
 "Running a local updated version. Push changes to git or rollback to Master "
 "release"
@@ -1485,35 +1485,35 @@ msgstr ""
 "Töötab kohapeal muudetud versioon. Lükake muudatused gitti või minge tagasi "
 "Master-väljalaskele"
 
-#: data/interfaces/bookstrap/base.html:487
+#: data/interfaces/bookstrap/base.html:494
 #, python-format
 msgid "New version available. You are one commit behind."
 msgid_plural "New version available. You are %(count)d commits behind."
 msgstr[0] "Uus versioon on saadaval. Olete ühe commiti võrra maas."
 msgstr[1] "Uus versioon on saadaval. Olete %(count)d commiti võrra maas."
 
-#: data/interfaces/bookstrap/base.html:491
+#: data/interfaces/bookstrap/base.html:498
 msgid "Manual update is required"
 msgstr "Vajalik on käsitsi uuendamine"
 
-#: data/interfaces/bookstrap/base.html:495
+#: data/interfaces/bookstrap/base.html:502
 msgid "Update to the latest release"
 msgstr "Uuenda uusimale väljalaskele"
 
-#: data/interfaces/bookstrap/base.html:495
+#: data/interfaces/bookstrap/base.html:502
 #: data/interfaces/bookstrap/profile.html:84
 msgid "Update"
 msgstr "Uuenda"
 
-#: data/interfaces/bookstrap/base.html:502
+#: data/interfaces/bookstrap/base.html:509
 msgid "Ignore the update message for 24 hours"
 msgstr "Eira uuendusteadet 24 tundi"
 
-#: data/interfaces/bookstrap/base.html:502
+#: data/interfaces/bookstrap/base.html:509
 msgid "Ignore"
 msgstr "Eira"
 
-#: data/interfaces/bookstrap/base.html:530
+#: data/interfaces/bookstrap/base.html:537
 #, python-format
 msgid ""
 "LazyLibrarian is only %(percent)s%% translated into %(language)s. You can "
@@ -1522,7 +1522,7 @@ msgstr ""
 "LazyLibrarian on keelde %(language)s tõlgitud alles %(percent)s%% ulatuses. "
 "Saate aidata tõlke Hosted Weblate'is lõpetada, programmeerimist pole vaja."
 
-#: data/interfaces/bookstrap/base.html:534
+#: data/interfaces/bookstrap/base.html:541
 #, python-format
 msgid ""
 "LazyLibrarian is not available in %(language)s yet. You can help translate "
@@ -1531,41 +1531,41 @@ msgstr ""
 "LazyLibrarian pole keeles %(language)s veel saadaval. Saate aidata seda "
 "Hosted Weblate'is tõlkida, programmeerimist pole vaja."
 
-#: data/interfaces/bookstrap/base.html:541
+#: data/interfaces/bookstrap/base.html:548
 msgid "Help translate"
 msgstr "Aita tõlkida"
 
-#: data/interfaces/bookstrap/base.html:542
+#: data/interfaces/bookstrap/base.html:549
 msgid "No thanks"
 msgstr "Ei, aitäh"
 
-#: data/interfaces/bookstrap/base.html:545
+#: data/interfaces/bookstrap/base.html:552
 msgid "Translate LazyLibrarian"
 msgstr "Tõlgi LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:568
+#: data/interfaces/bookstrap/base.html:575
 #, python-format
 msgid "One change since you last looked:"
 msgid_plural "%(count)d changes since you last looked:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: data/interfaces/bookstrap/base.html:573
+#: data/interfaces/bookstrap/base.html:580
 msgid "Dismiss"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:576
+#: data/interfaces/bookstrap/base.html:583
 #, fuzzy
 msgid "LazyLibrarian updated"
 msgstr "LazyLibrariani uuendus"
 
-#: data/interfaces/bookstrap/base.html:625
+#: data/interfaces/bookstrap/base.html:632
 #: data/interfaces/bookstrap/config.html:22
 #: data/interfaces/bookstrap/config_functions.js:946
 msgid "Check Version"
 msgstr "Kontrolli versiooni"
 
-#: data/interfaces/bookstrap/base.html:641
+#: data/interfaces/bookstrap/base.html:648
 msgid "Are you sure you want to logout?"
 msgstr "Kas soovite kindlasti välja logida?"
 

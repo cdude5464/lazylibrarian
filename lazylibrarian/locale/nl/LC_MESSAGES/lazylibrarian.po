@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-29 16:33+0000\n"
+"POT-Creation-Date: 2026-10-29 16:49+0000\n"
 "PO-Revision-Date: 2026-10-23 22:52+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Dutch <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -23,11 +23,11 @@ msgstr ""
 "X-Generator: Weblate 2026.11.dev0\n"
 
 #: data/interfaces/bookstrap/audio.html:12
-#: data/interfaces/bookstrap/audio.html:206
+#: data/interfaces/bookstrap/audio.html:205
 #: data/interfaces/bookstrap/author.html:476
 #: data/interfaces/bookstrap/author.html:501
 #: data/interfaces/bookstrap/books.html:12
-#: data/interfaces/bookstrap/books.html:216
+#: data/interfaces/bookstrap/books.html:214
 #: data/interfaces/bookstrap/comicissues.html:10
 #: data/interfaces/bookstrap/comics.html:12
 #: data/interfaces/bookstrap/comics.html:187
@@ -37,7 +37,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:2126
 #: data/interfaces/bookstrap/config.html:3863
 #: data/interfaces/bookstrap/editbook.html:32
-#: data/interfaces/bookstrap/index.html:42
+#: data/interfaces/bookstrap/index.html:37
 #: data/interfaces/bookstrap/issues.html:10
 #: data/interfaces/bookstrap/magazines.html:12
 #: data/interfaces/bookstrap/magazines.html:193
@@ -66,27 +66,23 @@ msgstr "Nabewerking uitvoeren"
 msgid "Library Scan"
 msgstr "Bibliotheekscan"
 
-#: data/interfaces/bookstrap/audio.html:16 lazylibrarian/webServe.py:5760
-msgid "Recent AudioBooks"
-msgstr "Recente luisterboeken"
-
-#: data/interfaces/bookstrap/audio.html:19
-#: data/interfaces/bookstrap/books.html:20
+#: data/interfaces/bookstrap/audio.html:18
+#: data/interfaces/bookstrap/books.html:18
 #: data/interfaces/bookstrap/comicissues.html:17
 #: data/interfaces/bookstrap/comics.html:19
 #: data/interfaces/bookstrap/magazines.html:21
 msgid "rss feed of recent downloads"
 msgstr "RSS-feed van recente downloads"
 
-#: data/interfaces/bookstrap/audio.html:20
+#: data/interfaces/bookstrap/audio.html:19
 #: data/interfaces/bookstrap/author.html:98
 msgid "LazyLibrarian latest AudioBooks"
 msgstr "LazyLibrarian – nieuwste luisterboeken"
 
-#: data/interfaces/bookstrap/audio.html:23
-#: data/interfaces/bookstrap/audio.html:25
+#: data/interfaces/bookstrap/audio.html:22
+#: data/interfaces/bookstrap/audio.html:24
+#: data/interfaces/bookstrap/books.html:22
 #: data/interfaces/bookstrap/books.html:24
-#: data/interfaces/bookstrap/books.html:26
 #: data/interfaces/bookstrap/comics.html:23
 #: data/interfaces/bookstrap/comics.html:25
 #: data/interfaces/bookstrap/index.html:20
@@ -98,36 +94,36 @@ msgstr "LazyLibrarian – nieuwste luisterboeken"
 msgid "All, or just mine"
 msgstr "Alle, of alleen die van mij"
 
-#: data/interfaces/bookstrap/audio.html:29
-#: data/interfaces/bookstrap/audio.html:31
+#: data/interfaces/bookstrap/audio.html:28
+#: data/interfaces/bookstrap/audio.html:30
 #: data/interfaces/bookstrap/author.html:65
 #: data/interfaces/bookstrap/author.html:67
 #: data/interfaces/bookstrap/author_detail.html:56
 #: data/interfaces/bookstrap/author_detail.html:58
+#: data/interfaces/bookstrap/books.html:28
 #: data/interfaces/bookstrap/books.html:30
-#: data/interfaces/bookstrap/books.html:32
 #: data/interfaces/bookstrap/editauthor.html:54
 #: data/interfaces/bookstrap/editauthor.html:56
 msgid "Primary Author, or Contributor"
 msgstr "Hoofdauteur of medewerker"
 
-#: data/interfaces/bookstrap/audio.html:37
-#: data/interfaces/bookstrap/books.html:37
+#: data/interfaces/bookstrap/audio.html:36
+#: data/interfaces/bookstrap/books.html:35
 #: data/interfaces/bookstrap/config.html:3875
 msgid "Language"
 msgstr "Taal"
 
-#: data/interfaces/bookstrap/audio.html:39
-#: data/interfaces/bookstrap/audio.html:222
+#: data/interfaces/bookstrap/audio.html:38
+#: data/interfaces/bookstrap/audio.html:221
 #: data/interfaces/bookstrap/author.html:83
 #: data/interfaces/bookstrap/author.html:539
-#: data/interfaces/bookstrap/books.html:39
-#: data/interfaces/bookstrap/books.html:242
+#: data/interfaces/bookstrap/books.html:37
+#: data/interfaces/bookstrap/books.html:240
 #: data/interfaces/bookstrap/comicissues.html:123
 #: data/interfaces/bookstrap/comicresults.html:68
 #: data/interfaces/bookstrap/comics.html:205
 #: data/interfaces/bookstrap/history.html:184
-#: data/interfaces/bookstrap/index.html:240
+#: data/interfaces/bookstrap/index.html:235
 #: data/interfaces/bookstrap/issues.html:145
 #: data/interfaces/bookstrap/logs.html:94
 #: data/interfaces/bookstrap/magazines.html:209
@@ -140,8 +136,8 @@ msgstr "Taal"
 msgid "All"
 msgstr "Alle"
 
-#: data/interfaces/bookstrap/audio.html:54
-#: data/interfaces/bookstrap/books.html:53
+#: data/interfaces/bookstrap/audio.html:53
+#: data/interfaces/bookstrap/books.html:51
 #: data/interfaces/bookstrap/comicissues.html:33
 #: data/interfaces/bookstrap/comics.html:52
 #: data/interfaces/bookstrap/issues.html:35
@@ -149,73 +145,73 @@ msgstr "Alle"
 msgid "Libraryscan in progress ..."
 msgstr "Bibliotheekscan bezig ..."
 
-#: data/interfaces/bookstrap/audio.html:64
-#: data/interfaces/bookstrap/books.html:63
+#: data/interfaces/bookstrap/audio.html:63
+#: data/interfaces/bookstrap/books.html:61
 #: data/interfaces/bookstrap/comics.html:60
-#: data/interfaces/bookstrap/index.html:79
+#: data/interfaces/bookstrap/index.html:74
 #: data/interfaces/bookstrap/magazines.html:63
 msgid "Mark selected as"
 msgstr "Selectie markeren als"
 
-#: data/interfaces/bookstrap/audio.html:66
+#: data/interfaces/bookstrap/audio.html:65
 #: data/interfaces/bookstrap/author.html:18
 #: data/interfaces/bookstrap/author_detail.html:22
-#: data/interfaces/bookstrap/books.html:66
+#: data/interfaces/bookstrap/books.html:64
 #: data/interfaces/bookstrap/editauthor.html:20
-#: data/interfaces/bookstrap/index.html:83
+#: data/interfaces/bookstrap/index.html:78
 #: data/interfaces/bookstrap/members.html:74
 #: data/interfaces/bookstrap/series.html:78
 #: data/interfaces/bookstrap/series.html:123 lazylibrarian/i18n.py:374
 msgid "Wanted"
 msgstr "Gezocht"
 
-#: data/interfaces/bookstrap/audio.html:67
-#: data/interfaces/bookstrap/books.html:67
+#: data/interfaces/bookstrap/audio.html:66
+#: data/interfaces/bookstrap/books.html:65
 #: data/interfaces/bookstrap/members.html:74
 #: data/interfaces/bookstrap/series.html:93
 #: data/interfaces/bookstrap/series.html:112 lazylibrarian/i18n.py:374
 msgid "Have"
 msgstr "In bezit"
 
-#: data/interfaces/bookstrap/audio.html:68
+#: data/interfaces/bookstrap/audio.html:67
 #: data/interfaces/bookstrap/author.html:20
 #: data/interfaces/bookstrap/author_detail.html:24
-#: data/interfaces/bookstrap/books.html:68
+#: data/interfaces/bookstrap/books.html:66
 #: data/interfaces/bookstrap/editauthor.html:22
-#: data/interfaces/bookstrap/index.html:84
+#: data/interfaces/bookstrap/index.html:79
 #: data/interfaces/bookstrap/members.html:74
 #: data/interfaces/bookstrap/series.html:78
 #: data/interfaces/bookstrap/series.html:124 lazylibrarian/i18n.py:375
 msgid "Ignored"
 msgstr "Genegeerd"
 
-#: data/interfaces/bookstrap/audio.html:69
-#: data/interfaces/bookstrap/books.html:69
+#: data/interfaces/bookstrap/audio.html:68
+#: data/interfaces/bookstrap/books.html:67
 #: data/interfaces/bookstrap/members.html:75 lazylibrarian/i18n.py:375
 msgid "Skipped"
 msgstr "Overgeslagen"
 
-#: data/interfaces/bookstrap/audio.html:70
+#: data/interfaces/bookstrap/audio.html:69
 #: data/interfaces/bookstrap/author.html:293
-#: data/interfaces/bookstrap/books.html:70
+#: data/interfaces/bookstrap/books.html:68
 #: data/interfaces/bookstrap/comicissues.html:40
 #: data/interfaces/bookstrap/comics.html:66
 #: data/interfaces/bookstrap/editauthor.html:163
-#: data/interfaces/bookstrap/index.html:86
+#: data/interfaces/bookstrap/index.html:81
 #: data/interfaces/bookstrap/issues.html:42
 #: data/interfaces/bookstrap/magazines.html:69
 #: data/interfaces/bookstrap/members.html:75 lazylibrarian/i18n.py:376
 msgid "Remove"
 msgstr "Verwijderen"
 
-#: data/interfaces/bookstrap/audio.html:71
+#: data/interfaces/bookstrap/audio.html:70
 #: data/interfaces/bookstrap/author.html:294
-#: data/interfaces/bookstrap/books.html:71
+#: data/interfaces/bookstrap/books.html:69
 #: data/interfaces/bookstrap/comicissues.html:41
 #: data/interfaces/bookstrap/comics.html:67
 #: data/interfaces/bookstrap/dlresult.html:33
 #: data/interfaces/bookstrap/history.html:81
-#: data/interfaces/bookstrap/index.html:87
+#: data/interfaces/bookstrap/index.html:82
 #: data/interfaces/bookstrap/issues.html:43
 #: data/interfaces/bookstrap/magazines.html:70
 #: data/interfaces/bookstrap/members.html:75
@@ -223,17 +219,17 @@ msgstr "Verwijderen"
 msgid "Delete"
 msgstr "Wissen"
 
-#: data/interfaces/bookstrap/audio.html:72
+#: data/interfaces/bookstrap/audio.html:71
 #: data/interfaces/bookstrap/author.html:295
 msgid "Leave"
 msgstr "Laten staan"
 
-#: data/interfaces/bookstrap/audio.html:75
+#: data/interfaces/bookstrap/audio.html:74
 #: data/interfaces/bookstrap/author.html:307
-#: data/interfaces/bookstrap/books.html:82
+#: data/interfaces/bookstrap/books.html:80
 #: data/interfaces/bookstrap/comicissues.html:43
 #: data/interfaces/bookstrap/comics.html:75
-#: data/interfaces/bookstrap/index.html:96
+#: data/interfaces/bookstrap/index.html:91
 #: data/interfaces/bookstrap/issues.html:49
 #: data/interfaces/bookstrap/magazines.html:81
 #: data/interfaces/bookstrap/managebooks.html:176
@@ -244,15 +240,15 @@ msgstr "Laten staan"
 msgid "Go"
 msgstr "Uitvoeren"
 
-#: data/interfaces/bookstrap/audio.html:80
-#: data/interfaces/bookstrap/audio.html:101
-#: data/interfaces/bookstrap/audio.html:144
+#: data/interfaces/bookstrap/audio.html:79
+#: data/interfaces/bookstrap/audio.html:100
+#: data/interfaces/bookstrap/audio.html:143
 #: data/interfaces/bookstrap/author.html:311
 #: data/interfaces/bookstrap/author.html:326
 #: data/interfaces/bookstrap/author.html:411
-#: data/interfaces/bookstrap/books.html:87
-#: data/interfaces/bookstrap/books.html:108
-#: data/interfaces/bookstrap/books.html:154
+#: data/interfaces/bookstrap/books.html:85
+#: data/interfaces/bookstrap/books.html:106
+#: data/interfaces/bookstrap/books.html:152
 #: data/interfaces/bookstrap/comicissues.html:45
 #: data/interfaces/bookstrap/comicissues.html:62
 #: data/interfaces/bookstrap/comicissues.html:64
@@ -261,7 +257,7 @@ msgstr "Uitvoeren"
 #: data/interfaces/bookstrap/comics.html:101
 #: data/interfaces/bookstrap/comics.html:103
 #: data/interfaces/bookstrap/comics.html:145
-#: data/interfaces/bookstrap/index.html:184
+#: data/interfaces/bookstrap/index.html:179
 #: data/interfaces/bookstrap/issues.html:51
 #: data/interfaces/bookstrap/issues.html:68
 #: data/interfaces/bookstrap/issues.html:70
@@ -281,12 +277,12 @@ msgstr "Uitvoeren"
 msgid "Cover"
 msgstr "Omslag"
 
-#: data/interfaces/bookstrap/audio.html:80
+#: data/interfaces/bookstrap/audio.html:79
 #: data/interfaces/bookstrap/author.html:311
-#: data/interfaces/bookstrap/books.html:87
+#: data/interfaces/bookstrap/books.html:85
 #: data/interfaces/bookstrap/comics.html:80
 #: data/interfaces/bookstrap/history.html:30
-#: data/interfaces/bookstrap/index.html:101
+#: data/interfaces/bookstrap/index.html:96
 #: data/interfaces/bookstrap/issues.html:51
 #: data/interfaces/bookstrap/logs.html:42
 #: data/interfaces/bookstrap/magazines.html:86
@@ -297,13 +293,13 @@ msgstr "Omslag"
 msgid "Toggle:"
 msgstr "Tonen:"
 
-#: data/interfaces/bookstrap/audio.html:81
-#: data/interfaces/bookstrap/audio.html:102
+#: data/interfaces/bookstrap/audio.html:80
+#: data/interfaces/bookstrap/audio.html:101
 #: data/interfaces/bookstrap/author.html:327
-#: data/interfaces/bookstrap/books.html:88
-#: data/interfaces/bookstrap/books.html:109
-#: data/interfaces/bookstrap/index.html:102
-#: data/interfaces/bookstrap/index.html:122
+#: data/interfaces/bookstrap/books.html:86
+#: data/interfaces/bookstrap/books.html:107
+#: data/interfaces/bookstrap/index.html:97
+#: data/interfaces/bookstrap/index.html:117
 #: data/interfaces/bookstrap/managebooks.html:102
 #: data/interfaces/bookstrap/managebooks.html:126
 #: data/interfaces/bookstrap/members.html:110
@@ -314,13 +310,13 @@ msgstr "Tonen:"
 msgid "Author"
 msgstr "Auteur"
 
-#: data/interfaces/bookstrap/audio.html:82
-#: data/interfaces/bookstrap/audio.html:103
+#: data/interfaces/bookstrap/audio.html:81
+#: data/interfaces/bookstrap/audio.html:102
 #: data/interfaces/bookstrap/author.html:312
 #: data/interfaces/bookstrap/author.html:328
 #: data/interfaces/bookstrap/author.html:602
-#: data/interfaces/bookstrap/books.html:89
-#: data/interfaces/bookstrap/books.html:110
+#: data/interfaces/bookstrap/books.html:87
+#: data/interfaces/bookstrap/books.html:108
 #: data/interfaces/bookstrap/comicresults.html:19
 #: data/interfaces/bookstrap/comics.html:81
 #: data/interfaces/bookstrap/comics.html:105
@@ -341,15 +337,15 @@ msgstr "Auteur"
 msgid "Title"
 msgstr "Titel"
 
-#: data/interfaces/bookstrap/audio.html:83
-#: data/interfaces/bookstrap/audio.html:104
+#: data/interfaces/bookstrap/audio.html:82
+#: data/interfaces/bookstrap/audio.html:103
 #: data/interfaces/bookstrap/author.html:50
 #: data/interfaces/bookstrap/author.html:313
 #: data/interfaces/bookstrap/author.html:329
 #: data/interfaces/bookstrap/author_detail.html:41
 #: data/interfaces/bookstrap/base.html:399
-#: data/interfaces/bookstrap/books.html:90
-#: data/interfaces/bookstrap/books.html:111
+#: data/interfaces/bookstrap/books.html:88
+#: data/interfaces/bookstrap/books.html:109
 #: data/interfaces/bookstrap/config.html:110
 #: data/interfaces/bookstrap/editauthor.html:39
 #: data/interfaces/bookstrap/managebooks.html:104
@@ -358,15 +354,15 @@ msgstr "Titel"
 msgid "Series"
 msgstr "Serie"
 
-#: data/interfaces/bookstrap/audio.html:84
-#: data/interfaces/bookstrap/audio.html:105
-#: data/interfaces/bookstrap/audio.html:178
+#: data/interfaces/bookstrap/audio.html:83
+#: data/interfaces/bookstrap/audio.html:104
+#: data/interfaces/bookstrap/audio.html:177
 #: data/interfaces/bookstrap/author.html:314
 #: data/interfaces/bookstrap/author.html:330
 #: data/interfaces/bookstrap/author.html:437
-#: data/interfaces/bookstrap/books.html:91
-#: data/interfaces/bookstrap/books.html:112
-#: data/interfaces/bookstrap/books.html:188
+#: data/interfaces/bookstrap/books.html:89
+#: data/interfaces/bookstrap/books.html:110
+#: data/interfaces/bookstrap/books.html:186
 #: data/interfaces/bookstrap/managebooks.html:105
 #: data/interfaces/bookstrap/managebooks.html:129
 #: data/interfaces/bookstrap/managebooks.html:567
@@ -374,32 +370,32 @@ msgstr "Serie"
 msgid "Rating"
 msgstr "Waardering"
 
-#: data/interfaces/bookstrap/audio.html:85
-#: data/interfaces/bookstrap/audio.html:106
+#: data/interfaces/bookstrap/audio.html:84
+#: data/interfaces/bookstrap/audio.html:105
 #: data/interfaces/bookstrap/author.html:315
 #: data/interfaces/bookstrap/author.html:331
-#: data/interfaces/bookstrap/books.html:92
-#: data/interfaces/bookstrap/books.html:113
-#: data/interfaces/bookstrap/index.html:105
-#: data/interfaces/bookstrap/index.html:125
+#: data/interfaces/bookstrap/books.html:90
+#: data/interfaces/bookstrap/books.html:111
+#: data/interfaces/bookstrap/index.html:100
+#: data/interfaces/bookstrap/index.html:120
 #: data/interfaces/bookstrap/managebooks.html:106
 #: data/interfaces/bookstrap/managebooks.html:130
 #: data/interfaces/bookstrap/searchresults.html:50
 msgid "Released"
 msgstr "Verschenen"
 
-#: data/interfaces/bookstrap/audio.html:86
-#: data/interfaces/bookstrap/audio.html:107
+#: data/interfaces/bookstrap/audio.html:85
+#: data/interfaces/bookstrap/audio.html:106
 #: data/interfaces/bookstrap/author.html:316
 #: data/interfaces/bookstrap/author.html:332
-#: data/interfaces/bookstrap/books.html:93
-#: data/interfaces/bookstrap/books.html:114
+#: data/interfaces/bookstrap/books.html:91
+#: data/interfaces/bookstrap/books.html:112
 #: data/interfaces/bookstrap/comicissues.html:47
 #: data/interfaces/bookstrap/comicissues.html:67
 #: data/interfaces/bookstrap/comics.html:83
 #: data/interfaces/bookstrap/comics.html:107
-#: data/interfaces/bookstrap/index.html:103
-#: data/interfaces/bookstrap/index.html:123
+#: data/interfaces/bookstrap/index.html:98
+#: data/interfaces/bookstrap/index.html:118
 #: data/interfaces/bookstrap/issues.html:53
 #: data/interfaces/bookstrap/issues.html:73
 #: data/interfaces/bookstrap/magazines.html:89
@@ -407,20 +403,20 @@ msgstr "Verschenen"
 msgid "Added"
 msgstr "Toegevoegd"
 
-#: data/interfaces/bookstrap/audio.html:87
-#: data/interfaces/bookstrap/audio.html:108
+#: data/interfaces/bookstrap/audio.html:86
+#: data/interfaces/bookstrap/audio.html:107
 #: data/interfaces/bookstrap/author.html:317
 #: data/interfaces/bookstrap/author.html:333
-#: data/interfaces/bookstrap/books.html:94
-#: data/interfaces/bookstrap/books.html:115
+#: data/interfaces/bookstrap/books.html:92
+#: data/interfaces/bookstrap/books.html:113
 #: data/interfaces/bookstrap/comicresults.html:23
 #: data/interfaces/bookstrap/comics.html:85
 #: data/interfaces/bookstrap/comics.html:109
 #: data/interfaces/bookstrap/config.html:2222
 #: data/interfaces/bookstrap/history.html:36
 #: data/interfaces/bookstrap/history.html:50
-#: data/interfaces/bookstrap/index.html:107
-#: data/interfaces/bookstrap/index.html:127
+#: data/interfaces/bookstrap/index.html:102
+#: data/interfaces/bookstrap/index.html:122
 #: data/interfaces/bookstrap/magazines.html:91
 #: data/interfaces/bookstrap/magazines.html:115
 #: data/interfaces/bookstrap/manualsearch.html:23
@@ -431,15 +427,15 @@ msgstr "Toegevoegd"
 msgid "Status"
 msgstr "Status"
 
-#: data/interfaces/bookstrap/audio.html:183
+#: data/interfaces/bookstrap/audio.html:182
 #: data/interfaces/bookstrap/author.html:442
-#: data/interfaces/bookstrap/books.html:193
+#: data/interfaces/bookstrap/books.html:191
 msgid "Listed:"
 msgstr "Vermeld:"
 
-#: data/interfaces/bookstrap/audio.html:201
+#: data/interfaces/bookstrap/audio.html:200
 #: data/interfaces/bookstrap/author.html:472
-#: data/interfaces/bookstrap/books.html:211
+#: data/interfaces/bookstrap/books.html:209
 #: data/interfaces/bookstrap/issues.html:135
 #: data/interfaces/bookstrap/magazines.html:181
 #: data/interfaces/bookstrap/members.html:151
@@ -447,23 +443,23 @@ msgstr "Vermeld:"
 msgid "Send"
 msgstr "Versturen"
 
-#: data/interfaces/bookstrap/audio.html:220
+#: data/interfaces/bookstrap/audio.html:219
 #: data/interfaces/bookstrap/author.html:533
-#: data/interfaces/bookstrap/books.html:240
+#: data/interfaces/bookstrap/books.html:238
 #: data/interfaces/bookstrap/managebooks.html:589
 #: data/interfaces/bookstrap/members.html:198
 #: data/interfaces/bookstrap/searchresults.html:238
 msgid "No books found"
 msgstr "Geen boeken gevonden"
 
-#: data/interfaces/bookstrap/audio.html:273
+#: data/interfaces/bookstrap/audio.html:272
 #: data/interfaces/bookstrap/author.html:586
-#: data/interfaces/bookstrap/books.html:293
+#: data/interfaces/bookstrap/books.html:291
 #: data/interfaces/bookstrap/comicissues.html:165
 #: data/interfaces/bookstrap/comicresults.html:71
 #: data/interfaces/bookstrap/comics.html:247
 #: data/interfaces/bookstrap/history.html:192
-#: data/interfaces/bookstrap/index.html:278
+#: data/interfaces/bookstrap/index.html:273
 #: data/interfaces/bookstrap/issues.html:187
 #: data/interfaces/bookstrap/logs.html:124
 #: data/interfaces/bookstrap/magazines.html:251
@@ -475,7 +471,7 @@ msgstr "Geen boeken gevonden"
 msgid "Results filter"
 msgstr "Resultaatfilter"
 
-#: data/interfaces/bookstrap/audio.html:292
+#: data/interfaces/bookstrap/audio.html:291
 #, python-format
 msgid "Are you sure you want to permanently delete the selected audiobook?"
 msgid_plural ""
@@ -487,28 +483,28 @@ msgstr[1] ""
 "Weet je zeker dat je de %(count)s geselecteerde luisterboeken definitief "
 "wilt wissen?"
 
-#: data/interfaces/bookstrap/audio.html:298
+#: data/interfaces/bookstrap/audio.html:297
 #: data/interfaces/bookstrap/author.html:355
 #: data/interfaces/bookstrap/author_detail.html:80
 #: data/interfaces/bookstrap/base.html:661
-#: data/interfaces/bookstrap/books.html:318
+#: data/interfaces/bookstrap/books.html:316
 #: data/interfaces/bookstrap/comicissues.html:185
 #: data/interfaces/bookstrap/comics.html:268
 #: data/interfaces/bookstrap/editauthor.html:266
 #: data/interfaces/bookstrap/editcomic.html:61
 #: data/interfaces/bookstrap/editseries.html:62
-#: data/interfaces/bookstrap/index.html:309
+#: data/interfaces/bookstrap/index.html:304
 #: data/interfaces/bookstrap/issues.html:207
 #: data/interfaces/bookstrap/magazines.html:271
 #: data/interfaces/bookstrap/users.html:276
 msgid "Yes"
 msgstr "Ja"
 
-#: data/interfaces/bookstrap/audio.html:302
+#: data/interfaces/bookstrap/audio.html:301
 #: data/interfaces/bookstrap/author.html:359
 #: data/interfaces/bookstrap/author_detail.html:81
 #: data/interfaces/bookstrap/base.html:665
-#: data/interfaces/bookstrap/books.html:322
+#: data/interfaces/bookstrap/books.html:320
 #: data/interfaces/bookstrap/comicissues.html:189
 #: data/interfaces/bookstrap/comics.html:272
 #: data/interfaces/bookstrap/editauthor.html:267
@@ -516,19 +512,19 @@ msgstr "Ja"
 #: data/interfaces/bookstrap/editauthor.html:318
 #: data/interfaces/bookstrap/editcomic.html:65
 #: data/interfaces/bookstrap/editseries.html:66
-#: data/interfaces/bookstrap/index.html:313
+#: data/interfaces/bookstrap/index.html:308
 #: data/interfaces/bookstrap/issues.html:211
 #: data/interfaces/bookstrap/magazines.html:275
 #: data/interfaces/bookstrap/users.html:280
 msgid "No"
 msgstr "Nee"
 
-#: data/interfaces/bookstrap/audio.html:331
+#: data/interfaces/bookstrap/audio.html:330
 #: data/interfaces/bookstrap/author.html:619
 #: data/interfaces/bookstrap/base.html:139
-#: data/interfaces/bookstrap/books.html:351
+#: data/interfaces/bookstrap/books.html:349
 #: data/interfaces/bookstrap/editmag.html:57
-#: data/interfaces/bookstrap/index.html:348
+#: data/interfaces/bookstrap/index.html:343
 #: data/interfaces/bookstrap/issues.html:250
 #: data/interfaces/bookstrap/magazines.html:304
 #: data/interfaces/bookstrap/managebooks.html:272
@@ -540,11 +536,11 @@ msgstr "Nee"
 msgid "Processing..."
 msgstr "Bezig met verwerken ..."
 
-#: data/interfaces/bookstrap/audio.html:358
+#: data/interfaces/bookstrap/audio.html:357
 #: data/interfaces/bookstrap/author.html:646
-#: data/interfaces/bookstrap/books.html:378
+#: data/interfaces/bookstrap/books.html:376
 #: data/interfaces/bookstrap/editmag.html:91
-#: data/interfaces/bookstrap/index.html:375
+#: data/interfaces/bookstrap/index.html:370
 #: data/interfaces/bookstrap/issues.html:284
 #: data/interfaces/bookstrap/magazines.html:338
 #: data/interfaces/bookstrap/managebooks.html:668
@@ -554,11 +550,11 @@ msgstr "Bezig met verwerken ..."
 msgid "Summary:"
 msgstr "Samenvatting:"
 
-#: data/interfaces/bookstrap/audio.html:361
+#: data/interfaces/bookstrap/audio.html:360
 #: data/interfaces/bookstrap/author.html:649
-#: data/interfaces/bookstrap/books.html:381
+#: data/interfaces/bookstrap/books.html:379
 #: data/interfaces/bookstrap/editmag.html:95
-#: data/interfaces/bookstrap/index.html:378
+#: data/interfaces/bookstrap/index.html:373
 #: data/interfaces/bookstrap/issues.html:287
 #: data/interfaces/bookstrap/magazines.html:341
 #: data/interfaces/bookstrap/managebooks.html:464
@@ -569,11 +565,11 @@ msgstr "Samenvatting:"
 msgid "Successful:"
 msgstr "Geslaagd:"
 
-#: data/interfaces/bookstrap/audio.html:363
+#: data/interfaces/bookstrap/audio.html:362
 #: data/interfaces/bookstrap/author.html:651
-#: data/interfaces/bookstrap/books.html:383
+#: data/interfaces/bookstrap/books.html:381
 #: data/interfaces/bookstrap/editmag.html:97
-#: data/interfaces/bookstrap/index.html:380
+#: data/interfaces/bookstrap/index.html:375
 #: data/interfaces/bookstrap/issues.html:289
 #: data/interfaces/bookstrap/magazines.html:343
 #: data/interfaces/bookstrap/managebooks.html:673
@@ -583,21 +579,21 @@ msgstr "Geslaagd:"
 msgid "Failed:"
 msgstr "Mislukt:"
 
-#: data/interfaces/bookstrap/audio.html:368
+#: data/interfaces/bookstrap/audio.html:367
 #: data/interfaces/bookstrap/author.html:656
-#: data/interfaces/bookstrap/books.html:388
+#: data/interfaces/bookstrap/books.html:386
 #: data/interfaces/bookstrap/managebooks.html:678
 #: data/interfaces/bookstrap/members.html:256
 msgid "Mark Books Complete"
 msgstr "Boeken als voltooid markeren"
 
-#: data/interfaces/bookstrap/audio.html:372
+#: data/interfaces/bookstrap/audio.html:371
 #: data/interfaces/bookstrap/author.html:660
 #: data/interfaces/bookstrap/base.html:194
-#: data/interfaces/bookstrap/books.html:392
+#: data/interfaces/bookstrap/books.html:390
 #: data/interfaces/bookstrap/editmag.html:107
 #: data/interfaces/bookstrap/editmag.html:127
-#: data/interfaces/bookstrap/index.html:389
+#: data/interfaces/bookstrap/index.html:384
 #: data/interfaces/bookstrap/issues.html:299
 #: data/interfaces/bookstrap/issues.html:319
 #: data/interfaces/bookstrap/magazines.html:353
@@ -609,11 +605,11 @@ msgstr "Boeken als voltooid markeren"
 msgid "OK"
 msgstr "OK"
 
-#: data/interfaces/bookstrap/audio.html:387
+#: data/interfaces/bookstrap/audio.html:386
 #: data/interfaces/bookstrap/author.html:675
-#: data/interfaces/bookstrap/books.html:407
+#: data/interfaces/bookstrap/books.html:405
 #: data/interfaces/bookstrap/editmag.html:123
-#: data/interfaces/bookstrap/index.html:404
+#: data/interfaces/bookstrap/index.html:399
 #: data/interfaces/bookstrap/issues.html:315
 #: data/interfaces/bookstrap/magazines.html:369
 #: data/interfaces/bookstrap/managebooks.html:697
@@ -623,11 +619,11 @@ msgstr "OK"
 msgid "Error"
 msgstr "Fout"
 
-#: data/interfaces/bookstrap/audio.html:388
+#: data/interfaces/bookstrap/audio.html:387
 #: data/interfaces/bookstrap/author.html:676
-#: data/interfaces/bookstrap/books.html:408
+#: data/interfaces/bookstrap/books.html:406
 #: data/interfaces/bookstrap/editmag.html:124
-#: data/interfaces/bookstrap/index.html:405
+#: data/interfaces/bookstrap/index.html:400
 #: data/interfaces/bookstrap/issues.html:316
 #: data/interfaces/bookstrap/magazines.html:370
 #: data/interfaces/bookstrap/managebooks.html:698
@@ -637,13 +633,13 @@ msgstr "Fout"
 msgid "An error occurred:"
 msgstr "Er is een fout opgetreden:"
 
-#: data/interfaces/bookstrap/audio.html:391
+#: data/interfaces/bookstrap/audio.html:390
 #: data/interfaces/bookstrap/author.html:606
 #: data/interfaces/bookstrap/author.html:679
 #: data/interfaces/bookstrap/base.html:621
 #: data/interfaces/bookstrap/base.html:646
 #: data/interfaces/bookstrap/base.html:825
-#: data/interfaces/bookstrap/books.html:411
+#: data/interfaces/bookstrap/books.html:409
 #: data/interfaces/bookstrap/choosetype.html:48
 #: data/interfaces/bookstrap/config_functions.js:172
 #: data/interfaces/bookstrap/config_functions.js:243
@@ -689,7 +685,7 @@ msgstr "Er is een fout opgetreden:"
 #: data/interfaces/bookstrap/dlresult.html:39
 #: data/interfaces/bookstrap/history.html:88
 #: data/interfaces/bookstrap/history.html:114
-#: data/interfaces/bookstrap/index.html:408
+#: data/interfaces/bookstrap/index.html:403
 #: data/interfaces/bookstrap/login.html:69
 #: data/interfaces/bookstrap/login.html:92
 #: data/interfaces/bookstrap/managebooks.html:212
@@ -721,7 +717,7 @@ msgstr "Sluiten"
 #: data/interfaces/bookstrap/author_detail.html:16
 #: data/interfaces/bookstrap/comics.html:64
 #: data/interfaces/bookstrap/editauthor.html:14
-#: data/interfaces/bookstrap/index.html:85
+#: data/interfaces/bookstrap/index.html:80
 #: data/interfaces/bookstrap/magazines.html:67
 #: data/interfaces/bookstrap/series.html:77
 #: data/interfaces/bookstrap/series.html:123 lazylibrarian/i18n.py:374
@@ -732,7 +728,7 @@ msgstr "Gepauzeerd"
 #: data/interfaces/bookstrap/author_detail.html:19
 #: data/interfaces/bookstrap/comics.html:63
 #: data/interfaces/bookstrap/editauthor.html:17
-#: data/interfaces/bookstrap/index.html:82
+#: data/interfaces/bookstrap/index.html:77
 #: data/interfaces/bookstrap/magazines.html:66
 #: data/interfaces/bookstrap/series.html:78
 #: data/interfaces/bookstrap/series.html:123 lazylibrarian/i18n.py:374
@@ -805,7 +801,7 @@ msgid "rss feed of recent ebooks"
 msgstr "RSS-feed van recente e-books"
 
 #: data/interfaces/bookstrap/author.html:94
-#: data/interfaces/bookstrap/books.html:21
+#: data/interfaces/bookstrap/books.html:19
 msgid "LazyLibrarian latest eBooks"
 msgstr "LazyLibrarian – nieuwste e-books"
 
@@ -1015,7 +1011,7 @@ msgid "Both Skipped"
 msgstr "Beide overgeslagen"
 
 #: data/interfaces/bookstrap/author.html:299
-#: data/interfaces/bookstrap/books.html:74
+#: data/interfaces/bookstrap/books.html:72
 #: data/interfaces/bookstrap/managebooks.html:165
 #: data/interfaces/bookstrap/members.html:80
 #: data/interfaces/bookstrap/series.html:130
@@ -1023,7 +1019,7 @@ msgid "Unread"
 msgstr "Ongelezen"
 
 #: data/interfaces/bookstrap/author.html:300
-#: data/interfaces/bookstrap/books.html:75
+#: data/interfaces/bookstrap/books.html:73
 #: data/interfaces/bookstrap/managebooks.html:78
 #: data/interfaces/bookstrap/managebooks.html:166
 #: data/interfaces/bookstrap/members.html:81
@@ -1032,7 +1028,7 @@ msgid "Read"
 msgstr "Gelezen"
 
 #: data/interfaces/bookstrap/author.html:301
-#: data/interfaces/bookstrap/books.html:76
+#: data/interfaces/bookstrap/books.html:74
 #: data/interfaces/bookstrap/managebooks.html:83
 #: data/interfaces/bookstrap/managebooks.html:167
 #: data/interfaces/bookstrap/members.html:82
@@ -1041,7 +1037,7 @@ msgid "To Read"
 msgstr "Nog te lezen"
 
 #: data/interfaces/bookstrap/author.html:302
-#: data/interfaces/bookstrap/books.html:77
+#: data/interfaces/bookstrap/books.html:75
 #: data/interfaces/bookstrap/managebooks.html:88
 #: data/interfaces/bookstrap/managebooks.html:168
 #: data/interfaces/bookstrap/members.html:83
@@ -1050,7 +1046,7 @@ msgid "Reading"
 msgstr "Aan het lezen"
 
 #: data/interfaces/bookstrap/author.html:303
-#: data/interfaces/bookstrap/books.html:78
+#: data/interfaces/bookstrap/books.html:76
 #: data/interfaces/bookstrap/managebooks.html:93
 #: data/interfaces/bookstrap/managebooks.html:169
 #: data/interfaces/bookstrap/members.html:84
@@ -1068,9 +1064,9 @@ msgstr "Weet je zeker dat je de auteur definitief wilt wissen?"
 #: data/interfaces/bookstrap/author.html:493
 #: data/interfaces/bookstrap/author.html:511
 #: data/interfaces/bookstrap/author.html:518
-#: data/interfaces/bookstrap/books.html:218
-#: data/interfaces/bookstrap/books.html:227
-#: data/interfaces/bookstrap/books.html:234
+#: data/interfaces/bookstrap/books.html:216
+#: data/interfaces/bookstrap/books.html:225
+#: data/interfaces/bookstrap/books.html:232
 msgid "Request"
 msgstr "Aanvragen"
 
@@ -1667,20 +1663,11 @@ msgstr "Geen ASIN gevonden op GoodReads voor dit boek"
 msgid "Lookup failed - check the logs"
 msgstr "Opzoeken mislukt – bekijk de logboeken"
 
-#: data/interfaces/bookstrap/books.html:16
-msgid "Additions"
-msgstr "Toevoegingen"
-
-#: data/interfaces/bookstrap/books.html:17
-#: data/interfaces/bookstrap/users.html:109
-msgid "Downloads"
-msgstr "Downloads"
-
-#: data/interfaces/bookstrap/books.html:222 lazylibrarian/i18n.py:375
+#: data/interfaces/bookstrap/books.html:220 lazylibrarian/i18n.py:375
 msgid "Snatched"
 msgstr "Binnengehaald"
 
-#: data/interfaces/bookstrap/books.html:312
+#: data/interfaces/bookstrap/books.html:310
 #, python-format
 msgid "Are you sure you want to permanently delete the selected book?"
 msgid_plural ""
@@ -1801,14 +1788,14 @@ msgid "Reset"
 msgstr "Herstellen"
 
 #: data/interfaces/bookstrap/comics.html:70
-#: data/interfaces/bookstrap/index.html:91
+#: data/interfaces/bookstrap/index.html:86
 #: data/interfaces/bookstrap/magazines.html:76
 #: data/interfaces/bookstrap/series.html:135
 msgid "Subscribe"
 msgstr "Abonneren"
 
 #: data/interfaces/bookstrap/comics.html:71
-#: data/interfaces/bookstrap/index.html:92
+#: data/interfaces/bookstrap/index.html:87
 #: data/interfaces/bookstrap/magazines.html:77
 #: data/interfaces/bookstrap/series.html:136
 msgid "Unsubscribe"
@@ -1824,7 +1811,7 @@ msgid "Num"
 msgstr "Nr."
 
 #: data/interfaces/bookstrap/comics.html:84
-#: data/interfaces/bookstrap/index.html:104
+#: data/interfaces/bookstrap/index.html:99
 #: data/interfaces/bookstrap/magazines.html:90
 msgid "Latest"
 msgstr "Nieuwste"
@@ -6742,7 +6729,7 @@ msgid "Clear Counters"
 msgstr "Tellers wissen"
 
 #: data/interfaces/bookstrap/history.html:170
-#: data/interfaces/bookstrap/index.html:220
+#: data/interfaces/bookstrap/index.html:215
 msgid "Complete"
 msgstr "Voltooid"
 
@@ -6762,32 +6749,27 @@ msgstr "Actieve auteurs tonen"
 msgid "Show Inactive Authors"
 msgstr "Inactieve auteurs tonen"
 
-#: data/interfaces/bookstrap/index.html:26
-#: data/interfaces/bookstrap/index.html:28
-msgid "Grid view"
-msgstr "Rasterweergave"
-
-#: data/interfaces/bookstrap/index.html:32
-#: data/interfaces/bookstrap/index.html:34
+#: data/interfaces/bookstrap/index.html:27
+#: data/interfaces/bookstrap/index.html:29
 msgid "Primary Author, or All Contributors"
 msgstr "Hoofdauteur of alle medewerkers"
 
-#: data/interfaces/bookstrap/index.html:44
+#: data/interfaces/bookstrap/index.html:39
 #: data/interfaces/bookstrap/searchresults.html:17
 #: data/interfaces/bookstrap/series.html:46
 msgid "Title / Author / ISBN"
 msgstr "Titel / auteur / ISBN"
 
-#: data/interfaces/bookstrap/index.html:46
+#: data/interfaces/bookstrap/index.html:41
 msgid "Search for author/book"
 msgstr "Zoeken naar auteur/boek"
 
-#: data/interfaces/bookstrap/index.html:60
+#: data/interfaces/bookstrap/index.html:55
 msgid "Author Refresh in progress ..."
 msgstr "Auteurs vernieuwen bezig ..."
 
-#: data/interfaces/bookstrap/index.html:65
-#: data/interfaces/bookstrap/index.html:69
+#: data/interfaces/bookstrap/index.html:60
+#: data/interfaces/bookstrap/index.html:64
 #: data/interfaces/bookstrap/searchresults.html:33
 #: data/interfaces/bookstrap/searchresults.html:37
 #: data/interfaces/bookstrap/series.html:62
@@ -6795,29 +6777,29 @@ msgstr "Auteurs vernieuwen bezig ..."
 msgid "Search in progress ..."
 msgstr "Zoeken bezig ..."
 
-#: data/interfaces/bookstrap/index.html:88
+#: data/interfaces/bookstrap/index.html:83
 msgid "Delete + Ignore"
 msgstr "Wissen + negeren"
 
-#: data/interfaces/bookstrap/index.html:101
-#: data/interfaces/bookstrap/index.html:121
+#: data/interfaces/bookstrap/index.html:96
+#: data/interfaces/bookstrap/index.html:116
 msgid "Image"
 msgstr "Afbeelding"
 
-#: data/interfaces/bookstrap/index.html:106
-#: data/interfaces/bookstrap/index.html:126
+#: data/interfaces/bookstrap/index.html:101
+#: data/interfaces/bookstrap/index.html:121
 msgid "Downloaded"
 msgstr "Gedownload"
 
-#: data/interfaces/bookstrap/index.html:124
+#: data/interfaces/bookstrap/index.html:119
 msgid "Latest Book"
 msgstr "Nieuwste boek"
 
-#: data/interfaces/bookstrap/index.html:236
+#: data/interfaces/bookstrap/index.html:231
 msgid "No authors found"
 msgstr "Geen auteurs gevonden"
 
-#: data/interfaces/bookstrap/index.html:294
+#: data/interfaces/bookstrap/index.html:289
 #, python-format
 msgid ""
 "Are you sure you want to permanently delete the selected author and their "
@@ -6832,7 +6814,7 @@ msgstr[1] ""
 "Weet je zeker dat je de %(count)s geselecteerde auteurs en hun media "
 "definitief wilt wissen?"
 
-#: data/interfaces/bookstrap/index.html:298
+#: data/interfaces/bookstrap/index.html:293
 #, python-format
 msgid ""
 "Are you sure you want to delete media for the selected author and ignore "
@@ -6847,7 +6829,7 @@ msgstr[1] ""
 "Weet je zeker dat je de media van de %(count)s geselecteerde auteurs wilt "
 "wissen en ze wilt negeren?"
 
-#: data/interfaces/bookstrap/index.html:302
+#: data/interfaces/bookstrap/index.html:297
 #, python-format
 msgid "Are you sure you want to remove the selected author?"
 msgid_plural "Are you sure you want to remove the %(count)s selected authors?"
@@ -6855,7 +6837,7 @@ msgstr[0] "Weet je zeker dat je de geselecteerde auteur wilt verwijderen?"
 msgstr[1] ""
 "Weet je zeker dat je de %(count)s geselecteerde auteurs wilt verwijderen?"
 
-#: data/interfaces/bookstrap/index.html:385
+#: data/interfaces/bookstrap/index.html:380
 msgid "Mark Authors Complete"
 msgstr "Auteurs als voltooid markeren"
 
@@ -7580,6 +7562,10 @@ msgstr "Laatst aangemeld"
 #: data/interfaces/bookstrap/users.html:105
 msgid "Logins"
 msgstr "Aanmeldingen"
+
+#: data/interfaces/bookstrap/users.html:109
+msgid "Downloads"
+msgstr "Downloads"
 
 #: data/interfaces/bookstrap/users.html:113
 msgid "Subscriptions"
@@ -8517,6 +8503,10 @@ msgstr "Recent toegevoegde boeken"
 msgid "Active/Wanted Authors"
 msgstr "Actieve/gezochte auteurs"
 
+#: lazylibrarian/webServe.py:5760
+msgid "Recent AudioBooks"
+msgstr "Recente luisterboeken"
+
 #: lazylibrarian/webServe.py:5826
 msgid "Edit Comic"
 msgstr "Strip bewerken"
@@ -8909,6 +8899,12 @@ msgstr "Bestand versturen"
 #: lazylibrarian/webServe.py:10036
 msgid "Thank you for enabling Telemetry"
 msgstr "Bedankt voor het inschakelen van telemetrie"
+
+#~ msgid "Additions"
+#~ msgstr "Toevoegingen"
+
+#~ msgid "Grid view"
+#~ msgstr "Rasterweergave"
 
 #, fuzzy
 #~ msgid "e.g: Unknown"

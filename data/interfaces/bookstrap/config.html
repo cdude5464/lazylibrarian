@@ -4263,7 +4263,71 @@
         initThisPage();
         initLanguagePicker();
         initMonthLanguagePicker();
+        initSecretToggles();
     });
+
+    // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
+    function initSecretToggles() {
+        var secretIds = ['api_key', 'api_ro_key', 'gb_api', 'gr_api', 'gr_secret', 'gr_oauth_token',
+                         'gr_oauth_secret', 'lt_devkey', 'cv_apikey', 'sab_api', 'slsk_api', 'anna_key',
+                         'bok_remix_userkey', 'boxcar_token', 'pushbullet_token', 'pushover_apitoken',
+                         'pushover_keys', 'prowl_apikey', 'telegram_token', 'slack_token'];
+        var showTitle = "${_('Show') | h}";
+        var hideTitle = "${_('Hide') | h}";
+        var mask = '••••••••';
+
+        var $fields = $('input[type="password"]');
+        $.each(secretIds, function (i, id) {
+            $fields = $fields.add('#' + id);
+        });
+        $fields = $fields.add($('input[id^="newznab_"], input[id^="torznab_"]').filter(function () {
+            return /^(newznab|torznab)_\d+_api$/.test(this.id);
+        }));
+
+        $fields.each(function () {
+            var $input = $(this);
+            if ($input.data('secretToggle')) {
+                return;
+            }
+            $input.data('secretToggle', true);
+            $input.prop('type', 'password')
+                  .attr({'autocomplete': 'new-password', 'spellcheck': 'false',
+                         'data-lpignore': 'true', 'data-1p-ignore': 'true'});
+
+            var $btn = $('<button type="button" class="btn btn-default secret-toggle"><i class="fa fa-eye"></i></button>')
+                .attr({'title': showTitle, 'aria-label': showTitle, 'aria-pressed': 'false'});
+
+            if ($input.parent().hasClass('input-group')) {
+                $('<span class="input-group-btn"></span>').append($btn).insertAfter($input);
+            } else if ($input.hasClass('form-control')) {
+                $input.wrap('<div class="input-group"></div>');
+                $('<span class="input-group-btn"></span>').append($btn).insertAfter($input);
+            } else {
+                $btn.addClass('btn-sm').css('margin', '0 4px');
+                $btn.insertAfter($input);
+            }
+
+            // The API keys are also printed as plain text below their input
+            var $shown = $();
+            if ($input.closest('#api_options').length) {
+                $shown = $input.closest('.form-group').find('small strong');
+                $shown.each(function () {
+                    $(this).attr('data-secret', $(this).text()).text(mask);
+                });
+            }
+
+            $btn.on('click', function () {
+                var reveal = $input.prop('type') === 'password';
+                var title = reveal ? hideTitle : showTitle;
+                $input.prop('type', reveal ? 'text' : 'password');
+                $btn.find('i').toggleClass('fa-eye', !reveal).toggleClass('fa-eye-slash', reveal);
+                $btn.attr({'title': title, 'aria-label': title, 'aria-pressed': reveal ? 'true' : 'false'});
+                $shown.each(function () {
+                    $(this).text(reveal ? $(this).attr('data-secret') : mask);
+                });
+            });
+        });
+    }
 
     function reveal() {
         $('#myAlert').removeClass('hidden');

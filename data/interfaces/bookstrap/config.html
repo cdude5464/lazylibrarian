@@ -2964,7 +2964,8 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_TWITTER'] else '' %>
                   <label for="use_twitter">
                     <input type="checkbox" id="use_twitter" name="use_twitter" value="1" ${checked} />
-                    ${_('Enable Twitter Notifications')}</label>
+                    ## TRANSLATORS: %(name)s is the name of a notification service, e.g. Twitter or Telegram
+                    ${_('Enable %(name)s') % {'name': 'Twitter'}}</label>
                 </div>
                 <div id="twitteroptions">
                   <fieldset>
@@ -3003,7 +3004,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_BOXCAR'] else '' %>
                   <label for="use_boxcar" class="control-label">
                     <input type="checkbox" id="use_boxcar" name="use_boxcar" value="1" ${checked} />
-                    ${_('Enable boxcar Notifications')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Boxcar'}}</label>
                 </div>
                 <div id="boxcaroptions">
                   <fieldset>
@@ -3035,7 +3036,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_PUSHBULLET'] else '' %>
                   <label for="use_pushbullet" class="control-label">
                     <input type="checkbox" id="use_pushbullet" name="use_pushbullet" value="1" ${checked} />
-                    ${_('Enable Pushbullet Notifications')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Pushbullet'}}</label>
                 </div>
                 <div id="pushbulletoptions">
                   <fieldset>
@@ -3071,7 +3072,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_PUSHOVER'] else '' %>
                   <label for="use_pushover" class="control-label">
                     <input type="checkbox" id="use_pushover" name="use_pushover" value="1" ${checked} />
-                    ${_('Enable Pushover Notifications')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Pushover'}}</label>
                 </div>
                 <div id="pushoveroptions">
                   <fieldset>
@@ -3115,7 +3116,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_ANDROIDPN'] else '' %>
                   <label for="use_androidpn" class="control-label">
                     <input type="checkbox" id="use_androidpn" name="use_androidpn" value="1" ${checked} />
-                    ${_('Enable AndroidPN Notifications')}</label>
+                    ${_('Enable %(name)s') % {'name': 'AndroidPN'}}</label>
                 </div>
                 <div id="androidpnoptions">
                   <fieldset>
@@ -3269,7 +3270,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_PROWL'] else '' %>
                   <label for="use_prowl" class="control-label">
                     <input type="checkbox" name="use_prowl" id="use_prowl" value="1" ${checked} />
-                    ${_('Enable Prowl')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Prowl'}}</label>
                 </div>
                 <div id="prowloptions">
                   <fieldset>
@@ -3327,7 +3328,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_GROWL'] else '' %>
                   <label for="use_growl" class="control-label">
                     <input type="checkbox" name="use_growl" id="use_growl" value="1" ${checked} />
-                    ${_('Enable Growl')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Growl'}}</label>
                 </div>
                 <div id="growloptions">
                   <fieldset>
@@ -3361,7 +3362,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_TELEGRAM'] else '' %>
                   <label for="use_telegram" class="control-label">
                     <input type="checkbox" name="use_telegram" id="use_telegram" value="1" ${checked} />
-                    ${_('Enable Telegram')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Telegram'}}</label>
                 </div>
                 <div id="telegramoptions">
                   <fieldset>
@@ -3398,7 +3399,7 @@
                   <% checked = 'checked="checked"' if CONFIG['USE_SLACK'] else '' %>
                   <label for="use_slack" class="control-label">
                     <input type="checkbox" id="use_slack" name="use_slack" value="1" ${checked} />
-                    ${_('Enable Slack Notifications')}</label>
+                    ${_('Enable %(name)s') % {'name': 'Slack'}}</label>
                 </div>
                 <div id="slackoptions">
                   <fieldset>

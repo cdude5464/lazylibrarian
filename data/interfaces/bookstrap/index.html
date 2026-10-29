@@ -22,11 +22,6 @@
                 <a href="toggle_my_auth" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-users"></i></a>
               %endif
             %endif
-            %if lazylibrarian.IGNORED_AUTHORS == True:
-                <a href="author_wall?have=0" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Grid view') | h}"><i class="fa fa-th"></i></a>
-            %else:
-                <a href="author_wall?have=1" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Grid view') | h}"><i class="fa fa-th"></i></a>
-            %endif
             %if CONFIG['CONTRIBUTING_AUTHORS']:
                 %if lazylibrarian.PRIMARY_AUTHORS == True:
                     <a href="toggle_primary" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or All Contributors') | h}"><i class="fa fa-star"></i></a>

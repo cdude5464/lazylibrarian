@@ -13,7 +13,6 @@
         <a id="forcepostprocess" class="btn btn-sm btn-primary" href="force_process?source=audio"><i class="fa fa-cogs"></i> ${_('Run Post-Processor')}</a>
         <a href="library_scan?library=AudioBook" class="btn btn-sm btn-primary" id="scan"><i class="fa fa-bolt"></i> ${_('Library Scan')}</a>
         %endif
-        <a href="audio_wall" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> ${_('Recent AudioBooks')}</a>
         %if CONFIG['USER_ACCOUNTS']:
           %if CONFIG['RSS_ENABLED']:
             <a href="rss_feed?user=${user}&type=AudioBook&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent downloads') | h}"><i class="fa fa-rss"></i></a>

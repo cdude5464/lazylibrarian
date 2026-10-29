@@ -13,8 +13,6 @@
         <a id="forcepostprocess" class="btn btn-sm btn-primary" href="force_process?source=books"><i class="fa fa-cogs"></i> ${_('Run Post-Processor')}</a>
         <a href="library_scan?library=eBook" class="btn btn-sm btn-primary" id="scan"><i class="fa fa-bolt"></i> ${_('Library Scan')}</a>
         %endif
-        <a href="book_wall?have=0" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-plus"></i> ${_('Additions')}</a>
-        <a href="book_wall?have=1" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-alt"></i> ${_('Downloads')}</a>
         %if CONFIG['USER_ACCOUNTS']:
           %if CONFIG['RSS_ENABLED']:
             <a href="rss_feed?user=${user}&type=eBook&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent downloads') | h}"><i class="fa fa-rss"></i></a>

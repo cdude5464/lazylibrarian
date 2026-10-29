@@ -227,21 +227,11 @@
         var table = $('#book_table').dataTable(
             {
                 "responsive": true,
-                "order": [[ 7, 'desc' ]],
-                "aoColumns": [
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                    ],
+                "order": [[ 8, 'desc' ]],
                 "columnDefs":
                     [
                         { targets: 'no-sort', orderable: false },
-                        {targets: 4, "type": "alt-string"},
+                        {targets: 5, "type": "alt-string"},
                     ]
                 ,
                 "oLanguage": $.extend({}, llDataTablesLanguage, {
@@ -249,9 +239,9 @@
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "sPaginationType": "full_numbers",
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
-                    // hide cover,stars on small devices
-                    $('td', nRow).eq(4).addClass('hidden-sm hidden-xs');
+                    // hide rating and rating count on small devices, as their headers are
                     $('td', nRow).eq(5).addClass('hidden-sm hidden-xs');
+                    $('td', nRow).eq(6).addClass('hidden-sm hidden-xs');
                     return nRow;
                 },
             });

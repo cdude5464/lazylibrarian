@@ -460,11 +460,11 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
     if len(dateparts) == 7:  # Tue, 23 Aug 2016 17:33:26
         _, d, m, y, hh, mm, _ = dateparts
     elif len(dateparts) == 6:
-        if check_year(dateparts[0]):  # YYYY-MM-DD HH:MM:SS
+        if check_year(dateparts[0], future=2):  # YYYY-MM-DD HH:MM:SS
             y, m, d, hh, mm, _ = dateparts
-        elif check_year(dateparts[1]):  # MM-YYYY-DD HH:MM:SS
+        elif check_year(dateparts[1], future=2):  # MM-YYYY-DD HH:MM:SS
             m, y, d, hh, mm, _ = dateparts
-        elif check_year(dateparts[2]):  # 13 Nov 2014 05:01:18
+        elif check_year(dateparts[2], future=2):  # 13 Nov 2014 05:01:18
             d, m, y, hh, mm, _ = dateparts
         else:
             d, m, y, hh, mm = 0, 0, 0, 0, 0
@@ -475,21 +475,21 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
         y = now()[:4]
     elif len(dateparts) == 3:  # 2018-04-25 or June 20 2008 or 20 June 2008
         y, m, d, = 0, 0, 0
-        if check_year(dateparts[0]) and dateparts[2].isdigit():
+        if check_year(dateparts[0], future=2) and dateparts[2].isdigit():
             y, m, d = dateparts
-        elif check_year(dateparts[2]):
+        elif check_year(dateparts[2], future=2):
             if dateparts[0].isdigit():
                 d, m, y = dateparts
             elif dateparts[1].isdigit():
                 m, d, y = dateparts
         hh = '00'
         mm = '00'
-    elif len(dateparts) == 2 and check_year(dateparts[1]):  # May 1995
+    elif len(dateparts) == 2 and check_year(dateparts[1], future=2):  # May 1995
         m, y = dateparts
         d = '01'
         hh = '00'
         mm = '00'
-    elif len(dateparts) == 2 and check_year(dateparts[0]):  # 1995-05
+    elif len(dateparts) == 2 and check_year(dateparts[0], future=2):  # 1995-05
         y, m = dateparts
         d = '01'
         hh = '00'

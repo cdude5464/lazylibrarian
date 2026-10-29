@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-28 21:01+0000\n"
+"POT-Creation-Date: 2026-10-29 09:38+0000\n"
 "PO-Revision-Date: 2026-10-23 22:51+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Spanish <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -66,7 +66,7 @@ msgstr "Ejecutar posprocesado"
 msgid "Library Scan"
 msgstr "Escanear biblioteca"
 
-#: data/interfaces/bookstrap/audio.html:16 lazylibrarian/webServe.py:5758
+#: data/interfaces/bookstrap/audio.html:16 lazylibrarian/webServe.py:5760
 msgid "Recent AudioBooks"
 msgstr "Audiolibros recientes"
 
@@ -347,7 +347,7 @@ msgstr "Título"
 #: data/interfaces/bookstrap/author.html:313
 #: data/interfaces/bookstrap/author.html:329
 #: data/interfaces/bookstrap/author_detail.html:41
-#: data/interfaces/bookstrap/base.html:321
+#: data/interfaces/bookstrap/base.html:382
 #: data/interfaces/bookstrap/books.html:90
 #: data/interfaces/bookstrap/books.html:111
 #: data/interfaces/bookstrap/config.html:110
@@ -452,7 +452,7 @@ msgstr "Enviar"
 #: data/interfaces/bookstrap/books.html:240
 #: data/interfaces/bookstrap/managebooks.html:589
 #: data/interfaces/bookstrap/members.html:198
-#: data/interfaces/bookstrap/searchresults.html:248
+#: data/interfaces/bookstrap/searchresults.html:238
 msgid "No books found"
 msgstr "No se encontraron libros"
 
@@ -490,7 +490,7 @@ msgstr[1] ""
 #: data/interfaces/bookstrap/audio.html:298
 #: data/interfaces/bookstrap/author.html:355
 #: data/interfaces/bookstrap/author_detail.html:80
-#: data/interfaces/bookstrap/base.html:583
+#: data/interfaces/bookstrap/base.html:644
 #: data/interfaces/bookstrap/books.html:318
 #: data/interfaces/bookstrap/comicissues.html:185
 #: data/interfaces/bookstrap/comics.html:268
@@ -507,7 +507,7 @@ msgstr "Sí"
 #: data/interfaces/bookstrap/audio.html:302
 #: data/interfaces/bookstrap/author.html:359
 #: data/interfaces/bookstrap/author_detail.html:81
-#: data/interfaces/bookstrap/base.html:587
+#: data/interfaces/bookstrap/base.html:648
 #: data/interfaces/bookstrap/books.html:322
 #: data/interfaces/bookstrap/comicissues.html:189
 #: data/interfaces/bookstrap/comics.html:272
@@ -525,7 +525,7 @@ msgstr "No"
 
 #: data/interfaces/bookstrap/audio.html:331
 #: data/interfaces/bookstrap/author.html:619
-#: data/interfaces/bookstrap/base.html:125
+#: data/interfaces/bookstrap/base.html:129
 #: data/interfaces/bookstrap/books.html:351
 #: data/interfaces/bookstrap/editmag.html:57
 #: data/interfaces/bookstrap/index.html:348
@@ -535,7 +535,7 @@ msgstr "No"
 #: data/interfaces/bookstrap/managebooks.html:285
 #: data/interfaces/bookstrap/managebooks.html:642
 #: data/interfaces/bookstrap/members.html:219
-#: data/interfaces/bookstrap/searchresults.html:276
+#: data/interfaces/bookstrap/searchresults.html:266
 #: data/interfaces/bookstrap/series.html:290
 msgid "Processing..."
 msgstr "Procesando ..."
@@ -549,7 +549,7 @@ msgstr "Procesando ..."
 #: data/interfaces/bookstrap/magazines.html:338
 #: data/interfaces/bookstrap/managebooks.html:668
 #: data/interfaces/bookstrap/members.html:246
-#: data/interfaces/bookstrap/searchresults.html:303
+#: data/interfaces/bookstrap/searchresults.html:293
 #: data/interfaces/bookstrap/series.html:317
 msgid "Summary:"
 msgstr "Resumen:"
@@ -564,7 +564,7 @@ msgstr "Resumen:"
 #: data/interfaces/bookstrap/managebooks.html:464
 #: data/interfaces/bookstrap/managebooks.html:671
 #: data/interfaces/bookstrap/members.html:249
-#: data/interfaces/bookstrap/searchresults.html:306
+#: data/interfaces/bookstrap/searchresults.html:296
 #: data/interfaces/bookstrap/series.html:320
 msgid "Successful:"
 msgstr "Correctos:"
@@ -578,7 +578,7 @@ msgstr "Correctos:"
 #: data/interfaces/bookstrap/magazines.html:343
 #: data/interfaces/bookstrap/managebooks.html:673
 #: data/interfaces/bookstrap/members.html:251
-#: data/interfaces/bookstrap/searchresults.html:308
+#: data/interfaces/bookstrap/searchresults.html:298
 #: data/interfaces/bookstrap/series.html:322
 msgid "Failed:"
 msgstr "Fallidos:"
@@ -593,7 +593,7 @@ msgstr "Marcar libros como completados"
 
 #: data/interfaces/bookstrap/audio.html:372
 #: data/interfaces/bookstrap/author.html:660
-#: data/interfaces/bookstrap/base.html:180
+#: data/interfaces/bookstrap/base.html:184
 #: data/interfaces/bookstrap/books.html:392
 #: data/interfaces/bookstrap/editmag.html:107
 #: data/interfaces/bookstrap/editmag.html:127
@@ -604,7 +604,7 @@ msgstr "Marcar libros como completados"
 #: data/interfaces/bookstrap/magazines.html:373
 #: data/interfaces/bookstrap/managebooks.html:682
 #: data/interfaces/bookstrap/members.html:260
-#: data/interfaces/bookstrap/searchresults.html:317
+#: data/interfaces/bookstrap/searchresults.html:307
 #: data/interfaces/bookstrap/series.html:331
 msgid "OK"
 msgstr "Aceptar"
@@ -618,7 +618,7 @@ msgstr "Aceptar"
 #: data/interfaces/bookstrap/magazines.html:369
 #: data/interfaces/bookstrap/managebooks.html:697
 #: data/interfaces/bookstrap/members.html:275
-#: data/interfaces/bookstrap/searchresults.html:332
+#: data/interfaces/bookstrap/searchresults.html:322
 #: data/interfaces/bookstrap/series.html:346
 msgid "Error"
 msgstr "Error"
@@ -632,7 +632,7 @@ msgstr "Error"
 #: data/interfaces/bookstrap/magazines.html:370
 #: data/interfaces/bookstrap/managebooks.html:698
 #: data/interfaces/bookstrap/members.html:276
-#: data/interfaces/bookstrap/searchresults.html:333
+#: data/interfaces/bookstrap/searchresults.html:323
 #: data/interfaces/bookstrap/series.html:347
 msgid "An error occurred:"
 msgstr "Se produjo un error:"
@@ -640,9 +640,9 @@ msgstr "Se produjo un error:"
 #: data/interfaces/bookstrap/audio.html:391
 #: data/interfaces/bookstrap/author.html:606
 #: data/interfaces/bookstrap/author.html:679
-#: data/interfaces/bookstrap/base.html:543
-#: data/interfaces/bookstrap/base.html:568
-#: data/interfaces/bookstrap/base.html:747
+#: data/interfaces/bookstrap/base.html:604
+#: data/interfaces/bookstrap/base.html:629
+#: data/interfaces/bookstrap/base.html:808
 #: data/interfaces/bookstrap/books.html:411
 #: data/interfaces/bookstrap/choosetype.html:48
 #: data/interfaces/bookstrap/config_functions.js:172
@@ -706,7 +706,7 @@ msgstr "Se produjo un error:"
 #: data/interfaces/bookstrap/profile.html:136
 #: data/interfaces/bookstrap/register.html:68
 #: data/interfaces/bookstrap/response.html:26
-#: data/interfaces/bookstrap/searchresults.html:336
+#: data/interfaces/bookstrap/searchresults.html:326
 #: data/interfaces/bookstrap/series.html:350
 #: data/interfaces/bookstrap/users.html:199
 #: data/interfaces/bookstrap/users.html:228
@@ -1259,158 +1259,185 @@ msgstr ""
 "El texto propio de cada fuente enlazada, mostrado tal cual, uno tras otro; "
 "no se combina de forma inteligente."
 
-#: data/interfaces/bookstrap/base.html:117
+#: data/interfaces/bookstrap/base.html:121
 msgid "Filter: "
 msgstr "Filtro: "
 
 #. TRANSLATORS: _MENU_ is replaced by the rows per page dropdown, keep it as it
 #. is
-#: data/interfaces/bookstrap/base.html:119
+#: data/interfaces/bookstrap/base.html:123
 msgid "_MENU_ rows per page"
 msgstr "_MENU_ filas por página"
 
 #. TRANSLATORS: _START_, _END_ and _TOTAL_ are replaced by numbers, keep them
 #. as they are
-#: data/interfaces/bookstrap/base.html:121
+#: data/interfaces/bookstrap/base.html:125
 msgid "Showing _START_ to _END_ of _TOTAL_ rows"
 msgstr "Mostrando filas _START_ a _END_ de _TOTAL_"
 
-#: data/interfaces/bookstrap/base.html:122
+#: data/interfaces/bookstrap/base.html:126
 msgid "Showing 0 to 0 of 0 rows"
 msgstr "Mostrando filas 0 a 0 de 0"
 
 #. TRANSLATORS: _MAX_ is replaced by a number, keep it as it is
-#: data/interfaces/bookstrap/base.html:124
+#: data/interfaces/bookstrap/base.html:128
 msgid "(filtered from _MAX_ total rows)"
 msgstr "(filtrado de _MAX_ filas en total)"
 
-#: data/interfaces/bookstrap/base.html:126
+#: data/interfaces/bookstrap/base.html:130
 msgid "Loading..."
 msgstr "Cargando ..."
 
-#: data/interfaces/bookstrap/base.html:128
+#: data/interfaces/bookstrap/base.html:132
 msgid "First"
 msgstr "Primera"
 
-#: data/interfaces/bookstrap/base.html:129
+#: data/interfaces/bookstrap/base.html:133
 msgid "Previous"
 msgstr "Anterior"
 
-#: data/interfaces/bookstrap/base.html:130
+#: data/interfaces/bookstrap/base.html:134
 msgid "Next"
 msgstr "Siguiente"
 
-#: data/interfaces/bookstrap/base.html:131
+#: data/interfaces/bookstrap/base.html:135
 msgid "Last"
 msgstr "Última"
 
-#: data/interfaces/bookstrap/base.html:148
+#: data/interfaces/bookstrap/base.html:152
 msgid "Clear"
 msgstr "Limpiar"
 
-#: data/interfaces/bookstrap/base.html:180
+#: data/interfaces/bookstrap/base.html:184
 #: data/interfaces/bookstrap/config_functions.js:389
 #: data/interfaces/bookstrap/editauthor.html:351
 #: data/interfaces/bookstrap/managebooks.html:262
 msgid "Cancel"
 msgstr "Cancelar"
 
-#: data/interfaces/bookstrap/base.html:184
+#: data/interfaces/bookstrap/base.html:188
 #, fuzzy
 msgid "Are you sure you want to restart LazyLibrarian?"
 msgstr "¿Seguro que quiere cerrar sesión?"
 
-#: data/interfaces/bookstrap/base.html:185
+#: data/interfaces/bookstrap/base.html:189
 #, fuzzy
 msgid "Are you sure you want to shutdown LazyLibrarian?"
 msgstr "¿Seguro que quiere cerrar sesión?"
 
-#: data/interfaces/bookstrap/base.html:289
+#: data/interfaces/bookstrap/base.html:200
+#, fuzzy
+#| msgid "Detail"
+msgid "Detailed"
+msgstr "Detalle"
+
+#: data/interfaces/bookstrap/base.html:200
+#, fuzzy
+#| msgid "Complete"
+msgid "Compact"
+msgstr "Completado"
+
+#: data/interfaces/bookstrap/base.html:201
+#, fuzzy
+msgid "List"
+msgstr "Listado:"
+
+#: data/interfaces/bookstrap/base.html:201
+#, fuzzy
+#| msgid "Grid view"
+msgid "Grid"
+msgstr "Vista de cuadrícula"
+
+#: data/interfaces/bookstrap/base.html:213
+msgid "View:"
+msgstr ""
+
+#: data/interfaces/bookstrap/base.html:350
 msgid "Toggle navigation"
 msgstr "Mostrar/ocultar navegación"
 
-#: data/interfaces/bookstrap/base.html:309
+#: data/interfaces/bookstrap/base.html:370
 #: data/interfaces/bookstrap/config.html:110 lazylibrarian/webServe.py:799
 #: lazylibrarian/webServe.py:870
 msgid "Authors"
 msgstr "Autores"
 
-#: data/interfaces/bookstrap/base.html:314
+#: data/interfaces/bookstrap/base.html:375
 #: data/interfaces/bookstrap/config.html:110 lazylibrarian/webServe.py:3553
 msgid "eBooks"
 msgstr "eBooks"
 
-#: data/interfaces/bookstrap/base.html:329
+#: data/interfaces/bookstrap/base.html:390
 msgid "Audio"
 msgstr "Audio"
 
-#: data/interfaces/bookstrap/base.html:330
+#: data/interfaces/bookstrap/base.html:391
 #: data/interfaces/bookstrap/config.html:111 lazylibrarian/webServe.py:3531
 msgid "AudioBooks"
 msgstr "Audiolibros"
 
-#: data/interfaces/bookstrap/base.html:340
+#: data/interfaces/bookstrap/base.html:401
 msgid "Mags"
 msgstr "Revistas"
 
-#: data/interfaces/bookstrap/base.html:341
-#: data/interfaces/bookstrap/config.html:111 lazylibrarian/webServe.py:6627
+#: data/interfaces/bookstrap/base.html:402
+#: data/interfaces/bookstrap/config.html:111 lazylibrarian/webServe.py:6629
 msgid "Magazines"
 msgstr "Revistas"
 
-#: data/interfaces/bookstrap/base.html:350
-#: data/interfaces/bookstrap/config.html:112 lazylibrarian/webServe.py:5917
-#: lazylibrarian/webServe.py:6278
+#: data/interfaces/bookstrap/base.html:411
+#: data/interfaces/bookstrap/config.html:112 lazylibrarian/webServe.py:5919
+#: lazylibrarian/webServe.py:6280
 msgid "Comics"
 msgstr "Cómics"
 
-#: data/interfaces/bookstrap/base.html:356
-#: data/interfaces/bookstrap/base.html:358
+#: data/interfaces/bookstrap/base.html:417
+#: data/interfaces/bookstrap/base.html:419
 msgid "Manage"
 msgstr "Gestionar"
 
-#: data/interfaces/bookstrap/base.html:362 lazylibrarian/webServe.py:8297
+#: data/interfaces/bookstrap/base.html:423 lazylibrarian/webServe.py:8299
 msgid "History"
 msgstr "Historial"
 
-#: data/interfaces/bookstrap/base.html:365
+#: data/interfaces/bookstrap/base.html:426
 #: data/interfaces/bookstrap/config.html:235
 msgid "Logs"
 msgstr "Registros"
 
-#: data/interfaces/bookstrap/base.html:368
+#: data/interfaces/bookstrap/base.html:429
 msgid "Config"
 msgstr "Configuración"
 
-#: data/interfaces/bookstrap/base.html:371
-#: data/interfaces/bookstrap/base.html:372
-#: data/interfaces/bookstrap/base.html:511 lazylibrarian/webServe.py:7861
+#: data/interfaces/bookstrap/base.html:432
+#: data/interfaces/bookstrap/base.html:433
+#: data/interfaces/bookstrap/base.html:572 lazylibrarian/webServe.py:7863
 msgid "What's new"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:378
+#: data/interfaces/bookstrap/base.html:439
 msgid "Help"
 msgstr "Ayuda"
 
-#: data/interfaces/bookstrap/base.html:382
+#: data/interfaces/bookstrap/base.html:443
 #: data/interfaces/bookstrap/config.html:467
 #: data/interfaces/bookstrap/config.html:551
 msgid "User"
 msgstr "Usuario"
 
-#: data/interfaces/bookstrap/base.html:385
+#: data/interfaces/bookstrap/base.html:446
 msgid "Logout"
 msgstr "Cerrar sesión"
 
-#: data/interfaces/bookstrap/base.html:402
+#: data/interfaces/bookstrap/base.html:463
 msgid "Go to top"
 msgstr "Ir arriba"
 
-#: data/interfaces/bookstrap/base.html:408
+#: data/interfaces/bookstrap/base.html:469
 msgid "LazyLibrarian Telemetry"
 msgstr "Telemetría de LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:409
+#: data/interfaces/bookstrap/base.html:470
 msgid ""
 "LazyLibrarian has the ability to send basic information about the "
 "installation, how it is configured, and how it is used to a server. This "
@@ -1422,40 +1449,40 @@ msgstr ""
 "desarrolladores a saber dónde merece la pena mejorar y qué partes no usa "
 "nadie. Toda la información de telemetría está 100 % anonimizada."
 
-#: data/interfaces/bookstrap/base.html:410
+#: data/interfaces/bookstrap/base.html:471
 msgid "Turn on"
 msgstr "Activar"
 
-#: data/interfaces/bookstrap/base.html:410
-#: data/interfaces/bookstrap/base.html:539
+#: data/interfaces/bookstrap/base.html:471
+#: data/interfaces/bookstrap/base.html:600
 msgid "Enable Telemetry"
 msgstr "Activar telemetría"
 
-#: data/interfaces/bookstrap/base.html:411
+#: data/interfaces/bookstrap/base.html:472
 msgid "Ask me again later"
 msgstr "Preguntarme más tarde"
 
-#: data/interfaces/bookstrap/base.html:411
+#: data/interfaces/bookstrap/base.html:472
 msgid "Maybe Later"
 msgstr "Quizá más tarde"
 
-#: data/interfaces/bookstrap/base.html:414
+#: data/interfaces/bookstrap/base.html:475
 msgid "LazyLibrarian Update"
 msgstr "Actualización de LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:416
+#: data/interfaces/bookstrap/base.html:477
 msgid "You are running an unknown version of lazylibrarian"
 msgstr "Está usando una versión desconocida de LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:418
+#: data/interfaces/bookstrap/base.html:479
 msgid "You are running an unknown version via source install"
 msgstr "Está usando una versión desconocida instalada desde el código fuente"
 
-#: data/interfaces/bookstrap/base.html:421
+#: data/interfaces/bookstrap/base.html:482
 msgid "Unable to get the latest version from git"
 msgstr "No se pudo obtener la última versión de git"
 
-#: data/interfaces/bookstrap/base.html:423
+#: data/interfaces/bookstrap/base.html:484
 msgid ""
 "Running a local updated version. Push changes to git or rollback to Master "
 "release"
@@ -1463,35 +1490,35 @@ msgstr ""
 "Se está ejecutando una versión modificada localmente. Suba los cambios a git "
 "o vuelva a la versión Master"
 
-#: data/interfaces/bookstrap/base.html:426
+#: data/interfaces/bookstrap/base.html:487
 #, python-format
 msgid "New version available. You are one commit behind."
 msgid_plural "New version available. You are %(count)d commits behind."
 msgstr[0] "Hay una nueva versión disponible. Va un commit por detrás."
 msgstr[1] "Hay una nueva versión disponible. Va %(count)d commits por detrás."
 
-#: data/interfaces/bookstrap/base.html:430
+#: data/interfaces/bookstrap/base.html:491
 msgid "Manual update is required"
 msgstr "Se requiere una actualización manual"
 
-#: data/interfaces/bookstrap/base.html:434
+#: data/interfaces/bookstrap/base.html:495
 msgid "Update to the latest release"
 msgstr "Actualizar a la última versión"
 
-#: data/interfaces/bookstrap/base.html:434
+#: data/interfaces/bookstrap/base.html:495
 #: data/interfaces/bookstrap/profile.html:84
 msgid "Update"
 msgstr "Actualizar"
 
-#: data/interfaces/bookstrap/base.html:441
+#: data/interfaces/bookstrap/base.html:502
 msgid "Ignore the update message for 24 hours"
 msgstr "Ignorar el aviso de actualización durante 24 horas"
 
-#: data/interfaces/bookstrap/base.html:441
+#: data/interfaces/bookstrap/base.html:502
 msgid "Ignore"
 msgstr "Ignorar"
 
-#: data/interfaces/bookstrap/base.html:469
+#: data/interfaces/bookstrap/base.html:530
 #, python-format
 msgid ""
 "LazyLibrarian is only %(percent)s%% translated into %(language)s. You can "
@@ -1501,7 +1528,7 @@ msgstr ""
 "ayudar a completar la traducción en Hosted Weblate, sin necesidad de "
 "programar."
 
-#: data/interfaces/bookstrap/base.html:473
+#: data/interfaces/bookstrap/base.html:534
 #, python-format
 msgid ""
 "LazyLibrarian is not available in %(language)s yet. You can help translate "
@@ -1510,41 +1537,41 @@ msgstr ""
 "LazyLibrarian aún no está disponible en %(language)s. Puede ayudar a "
 "traducirlo en Hosted Weblate, sin necesidad de programar."
 
-#: data/interfaces/bookstrap/base.html:480
+#: data/interfaces/bookstrap/base.html:541
 msgid "Help translate"
 msgstr "Ayudar a traducir"
 
-#: data/interfaces/bookstrap/base.html:481
+#: data/interfaces/bookstrap/base.html:542
 msgid "No thanks"
 msgstr "No, gracias"
 
-#: data/interfaces/bookstrap/base.html:484
+#: data/interfaces/bookstrap/base.html:545
 msgid "Translate LazyLibrarian"
 msgstr "Traducir LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:507
+#: data/interfaces/bookstrap/base.html:568
 #, python-format
 msgid "One change since you last looked:"
 msgid_plural "%(count)d changes since you last looked:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: data/interfaces/bookstrap/base.html:512
+#: data/interfaces/bookstrap/base.html:573
 msgid "Dismiss"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:515
+#: data/interfaces/bookstrap/base.html:576
 #, fuzzy
 msgid "LazyLibrarian updated"
 msgstr "Actualización de LazyLibrarian"
 
-#: data/interfaces/bookstrap/base.html:564
+#: data/interfaces/bookstrap/base.html:625
 #: data/interfaces/bookstrap/config.html:22
 #: data/interfaces/bookstrap/config_functions.js:946
 msgid "Check Version"
 msgstr "Comprobar versión"
 
-#: data/interfaces/bookstrap/base.html:580
+#: data/interfaces/bookstrap/base.html:641
 msgid "Are you sure you want to logout?"
 msgstr "¿Seguro que quiere cerrar sesión?"
 
@@ -6045,7 +6072,7 @@ msgstr "Repositorio: %(repo)s"
 msgid "Updated: %(date)s"
 msgstr "Actualizado: %(date)s"
 
-#: data/interfaces/bookstrap/config.html:4253 lazylibrarian/webServe.py:7847
+#: data/interfaces/bookstrap/config.html:4253 lazylibrarian/webServe.py:7849
 #, python-format
 msgid "Branch: %(branch)s"
 msgstr "Rama: %(branch)s"
@@ -6627,7 +6654,7 @@ msgstr "Números renombrados"
 #: data/interfaces/bookstrap/editmag.html:103
 #: data/interfaces/bookstrap/issues.html:295
 #: data/interfaces/bookstrap/magazines.html:349
-#: data/interfaces/bookstrap/searchresults.html:313
+#: data/interfaces/bookstrap/searchresults.html:303
 #: data/interfaces/bookstrap/series.html:327
 msgid "Operation Complete"
 msgstr "Operación completada"
@@ -6844,7 +6871,7 @@ msgid "Import Issues"
 msgstr "Importar números"
 
 #: data/interfaces/bookstrap/issues.html:14
-#: data/interfaces/bookstrap/magazines.html:16 lazylibrarian/webServe.py:7124
+#: data/interfaces/bookstrap/magazines.html:16 lazylibrarian/webServe.py:7126
 msgid "Past Issues"
 msgstr "Números anteriores"
 
@@ -7428,7 +7455,7 @@ msgstr "Buscar audio"
 msgid "Want eBook and Audio"
 msgstr "Buscar eBook y audio"
 
-#: data/interfaces/bookstrap/searchresults.html:258
+#: data/interfaces/bookstrap/searchresults.html:248
 msgid "Search table here"
 msgstr "Buscar en la tabla"
 
@@ -7988,19 +8015,16 @@ msgid "%(count)s log file(s) deleted from %(folder)s"
 msgstr ""
 
 #: lazylibrarian/notifiers/__init__.py:86
-#: lazylibrarian/notifiers/__init__.py:83
 #, python-format
 msgid "%(library)s %(title)s added manually at %(time)s"
 msgstr ""
 
 #: lazylibrarian/notifiers/__init__.py:88
-#: lazylibrarian/notifiers/__init__.py:85
 #, python-format
 msgid "%(library)s %(title)s from %(provider)s at %(time)s"
 msgstr ""
 
 #: lazylibrarian/notifiers/__init__.py:89
-#: lazylibrarian/notifiers/__init__.py:86
 #, python-format
 msgid "%(title)s from %(provider)s at %(time)s"
 msgstr ""
@@ -8155,7 +8179,7 @@ msgstr "Actualización de la base de datos"
 msgid "Redirected"
 msgstr "Redirigido"
 
-#: lazylibrarian/webServe.py:802 lazylibrarian/webServe.py:5716
+#: lazylibrarian/webServe.py:802 lazylibrarian/webServe.py:5718
 msgid "Inactive Authors"
 msgstr "Autores inactivos"
 
@@ -8327,7 +8351,7 @@ msgstr "El correo no coincide con nuestros registros"
 msgid "No email address registered"
 msgstr "No hay ninguna dirección de correo registrada"
 
-#: lazylibrarian/webServe.py:1695 lazylibrarian/webServe.py:4109
+#: lazylibrarian/webServe.py:1695 lazylibrarian/webServe.py:4111
 msgid "No email address supplied"
 msgstr "No se indicó ninguna dirección de correo"
 
@@ -8403,493 +8427,493 @@ msgstr "Marcado de autores como «%(action)s» completado."
 msgid "%(library)s Search Results: \"%(query)s\""
 msgstr "Resultados de búsqueda en %(library)s: «%(query)s»"
 
-#: lazylibrarian/webServe.py:4062
+#: lazylibrarian/webServe.py:4064
 msgid "Request Error"
 msgstr "Error en la solicitud"
 
-#: lazylibrarian/webServe.py:4101
+#: lazylibrarian/webServe.py:4103
 msgid "Message sent"
 msgstr "Mensaje enviado"
 
-#: lazylibrarian/webServe.py:4102
+#: lazylibrarian/webServe.py:4104
 msgid "You will receive a reply by email"
 msgstr "Recibirá una respuesta por correo"
 
-#: lazylibrarian/webServe.py:4105
+#: lazylibrarian/webServe.py:4107
 msgid "Message not sent"
 msgstr "Mensaje no enviado"
 
-#: lazylibrarian/webServe.py:4106
+#: lazylibrarian/webServe.py:4108
 msgid "Please try again later"
 msgstr "Vuelva a intentarlo más tarde"
 
-#: lazylibrarian/webServe.py:4108
+#: lazylibrarian/webServe.py:4110
 msgid "Unable to send message"
 msgstr "No se puede enviar el mensaje"
 
-#: lazylibrarian/webServe.py:4111
+#: lazylibrarian/webServe.py:4113
 msgid "Unknown user"
 msgstr "Usuario desconocido"
 
-#: lazylibrarian/webServe.py:4114
+#: lazylibrarian/webServe.py:4116
 msgid "Nobody logged in?"
 msgstr "¿No hay nadie conectado?"
 
-#: lazylibrarian/webServe.py:4427
+#: lazylibrarian/webServe.py:4429
 msgid "Please select which part to email"
 msgstr "Seleccione qué parte enviar por correo"
 
-#: lazylibrarian/webServe.py:4429
+#: lazylibrarian/webServe.py:4431
 msgid "Please select which part to download"
 msgstr "Seleccione qué parte descargar"
 
-#: lazylibrarian/webServe.py:4473
+#: lazylibrarian/webServe.py:4475
 #, python-format
 msgid "Not available as %(type)s, only %(types)s"
 msgstr "No disponible como %(type)s, solo como %(types)s"
 
-#: lazylibrarian/webServe.py:4476
+#: lazylibrarian/webServe.py:4478
 msgid "Not Available"
 msgstr "No disponible"
 
-#: lazylibrarian/webServe.py:4482
+#: lazylibrarian/webServe.py:4484
 msgid "Please select format to email"
 msgstr "Seleccione el formato para enviar por correo"
 
-#: lazylibrarian/webServe.py:4484
+#: lazylibrarian/webServe.py:4486
 msgid "Please select format to download"
 msgstr "Seleccione el formato para descargar"
 
-#: lazylibrarian/webServe.py:4491
+#: lazylibrarian/webServe.py:4493
 msgid "Choose Type"
 msgstr "Elegir tipo"
 
-#: lazylibrarian/webServe.py:4539
+#: lazylibrarian/webServe.py:4541
 msgid "Edit Author"
 msgstr "Editar autor"
 
-#: lazylibrarian/webServe.py:5006
+#: lazylibrarian/webServe.py:5008
 msgid "Edit Book"
 msgstr "Editar libro"
 
-#: lazylibrarian/webServe.py:5329
+#: lazylibrarian/webServe.py:5331
 #, python-format
 msgid "Mark Results '%(action)s' completed."
 msgstr "Marcado de resultados como «%(action)s» completado."
 
-#: lazylibrarian/webServe.py:5558
+#: lazylibrarian/webServe.py:5560
 #, python-format
 msgid "Mark Books '%(action)s' completed."
 msgstr "Marcado de libros como «%(action)s» completado."
 
-#: lazylibrarian/webServe.py:5609 lazylibrarian/webServe.py:5653
-#: lazylibrarian/webServe.py:5680 lazylibrarian/webServe.py:5762
+#: lazylibrarian/webServe.py:5611 lazylibrarian/webServe.py:5655
+#: lazylibrarian/webServe.py:5682 lazylibrarian/webServe.py:5764
 #, python-format
 msgid "%(title)s (Top %(count)s)"
 msgstr "%(title)s (top %(count)s)"
 
-#: lazylibrarian/webServe.py:5666
+#: lazylibrarian/webServe.py:5668
 msgid "Recently Downloaded Books"
 msgstr "Libros descargados recientemente"
 
-#: lazylibrarian/webServe.py:5669
+#: lazylibrarian/webServe.py:5671
 msgid "Recently Added Books"
 msgstr "Libros añadidos recientemente"
 
-#: lazylibrarian/webServe.py:5713
+#: lazylibrarian/webServe.py:5715
 msgid "Active/Wanted Authors"
 msgstr "Autores activos/buscados"
 
-#: lazylibrarian/webServe.py:5824
+#: lazylibrarian/webServe.py:5826
 msgid "Edit Comic"
 msgstr "Editar cómic"
 
-#: lazylibrarian/webServe.py:6644
+#: lazylibrarian/webServe.py:6646
 #, python-format
 msgid "Rename Magazine %(title)s"
 msgstr "Renombrar la revista %(title)s"
 
-#: lazylibrarian/webServe.py:6663
+#: lazylibrarian/webServe.py:6665
 msgid "Insufficient information, need Old and New Title"
 msgstr "Información insuficiente, se necesitan el título antiguo y el nuevo"
 
-#: lazylibrarian/webServe.py:6665
+#: lazylibrarian/webServe.py:6667
 #, python-format
 msgid "Title for %(title)s unchanged"
 msgstr "El título de %(title)s no ha cambiado"
 
-#: lazylibrarian/webServe.py:6669
+#: lazylibrarian/webServe.py:6671
 msgid "Invalid new title, unable to rename"
 msgstr "Nuevo título no válido, no se puede renombrar"
 
-#: lazylibrarian/webServe.py:6674
+#: lazylibrarian/webServe.py:6676
 #, python-format
 msgid "Title %(title)s already exists, unable to rename"
 msgstr "El título %(title)s ya existe, no se puede renombrar"
 
-#: lazylibrarian/webServe.py:6686
+#: lazylibrarian/webServe.py:6688
 #, python-format
 msgid "Renamed %(old)s to %(new)s"
 msgstr "%(old)s renombrado a %(new)s"
 
-#: lazylibrarian/webServe.py:6731
+#: lazylibrarian/webServe.py:6733
 msgid "Rename completed."
 msgstr "Renombrado completado."
 
-#: lazylibrarian/webServe.py:6863
+#: lazylibrarian/webServe.py:6865
 msgid "Edit Issue"
 msgstr "Editar número"
 
-#: lazylibrarian/webServe.py:7473 lazylibrarian/webServe.py:7718
+#: lazylibrarian/webServe.py:7475 lazylibrarian/webServe.py:7720
 #, python-format
 msgid "Operation '%(action)s' completed."
 msgstr "Operación «%(action)s» completada."
 
-#: lazylibrarian/webServe.py:7829
+#: lazylibrarian/webServe.py:7831
 msgid "LazyLibrarian status is unknown"
 msgstr "El estado de LazyLibrarian es desconocido"
 
-#: lazylibrarian/webServe.py:7833
+#: lazylibrarian/webServe.py:7835
 msgid "LazyLibrarian is up to date"
 msgstr "LazyLibrarian está actualizado"
 
-#: lazylibrarian/webServe.py:7835
+#: lazylibrarian/webServe.py:7837
 #, python-format
 msgid "LazyLibrarian is behind by %(count)s commit"
 msgid_plural "LazyLibrarian is behind by %(count)s commits"
 msgstr[0] "LazyLibrarian va %(count)s commit por detrás"
 msgstr[1] "LazyLibrarian va %(count)s commits por detrás"
 
-#: lazylibrarian/webServe.py:7841
+#: lazylibrarian/webServe.py:7843
 msgid "Update needs manual installation"
 msgstr "La actualización requiere una instalación manual"
 
-#: lazylibrarian/webServe.py:7843
+#: lazylibrarian/webServe.py:7845
 msgid "LazyLibrarian version is unknown"
 msgstr "La versión de LazyLibrarian es desconocida"
 
-#: lazylibrarian/webServe.py:7844
+#: lazylibrarian/webServe.py:7846
 #, python-format
 msgid "Your version (%(version)s) is not recognized at %(repo)s"
 msgstr "Su versión (%(version)s) no se reconoce en %(repo)s"
 
-#: lazylibrarian/webServe.py:7910
+#: lazylibrarian/webServe.py:7912
 msgid "LazyLibrarian is updating..."
 msgstr "Actualizando LazyLibrarian ..."
 
-#: lazylibrarian/webServe.py:7911
+#: lazylibrarian/webServe.py:7913
 msgid "Updating"
 msgstr "Actualizando"
 
-#: lazylibrarian/webServe.py:8101
+#: lazylibrarian/webServe.py:8103
 #, python-format
 msgid "Importing csv (background task) from %(file)s"
 msgstr "Importando CSV (tarea en segundo plano) desde %(file)s"
 
-#: lazylibrarian/webServe.py:8105
+#: lazylibrarian/webServe.py:8107
 #, python-format
 msgid "No %(library)s CSV file in [%(folder)s]"
 msgstr "No hay ningún archivo CSV de %(library)s en [%(folder)s]"
 
-#: lazylibrarian/webServe.py:8109
+#: lazylibrarian/webServe.py:8111
 #, python-format
 msgid "Unable to complete the import: %(error)s"
 msgstr "No se pudo completar la importación: %(error)s"
 
-#: lazylibrarian/webServe.py:8113
+#: lazylibrarian/webServe.py:8115
 msgid "CSV import is already running"
 msgstr "La importación CSV ya está en curso"
 
-#: lazylibrarian/webServe.py:8136
+#: lazylibrarian/webServe.py:8138
 msgid "LazyLibrarian is closed"
 msgstr "LazyLibrarian está cerrado"
 
-#: lazylibrarian/webServe.py:8137
+#: lazylibrarian/webServe.py:8139
 msgid "Close library"
 msgstr "Cerrar biblioteca"
 
-#: lazylibrarian/webServe.py:8147
+#: lazylibrarian/webServe.py:8149
 msgid "LazyLibrarian is reopening..."
 msgstr "Reabriendo LazyLibrarian ..."
 
-#: lazylibrarian/webServe.py:8148
+#: lazylibrarian/webServe.py:8150
 msgid "Reopen library"
 msgstr "Reabrir biblioteca"
 
-#: lazylibrarian/webServe.py:8257
+#: lazylibrarian/webServe.py:8259
 msgid "Log"
 msgstr "Registro"
 
-#: lazylibrarian/webServe.py:8486
+#: lazylibrarian/webServe.py:8488
 msgid "BookID not found"
 msgstr "BookID no encontrado"
 
-#: lazylibrarian/webServe.py:8488
+#: lazylibrarian/webServe.py:8490
 msgid "No Description"
 msgstr "Sin descripción"
 
-#: lazylibrarian/webServe.py:8500
+#: lazylibrarian/webServe.py:8502
 #, python-format
 msgid "Reason: %(reason)s"
 msgstr "Motivo: %(reason)s"
 
-#: lazylibrarian/webServe.py:8512
+#: lazylibrarian/webServe.py:8514
 #, python-format
 msgid "Title: %(value)s"
 msgstr "Título: %(value)s"
 
-#: lazylibrarian/webServe.py:8513
+#: lazylibrarian/webServe.py:8515
 #, python-format
 msgid "Type: %(value)s"
 msgstr "Tipo: %(value)s"
 
-#: lazylibrarian/webServe.py:8514
+#: lazylibrarian/webServe.py:8516
 #, python-format
 msgid "Date: %(value)s"
 msgstr "Fecha: %(value)s"
 
-#: lazylibrarian/webServe.py:8515
+#: lazylibrarian/webServe.py:8517
 #, python-format
 msgid "Size: %(value)s Mb"
 msgstr "Tamaño: %(value)s MB"
 
-#: lazylibrarian/webServe.py:8516
+#: lazylibrarian/webServe.py:8518
 #, python-format
 msgid "Provider: %(value)s"
 msgstr "Proveedor: %(value)s"
 
-#: lazylibrarian/webServe.py:8517
+#: lazylibrarian/webServe.py:8519
 #, python-format
 msgid "Downloader: %(value)s"
 msgstr "Descargador: %(value)s"
 
-#: lazylibrarian/webServe.py:8518
+#: lazylibrarian/webServe.py:8520
 #, python-format
 msgid "DownloadID: %(value)s"
 msgstr "DownloadID: %(value)s"
 
-#: lazylibrarian/webServe.py:8519
+#: lazylibrarian/webServe.py:8521
 #, python-format
 msgid "URL: %(value)s"
 msgstr "URL: %(value)s"
 
-#: lazylibrarian/webServe.py:8523
+#: lazylibrarian/webServe.py:8525
 #, python-format
 msgid "File: %(value)s"
 msgstr "Archivo: %(value)s"
 
-#: lazylibrarian/webServe.py:8527
+#: lazylibrarian/webServe.py:8529
 #, python-format
 msgid "Error: %(value)s"
 msgstr "Error: %(value)s"
 
-#: lazylibrarian/webServe.py:8779
+#: lazylibrarian/webServe.py:8781
 #, python-format
 msgid "%(name)s test FAILED, bad parameter: %(param)s"
 msgstr "Prueba de %(name)s FALLIDA, parámetro incorrecto: %(param)s"
 
-#: lazylibrarian/webServe.py:8784
+#: lazylibrarian/webServe.py:8786
 #, python-format
 msgid "%(name)s test FAILED, check debug log"
 msgstr "Prueba de %(name)s FALLIDA, revise el registro de depuración"
 
-#: lazylibrarian/webServe.py:8786
+#: lazylibrarian/webServe.py:8788
 #, python-format
 msgid "%(name)s test PASSED"
 msgstr "Prueba de %(name)s SUPERADA"
 
-#: lazylibrarian/webServe.py:8792
+#: lazylibrarian/webServe.py:8794
 #, python-format
 msgid "%(name)s test PASSED, found %(result)s"
 msgstr "Prueba de %(name)s SUPERADA, encontrado: %(result)s"
 
-#: lazylibrarian/webServe.py:8795
+#: lazylibrarian/webServe.py:8797
 msgid "Invalid or missing name in testprovider"
 msgstr "Nombre no válido o ausente en testprovider"
 
-#: lazylibrarian/webServe.py:8807
+#: lazylibrarian/webServe.py:8809
 #, python-format
 msgid "Cleared %(count)s blocked provider"
 msgid_plural "Cleared %(count)s blocked providers"
 msgstr[0] "%(count)s proveedor bloqueado desbloqueado"
 msgstr[1] "%(count)s proveedores bloqueados desbloqueados"
 
-#: lazylibrarian/webServe.py:8838
+#: lazylibrarian/webServe.py:8840
 #, python-format
 msgid "Deleted download counter for %(count)s provider"
 msgid_plural "Deleted download counter for %(count)s providers"
 msgstr[0] "Contador de descargas eliminado para %(count)s proveedor"
 msgstr[1] "Contador de descargas eliminado para %(count)s proveedores"
 
-#: lazylibrarian/webServe.py:8859
+#: lazylibrarian/webServe.py:8861
 msgid "No downloads"
 msgstr "Sin descargas"
 
-#: lazylibrarian/webServe.py:8867
+#: lazylibrarian/webServe.py:8869
 msgid "Calibre Sync is already running"
 msgstr "La sincronización con Calibre ya está en curso"
 
-#: lazylibrarian/webServe.py:8876
+#: lazylibrarian/webServe.py:8878
 msgid "No userid found"
 msgstr "No se encontró ID de usuario"
 
-#: lazylibrarian/webServe.py:8975 lazylibrarian/webServe.py:9041
-#: lazylibrarian/webServe.py:9063 lazylibrarian/webServe.py:9090
-#: lazylibrarian/webServe.py:9127 lazylibrarian/webServe.py:9154
-#: lazylibrarian/webServe.py:9181 lazylibrarian/webServe.py:9208
-#: lazylibrarian/webServe.py:9234 lazylibrarian/webServe.py:9492
-#: lazylibrarian/webServe.py:9588 lazylibrarian/webServe.py:9626
-#: lazylibrarian/webServe.py:9662 lazylibrarian/webServe.py:9705
-#: lazylibrarian/webServe.py:9746 lazylibrarian/webServe.py:9785
-#: lazylibrarian/webServe.py:9821 lazylibrarian/webServe.py:9839
-#: lazylibrarian/webServe.py:9875 lazylibrarian/webServe.py:9897
-#: lazylibrarian/webServe.py:9910
+#: lazylibrarian/webServe.py:8977 lazylibrarian/webServe.py:9043
+#: lazylibrarian/webServe.py:9065 lazylibrarian/webServe.py:9092
+#: lazylibrarian/webServe.py:9129 lazylibrarian/webServe.py:9156
+#: lazylibrarian/webServe.py:9183 lazylibrarian/webServe.py:9210
+#: lazylibrarian/webServe.py:9236 lazylibrarian/webServe.py:9494
+#: lazylibrarian/webServe.py:9590 lazylibrarian/webServe.py:9628
+#: lazylibrarian/webServe.py:9664 lazylibrarian/webServe.py:9707
+#: lazylibrarian/webServe.py:9748 lazylibrarian/webServe.py:9787
+#: lazylibrarian/webServe.py:9823 lazylibrarian/webServe.py:9841
+#: lazylibrarian/webServe.py:9877 lazylibrarian/webServe.py:9899
+#: lazylibrarian/webServe.py:9912
 #, python-format
 msgid "%(name)s failed, bad parameter: %(param)s"
 msgstr "%(name)s falló, parámetro incorrecto: %(param)s"
 
-#: lazylibrarian/webServe.py:8998
+#: lazylibrarian/webServe.py:9000
 msgid "Key verification successful"
 msgstr "Clave verificada correctamente"
 
-#: lazylibrarian/webServe.py:8999
+#: lazylibrarian/webServe.py:9001
 msgid "Unable to verify key"
 msgstr "No se pudo verificar la clave"
 
-#: lazylibrarian/webServe.py:9000
+#: lazylibrarian/webServe.py:9002
 msgid "No key provided"
 msgstr "No se indicó ninguna clave"
 
-#: lazylibrarian/webServe.py:9009
+#: lazylibrarian/webServe.py:9011
 msgid "Tweet successful, check your twitter to make sure it worked"
 msgstr "Tuit enviado, compruebe su Twitter para asegurarse de que funcionó"
 
-#: lazylibrarian/webServe.py:9010
+#: lazylibrarian/webServe.py:9012
 msgid "Error sending tweet"
 msgstr "Error al enviar el tuit"
 
-#: lazylibrarian/webServe.py:9039 lazylibrarian/webServe.py:9152
-#: lazylibrarian/webServe.py:9179 lazylibrarian/webServe.py:9206
+#: lazylibrarian/webServe.py:9041 lazylibrarian/webServe.py:9154
+#: lazylibrarian/webServe.py:9181 lazylibrarian/webServe.py:9208
 #, python-format
 msgid "Test %(name)s notice sent successfully"
 msgstr "Aviso de prueba de %(name)s enviado correctamente"
 
-#: lazylibrarian/webServe.py:9042 lazylibrarian/webServe.py:9155
-#: lazylibrarian/webServe.py:9182 lazylibrarian/webServe.py:9209
+#: lazylibrarian/webServe.py:9044 lazylibrarian/webServe.py:9157
+#: lazylibrarian/webServe.py:9184 lazylibrarian/webServe.py:9211
 #, python-format
 msgid "Test %(name)s notice failed"
 msgstr "Falló el aviso de prueba de %(name)s"
 
-#: lazylibrarian/webServe.py:9061 lazylibrarian/webServe.py:9088
-#: lazylibrarian/webServe.py:9125 lazylibrarian/webServe.py:9236
+#: lazylibrarian/webServe.py:9063 lazylibrarian/webServe.py:9090
+#: lazylibrarian/webServe.py:9127 lazylibrarian/webServe.py:9238
 #, python-format
 msgid "%(name)s notification successful"
 msgstr "Notificación de %(name)s correcta"
 
-#: lazylibrarian/webServe.py:9064 lazylibrarian/webServe.py:9091
-#: lazylibrarian/webServe.py:9128 lazylibrarian/webServe.py:9232
+#: lazylibrarian/webServe.py:9066 lazylibrarian/webServe.py:9093
+#: lazylibrarian/webServe.py:9130 lazylibrarian/webServe.py:9234
 #, python-format
 msgid "%(name)s notification failed"
 msgstr "Falló la notificación de %(name)s"
 
-#: lazylibrarian/webServe.py:9255
+#: lazylibrarian/webServe.py:9257
 msgid "Custom notification failed"
 msgstr "Falló la notificación personalizada"
 
-#: lazylibrarian/webServe.py:9257
+#: lazylibrarian/webServe.py:9259
 #, python-format
 msgid "Custom notification failed, bad parameter: %(param)s"
 msgstr "Falló la notificación personalizada, parámetro incorrecto: %(param)s"
 
-#: lazylibrarian/webServe.py:9259
+#: lazylibrarian/webServe.py:9261
 msgid "Custom notification successful"
 msgstr "Notificación personalizada correcta"
 
-#: lazylibrarian/webServe.py:9317
+#: lazylibrarian/webServe.py:9319
 msgid "Email notification failed"
 msgstr "Falló la notificación por correo"
 
-#: lazylibrarian/webServe.py:9319
+#: lazylibrarian/webServe.py:9321
 #, python-format
 msgid "Email notification failed, bad parameter: %(param)s"
 msgstr "Falló la notificación por correo, parámetro incorrecto: %(param)s"
 
-#: lazylibrarian/webServe.py:9321
+#: lazylibrarian/webServe.py:9323
 msgid "Email notification successful, check your email"
 msgstr "Notificación por correo correcta, revise su correo"
 
-#: lazylibrarian/webServe.py:9449
+#: lazylibrarian/webServe.py:9451
 msgid "Manage AudioBooks"
 msgstr "Gestionar audiolibros"
 
-#: lazylibrarian/webServe.py:9449
+#: lazylibrarian/webServe.py:9451
 msgid "Manage eBooks"
 msgstr "Gestionar eBooks"
 
-#: lazylibrarian/webServe.py:9513
+#: lazylibrarian/webServe.py:9515
 msgid "Deluge: Daemon connection successful"
 msgstr "Deluge: conexión con el daemon correcta"
 
-#: lazylibrarian/webServe.py:9519
+#: lazylibrarian/webServe.py:9521
 msgid "Deluge daemon seems to have no labels set"
 msgstr "El daemon de Deluge no parece tener etiquetas definidas"
 
-#: lazylibrarian/webServe.py:9529
+#: lazylibrarian/webServe.py:9531
 #, python-format
 msgid "Label [%(label)s] was added"
 msgstr "Se añadió la etiqueta [%(label)s]"
 
-#: lazylibrarian/webServe.py:9533
+#: lazylibrarian/webServe.py:9535
 #, python-format
 msgid "Label [%(label)s] is valid"
 msgstr "La etiqueta [%(label)s] es válida"
 
-#: lazylibrarian/webServe.py:9539
+#: lazylibrarian/webServe.py:9541
 msgid "Deluge: Daemon connection FAILED"
 msgstr "Deluge: FALLÓ la conexión con el daemon"
 
-#: lazylibrarian/webServe.py:9542
+#: lazylibrarian/webServe.py:9544
 msgid "Check Deluge daemon HOST and PORT settings"
 msgstr "Compruebe los ajustes HOST y PUERTO del daemon de Deluge"
 
-#: lazylibrarian/webServe.py:9544
+#: lazylibrarian/webServe.py:9546
 msgid "Invalid USERNAME or PASSWORD"
 msgstr "USUARIO o CONTRASEÑA no válidos"
 
-#: lazylibrarian/webServe.py:9859 lazylibrarian/webServe.py:9882
+#: lazylibrarian/webServe.py:9861 lazylibrarian/webServe.py:9884
 #, python-format
 msgid "Found %(name)s version %(version)s"
 msgstr "Encontrado %(name)s versión %(version)s"
 
-#: lazylibrarian/webServe.py:9862 lazylibrarian/webServe.py:9884
+#: lazylibrarian/webServe.py:9864 lazylibrarian/webServe.py:9886
 #, python-format
 msgid "%(command)s failed: %(error)s"
 msgstr "%(command)s falló: %(error)s"
 
-#: lazylibrarian/webServe.py:9915
+#: lazylibrarian/webServe.py:9917
 #, python-format
 msgid "Preprocessor returned %(rc)s: res[%(res)s] err[%(err)s]"
 msgstr ""
 
-#: lazylibrarian/webServe.py:9918
+#: lazylibrarian/webServe.py:9920
 msgid "No preprocessor set in config"
 msgstr "No hay ningún preprocesador definido en la configuración"
 
-#: lazylibrarian/webServe.py:9972
+#: lazylibrarian/webServe.py:9974
 #, python-format
 msgid "Emailed file %(file)s to %(addresses)s"
 msgstr "Archivo %(file)s enviado por correo a %(addresses)s"
 
-#: lazylibrarian/webServe.py:9976
+#: lazylibrarian/webServe.py:9978
 #, python-format
 msgid "Failed to email file %(file)s to %(addresses)s"
 msgstr "No se pudo enviar por correo el archivo %(file)s a %(addresses)s"
 
-#: lazylibrarian/webServe.py:9978
+#: lazylibrarian/webServe.py:9980
 msgid "Send file"
 msgstr "Enviar archivo"
 
-#: lazylibrarian/webServe.py:10034
+#: lazylibrarian/webServe.py:10036
 msgid "Thank you for enabling Telemetry"
 msgstr "Gracias por activar la telemetría"
 

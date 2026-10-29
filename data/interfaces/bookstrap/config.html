@@ -1001,12 +1001,13 @@
                 <fieldset>
                   <legend>${_('Usenet')}</legend>
                   <fieldset class="usenet_options">
-                    <div class="checkbox">
-                      <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_SABNZBD'] else '' %>
-                      <label for="nzb_downloader_sabnzbd" class="control-label">
-                        <input type="checkbox" id="nzb_downloader_sabnzbd" name="nzb_downloader_sabnzbd" value="1" ${checked} />
-                        ${_('Enable %(name)s') % {'name': 'Sabnzbd+'}}</label>
-                    </div>
+                    <%
+                      usenet_boxes = [('nzb_downloader_sabnzbd', 'NZB_DOWNLOADER_SABNZBD', 'SABnzbd+'),
+                                      ('nzb_downloader_nzbget', 'NZB_DOWNLOADER_NZBGET', 'NZBGet'),
+                                      ('use_synology', 'USE_SYNOLOGY', 'Synology DownloadStation'),
+                                      ('nzb_downloader_blackhole', 'NZB_DOWNLOADER_BLACKHOLE', _('NZB Blackhole'))]
+                    %>
+                    ${enable_grid(usenet_boxes)}
                     <fieldset id="sabnzbd_options">
                       <legend>SABnzbd+</legend>
                       <div class="row">
@@ -1074,12 +1075,6 @@
                         ${_('Delete from sabnzbd history')}</label>
                       </div>
                     </fieldset>
-                    <div class="checkbox">
-                      <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_NZBGET'] else '' %>
-                      <label for="nzb_downloader_nzbget" class="control-label">
-                      <input type="checkbox" id="nzb_downloader_nzbget" name="nzb_downloader_nzbget" value="1" ${checked} />
-                      ${_('Enable %(name)s') % {'name': 'NZBGet'}}</label>
-                    </div>
                     <fieldset id="nzbget_options">
                       <legend>NZBGet</legend>
                       <div class="row">
@@ -1131,12 +1126,6 @@
                       </div>
                       </div>
                     </fieldset>
-                    <div class="checkbox">
-                      <% checked = 'checked="checked"' if CONFIG['USE_SYNOLOGY'] else '' %>
-                      <label for="use_synology" class="control-label">
-                        <input type="checkbox" id="use_synology" name="use_synology" value="1" ${checked} />
-                        ${_('Enable %(name)s') % {'name': 'Synology DownloadStation'}}</label>
-                    </div>
                     <fieldset id="synology_options">
                       <legend>Synology</legend>
                       <div class="row">
@@ -1194,12 +1183,6 @@
                       </div>
                       </div>
                     </fieldset>
-                    <div class="checkbox">
-                      <% checked = 'checked="checked"' if CONFIG['NZB_DOWNLOADER_BLACKHOLE'] else '' %>
-                      <label for="nzb_downloader_blackhole" class="control-label">
-                        <input type="checkbox" id="nzb_downloader_blackhole" name="nzb_downloader_blackhole" value="1" ${checked} />
-                        ${_('Enable %(name)s') % {'name': 'NZB Blackhole'}}</label>
-                    </div>
                     <fieldset id="nzb_blackhole_options">
                       <legend>${_('NZB Blackhole')}</legend>
                       <div class="form-group">
@@ -1225,12 +1208,15 @@
               <fieldset>
               <legend>${_('Torrents')}</legend>
               <fieldset id="torrent_options">
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_DELUGE'] else '' %>
-                  <label for="tor_downloader_deluge" class="control-label">
-                    <input type="checkbox" id="tor_downloader_deluge" name="tor_downloader_deluge" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Deluge'}}</label>
-                </div>
+                <%
+                  torrent_boxes = [('tor_downloader_deluge', 'TOR_DOWNLOADER_DELUGE', 'Deluge'),
+                                   ('tor_downloader_transmission', 'TOR_DOWNLOADER_TRANSMISSION', 'Transmission'),
+                                   ('tor_downloader_rtorrent', 'TOR_DOWNLOADER_RTORRENT', 'rTorrent'),
+                                   ('tor_downloader_utorrent', 'TOR_DOWNLOADER_UTORRENT', 'uTorrent'),
+                                   ('tor_downloader_qbittorrent', 'TOR_DOWNLOADER_QBITTORRENT', 'qBitTorrent'),
+                                   ('tor_downloader_blackhole', 'TOR_DOWNLOADER_BLACKHOLE', _('Torrent Blackhole'))]
+                %>
+                ${enable_grid(torrent_boxes)}
                   <fieldset id="deluge_options">
                     <legend>Deluge</legend>
                     <div class="row">
@@ -1288,12 +1274,6 @@
                         <br>
                       </div>
                   </fieldset>
-                  <div class="checkbox">
-                    <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_TRANSMISSION'] else '' %>
-                    <label for="tor_downloader_transmission" class="control-label">
-                    <input type="checkbox" id="tor_downloader_transmission" name="tor_downloader_transmission" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Transmission'}}</label>
-                  </div>
                   <fieldset id="transmission_options">
                     <legend>Transmission</legend>
                     <div class="row">
@@ -1345,12 +1325,6 @@
                       </div>
                     </div>
                   </fieldset>
-                  <div class="checkbox">
-                    <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_RTORRENT'] else '' %>
-                    <label for="tor_downloader_rtorrent" class="control-label">
-                      <input type="checkbox" id="tor_downloader_rtorrent" name="tor_downloader_rtorrent" value="1" ${checked} />
-                      ${_('Enable %(name)s') % {'name': 'rTorrent'}}</label>
-                  </div>
                   <fieldset id="rtorrent_options">
                     <legend>rTorrent</legend>
                     <div class="row">
@@ -1394,12 +1368,6 @@
                       </div>
                     </div>
                   </fieldset>
-                  <div class="checkbox">
-                    <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_UTORRENT'] else '' %>
-                    <label for="tor_downloader_utorrent" class="control-label">
-                    <input type="checkbox" id="tor_downloader_utorrent" name="tor_downloader_utorrent" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'uTorrent'}}</label>
-                  </div>
                   <fieldset id="utorrent_options">
                     <legend>uTorrent</legend>
                     <div class="row">
@@ -1447,12 +1415,6 @@
                       </div>
                     </div>
                   </fieldset>
-                  <div class="checkbox">
-                    <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_QBITTORRENT'] else '' %>
-                    <label for="tor_downloader_qbittorrent" class="control-label">
-                    <input type="checkbox" id="tor_downloader_qbittorrent" name="tor_downloader_qbittorrent" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'qBitTorrent'}}</label>
-                  </div>
                     <fieldset id="qbittorrent_options">
                       <legend>qBitTorrent</legend>
                       <div class="row">
@@ -1526,12 +1488,6 @@
                         </div>
                       </div>
                     </fieldset>
-                    <div class="checkbox">
-                      <% checked = 'checked="checked"' if CONFIG['TOR_DOWNLOADER_BLACKHOLE'] else '' %>
-                      <label for="tor_downloader_blackhole" class="control-label">
-                        <input type="checkbox" id="tor_downloader_blackhole" name="tor_downloader_blackhole" value="1" ${checked} />
-                        ${_('Enable %(name)s') % {'name': 'Torrent Blackhole'}}</label>
-                    </div>
                     <fieldset id="tor_blackhole_options">
                       <legend>${_('Torrent Blackhole')}</legend>
                       <div class="form-group">
@@ -2959,14 +2915,30 @@
                     ${_('Hide old notifiers')}</label>
                 </div>
               %endif
+              </div>
+            </div>
+            <%
+              old_notifiers = not CONFIG.get_bool('HIDE_OLD_NOTIFIERS')
+              notifier_boxes = []
+              if old_notifiers:
+                  notifier_boxes += [('use_twitter', 'USE_TWITTER', 'Twitter'), ('use_boxcar', 'USE_BOXCAR', 'Boxcar'),
+                                     ('use_pushbullet', 'USE_PUSHBULLET', 'Pushbullet'),
+                                     ('use_pushover', 'USE_PUSHOVER', 'Pushover'),
+                                     ('use_androidpn', 'USE_ANDROIDPN', 'AndroidPN')]
+              notifier_boxes.append(('use_email', 'USE_EMAIL', _('Email')))
+              if old_notifiers:
+                  notifier_boxes += [('use_prowl', 'USE_PROWL', 'Prowl'), ('use_growl', 'USE_GROWL', 'Growl'),
+                                     ('use_telegram', 'USE_TELEGRAM', 'Telegram'), ('use_slack', 'USE_SLACK', 'Slack')]
+              notifier_boxes.append(('use_custom', 'USE_CUSTOM', _('Custom')))
+            %>
+            <div class="row">
+              <div class="col-md-12">
+                ${enable_grid(notifier_boxes)}
+              </div>
+            </div>
+            <div class="row">
+              <div class="col-md-6">
               %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_TWITTER'] else '' %>
-                  <label for="use_twitter">
-                    <input type="checkbox" id="use_twitter" name="use_twitter" value="1" ${checked} />
-                    ## TRANSLATORS: %(name)s is the name of a notification service or download client, e.g. Telegram or Deluge
-                    ${_('Enable %(name)s') % {'name': 'Twitter'}}</label>
-                </div>
                 <div id="twitteroptions">
                   <fieldset>
                     <legend>Twitter</legend>
@@ -3000,12 +2972,6 @@
                     </div>
                   </fieldset>
                 </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_BOXCAR'] else '' %>
-                  <label for="use_boxcar" class="control-label">
-                    <input type="checkbox" id="use_boxcar" name="use_boxcar" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Boxcar'}}</label>
-                </div>
                 <div id="boxcaroptions">
                   <fieldset>
                     <legend>Boxcar2</legend>
@@ -3031,12 +2997,6 @@
                       <input type="button" value="${_('Test Boxcar') | h}" id="test_boxcar" class="btn btn-default">
                     </div>
                   </fieldset>
-                </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_PUSHBULLET'] else '' %>
-                  <label for="use_pushbullet" class="control-label">
-                    <input type="checkbox" id="use_pushbullet" name="use_pushbullet" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Pushbullet'}}</label>
                 </div>
                 <div id="pushbulletoptions">
                   <fieldset>
@@ -3067,12 +3027,6 @@
                       <input type="button" value="${_('Test Pushbullet') | h}" id="test_pushbullet" class="btn btn-default">
                     </div>
                   </fieldset>
-                </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_PUSHOVER'] else '' %>
-                  <label for="use_pushover" class="control-label">
-                    <input type="checkbox" id="use_pushover" name="use_pushover" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Pushover'}}</label>
                 </div>
                 <div id="pushoveroptions">
                   <fieldset>
@@ -3111,12 +3065,6 @@
                       <input type="button" value="${_('Test Pushover') | h}" id="test_pushover" class="btn btn-default">
                     </div>
                   </fieldset>
-                </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_ANDROIDPN'] else '' %>
-                  <label for="use_androidpn" class="control-label">
-                    <input type="checkbox" id="use_androidpn" name="use_androidpn" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'AndroidPN'}}</label>
                 </div>
                 <div id="androidpnoptions">
                   <fieldset>
@@ -3157,12 +3105,6 @@
                   </fieldset>
                 </div>
               %endif
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_EMAIL'] else '' %>
-                  <label for="use_email" class="control-label">
-                    <input type="checkbox" id="use_email" name="use_email" value="1" ${checked} />
-                    ${_('Enable Email Notifications')}</label>
-                </div>
                 <div id="emailoptions">
                   <fieldset>
                     <legend>${_('Email')}</legend>
@@ -3266,12 +3208,6 @@
               </div>
               <div class="col-md-6">
               %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_PROWL'] else '' %>
-                  <label for="use_prowl" class="control-label">
-                    <input type="checkbox" name="use_prowl" id="use_prowl" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Prowl'}}</label>
-                </div>
                 <div id="prowloptions">
                   <fieldset>
                     <legend>Prowl</legend>
@@ -3324,12 +3260,6 @@
                     </div>
                   </fieldset>
                 </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_GROWL'] else '' %>
-                  <label for="use_growl" class="control-label">
-                    <input type="checkbox" name="use_growl" id="use_growl" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Growl'}}</label>
-                </div>
                 <div id="growloptions">
                   <fieldset>
                     <legend>Growl</legend>
@@ -3357,12 +3287,6 @@
                       <input type="button" value="${_('Test Growl') | h}" id="test_growl" class="btn btn-default" />
                     </div>
                   </fieldset>
-                </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_TELEGRAM'] else '' %>
-                  <label for="use_telegram" class="control-label">
-                    <input type="checkbox" name="use_telegram" id="use_telegram" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Telegram'}}</label>
                 </div>
                 <div id="telegramoptions">
                   <fieldset>
@@ -3395,12 +3319,6 @@
                     </div>
                   </fieldset>
                 </div>
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_SLACK'] else '' %>
-                  <label for="use_slack" class="control-label">
-                    <input type="checkbox" id="use_slack" name="use_slack" value="1" ${checked} />
-                    ${_('Enable %(name)s') % {'name': 'Slack'}}</label>
-                </div>
                 <div id="slackoptions">
                   <fieldset>
                     <legend>Slack</legend>
@@ -3432,12 +3350,6 @@
                   </fieldset>
                 </div>
               %endif
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['USE_CUSTOM'] else '' %>
-                  <label for="use_custom" class="control-label">
-                    <input type="checkbox" id="use_custom" name="use_custom" value="1" ${checked} />
-                    ${_('Enable Custom Notifications')}</label>
-                </div>
                 <div id="customoptions">
                   <fieldset>
                     <legend>${_('Custom')}</legend>
@@ -4261,6 +4173,21 @@
   </div>
 <!-- form -->
 </form>
+</%def>
+<%def name="enable_grid(boxes)">
+  <div class="form-group">
+    ## TRANSLATORS: label above the checkboxes that switch notification services or download clients on
+    <label class="control-label">${_('Enable:')}</label>
+    <div class="checkbox-grid">
+      %for name, key, box_label in boxes:
+      <div class="checkbox">
+        <label for="${name}">
+          <input type="checkbox" id="${name}" name="${name}" value="1"${' checked="checked"' if CONFIG[key] else ''} />
+          ${box_label}</label>
+      </div>
+      %endfor
+    </div>
+  </div>
 </%def>
 <%def name="javascriptIncludes()">
   <%include file="config_functions.js"/>

@@ -162,13 +162,28 @@ textarea#telemetry_data {
 .ll-view-list .table td .btn-xs {
     padding: 0 4px;
 }
-/* list: compact rows without the pictures, statuses on one line */
+/* list: one line per row, no pictures, nothing under the title, statuses side by side */
 .ll-view-list .table th.bookart,
 .ll-view-list .table th.authorimg,
 .ll-view-list .table td.ll-bookart,
 .ll-view-list .table td.ll-authorimg,
+.ll-view-list .table td .ll-title-extra,
 .ll-view-list .table td.ll-status br {
     display: none;
+}
+.ll-view-list .table td.ll-status,
+.ll-view-list .table td.ll-date,
+.ll-view-list .table td.ll-authorname,
+.ll-view-list .table td.ll-bookname .btn-link {
+    white-space: nowrap;
+}
+/* the ebook and audiobook dates are on two lines, the line break is a span so list can make it a space */
+.ll-break {
+    display: block;
+}
+.ll-view-list .ll-break {
+    display: inline-block;
+    width: .5em;
 }
 /* grid: each row becomes a card with the picture, names and status */
 .ll-view-grid table.ll-grid-table,

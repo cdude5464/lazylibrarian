@@ -132,9 +132,6 @@
                                        ('sort_definite', 'SORT_DEFINITE', _('Show titles ignoring article (The, A)')),
                                        ('ignore_paused', 'IGNORE_PAUSED', _('Ignore paused authors'))]),
                       ]
-                      if APPRISE_VER and APPRISE_VER[0].isdigit():
-                          appearance_groups.append((_('Settings page:'), [('hide_old_notifiers', 'HIDE_OLD_NOTIFIERS',
-                                                                           _('Hide old notifiers'))]))
                     %>
                     %for group_label, boxes in appearance_groups:
                     <div class="form-group">
@@ -2954,6 +2951,14 @@
                     %endfor
                   </select>
                 </div>
+              %if APPRISE_VER and APPRISE_VER[0].isdigit():
+                <div class="checkbox">
+                  <% checked = 'checked="checked"' if CONFIG['HIDE_OLD_NOTIFIERS'] else '' %>
+                  <label for="hide_old_notifiers" class="control-label">
+                    <input type="checkbox" id="hide_old_notifiers" name="hide_old_notifiers" value="1" ${checked} />
+                    ${_('Hide old notifiers')}</label>
+                </div>
+              %endif
               %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
                 <div class="checkbox">
                   <% checked = 'checked="checked"' if CONFIG['USE_TWITTER'] else '' %>

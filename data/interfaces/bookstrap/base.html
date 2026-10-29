@@ -485,7 +485,7 @@
           % elif (CONFIG['INSTALL_TYPE'] == 'source' and CONFIG['CURRENT_VERSION'] == 'No Version File' ):
               msg = '<div class="input-group">' + ${_js('You are running an unknown version via source install')}
           % elif CONFIG['CURRENT_VERSION'] != CONFIG['LATEST_VERSION']:
-            % if CONFIG['LATEST_VERSION'] == 'Not_Available_From_Git':
+            % if CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
               msg = '<div class="input-group">' + ${_js('Unable to get the latest version from git')}
             % elif CONFIG.get_int('COMMITS_BEHIND') < 0:
               msg = '<div class="input-group">' + ${_js('Running a local updated version. Push changes to git or rollback to Master release')}

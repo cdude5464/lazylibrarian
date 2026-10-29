@@ -221,7 +221,6 @@
               var mode = select.val();
               html.removeClass('ll-view-detailed ll-view-compact ll-view-list ll-view-grid').addClass('ll-view-' + mode);
               try { localStorage.setItem('llView', mode); } catch (err) {}
-              if ($.fn.dataTable) { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); }
           });
           function markCells(table) {
               var names = $(table).find('thead tr').first().children('th').map(function () {

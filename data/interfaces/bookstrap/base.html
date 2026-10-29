@@ -1,15 +1,25 @@
 <%
+    import os
     import cherrypy
     import lazylibrarian
     from lazylibrarian import i18n
     from lazylibrarian.common import docker
     from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.filesystem import DIRS
     from lazylibrarian.scheduling import show_running
     # invite the user to help translate if their language has no translation or is only partly translated
     user_lang = cherrypy.request.cookie.get('ll_uilang')
     invite_lang, invite_percent = i18n.translation_invite(
         user_lang.value if user_lang else '', CONFIG.get_str('UI_LANGUAGE'),
         cherrypy.request.headers.get('Accept-Language', ''))
+
+    # css and js are served without cache headers, so browsers (phones especially) can keep an old copy for days
+    # after an update. Our own files change with releases, give them their modification time in the url
+    def asset(name):
+        try:
+            return '%s?v=%d' % (name, os.path.getmtime(os.path.join(DIRS.PROG_DIR, 'data', name)))
+        except OSError:
+            return name
 %>
 <!doctype html>
 <html lang="${ui_lang}">
@@ -32,7 +42,7 @@
     %endif
     <!--link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.13/css/all.css" integrity="sha384-DNOHZ68U8hZfKXOrtjWvjxusGo9WQnrNx2sqG0tfsghAvtVlRW3tvkXWZh58N9jp" crossorigin="anonymous"-->
     <link href="css/fontawesome/fontawesome-all.css" rel="stylesheet">
-    <link href="css/bookstrap.css" rel="stylesheet">
+    <link href="${asset('css/bookstrap.css')}" rel="stylesheet">
     <script type="text/javascript">
       // table view mode is a per browser choice, set it before the page renders to avoid a flash
       try { document.documentElement.className += ' ll-view-' + (localStorage.getItem('llView') || 'detailed'); } catch (e) {}
@@ -102,7 +112,7 @@
     </script>
     %endif
     <script src="js/jquery-3.4.1.min.js"></script>
-    <script src="js/lazylibrarian-bs.js"></script>
+    <script src="${asset('js/lazylibrarian-bs.js')}"></script>
     <script type="text/javascript">
       // Translation helpers for counts only known in the browser, see lazylibrarian/i18n.py
       // the first argument comes from the _jsn(singular, plural) template helper

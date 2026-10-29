@@ -33,6 +33,10 @@
     <!--link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.13/css/all.css" integrity="sha384-DNOHZ68U8hZfKXOrtjWvjxusGo9WQnrNx2sqG0tfsghAvtVlRW3tvkXWZh58N9jp" crossorigin="anonymous"-->
     <link href="css/fontawesome/fontawesome-all.css" rel="stylesheet">
     <link href="css/bookstrap.css" rel="stylesheet">
+    <script type="text/javascript">
+      // table view mode is a per browser choice, set it before the page renders to avoid a flash
+      try { document.documentElement.className += ' ll-view-' + (localStorage.getItem('llView') || 'detailed'); } catch (e) {}
+    </script>
     <style>
       input[type="search"]::-webkit-search-cancel-button {
       -webkit-appearance: none;
@@ -186,6 +190,63 @@
       };
     </script>
     <script type="text/javascript" src="js/bootstrap-notify.min.js"></script>
+    <script type="text/javascript">
+      // View mode dropdown for the table pages, next to the column toggles, or above the table if those are off.
+      // The modes are only css, the grid and list need to know what each cell holds, so copy the header class to
+      // the cells, and put what follows the title button (subtitle, site links, genres) in a span list can hide
+      $(function () {
+          var tables = $('.table-responsive table');
+          if (!tables.length) { return; }
+          var modes = [['detailed', ${_js('Detailed')}], ['compact', ${_js('Compact')}],
+                       ['list', ${_js('List')}], ['grid', ${_js('Grid')}]];
+          var grid = tables.filter(function () { return $(this).find('thead th.bookart, thead th.authorimg').length; });
+          grid.addClass('ll-grid-table');
+          var html = $('html');
+          var current = 'detailed';
+          var select = $('<select class="ll-view-select form-control input-sm"></select>');
+          $.each(modes, function (i, mode) {
+              if (mode[0] === 'grid' && !grid.length) { return; }
+              select.append($('<option></option>').val(mode[0]).text(mode[1]));
+              if (html.hasClass('ll-view-' + mode[0])) { current = mode[0]; }
+          });
+          select.val(current);
+          var label = $('<span class="ll-view-label"></span>').text(${_js('View:')} + ' ').append(select);
+          var toggles = $('.toggles');
+          if (toggles.length) {
+              toggles.first().append(' | ', label);
+          } else {
+              tables.first().closest('.table-responsive').before($('<div class="text-right"></div>').append(label));
+          }
+          select.on('change', function () {
+              var mode = select.val();
+              html.removeClass('ll-view-detailed ll-view-compact ll-view-list ll-view-grid').addClass('ll-view-' + mode);
+              try { localStorage.setItem('llView', mode); } catch (err) {}
+          });
+          function markCells(table) {
+              var names = $(table).find('thead tr').first().children('th').map(function () {
+                  var name = (this.className || '').split(' ')[0];
+                  return name && name !== 'hidden' ? 'll-' + name : '';
+              }).get();
+              $(table).find('tbody tr').each(function () {
+                  $(this).children('td').each(function (i) {
+                      if (names[i]) { $(this).addClass(names[i]); }
+                  });
+              });
+              $(table).find('tbody td.ll-bookname').each(function () {
+                  var title = $(this).children('button.btn-link').first();
+                  if (!title.length || title.next('.ll-title-extra').length) { return; }
+                  var nodes = $(this).contents();
+                  var after = nodes.slice(nodes.index(title) + 1);
+                  if (after.length) { after.wrapAll('<span class="ll-title-extra"></span>'); }
+              });
+              $(table).find('tbody td.ll-date > br').replaceWith('<span class="ll-break"></span>');
+          }
+          tables.each(function () { markCells(this); });
+          $(document).on('draw.dt', function (e) {
+              if ($(e.target).closest('.table-responsive').length) { markCells(e.target); }
+          });
+      });
+    </script>
 <style>
 
 #show_newz_prov {display:  none; }

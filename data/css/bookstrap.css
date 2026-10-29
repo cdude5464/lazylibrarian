@@ -129,3 +129,142 @@ textarea#telemetry_data {
 .checkbox-grid .checkbox {
     margin: 0 0 4px 0;
 }
+
+/* Table view modes, picked per browser in the View dropdown next to the column toggles */
+.ll-view-select {
+    display: inline-block;
+    width: auto;
+    height: 26px;
+    padding: 2px 6px;
+}
+.ll-view-compact .table > tbody > tr > td,
+.ll-view-list .table > tbody > tr > td {
+    padding: 2px 6px;
+    vertical-align: middle;
+}
+.ll-view-compact .bookcover-sm,
+.ll-view-compact .author-thumb {
+    width: 40px;
+}
+.ll-view-compact .bookcover-xs {
+    width: 30px;
+}
+.ll-view-compact .table td img[src*="-stars.png"],
+.ll-view-list .table td img[src*="-stars.png"] {
+    height: 12px;
+}
+.ll-view-compact .table td .btn-link,
+.ll-view-list .table td .btn-link {
+    padding: 0;
+}
+.ll-view-compact .table td p,
+.ll-view-list .table td p {
+    display: inline-block;
+    margin: 0 2px 0 0;
+}
+.ll-view-compact .table td .btn-xs,
+.ll-view-list .table td .btn-xs {
+    padding: 0 4px;
+}
+/* list: one line per row, no pictures, nothing under the title, statuses side by side */
+.ll-view-list .table th.bookart,
+.ll-view-list .table th.authorimg,
+.ll-view-list .table td.ll-bookart,
+.ll-view-list .table td.ll-authorimg,
+.ll-view-list .table td .ll-title-extra,
+.ll-view-list .table td.ll-status br {
+    display: none;
+}
+.ll-view-list .table td.ll-status,
+.ll-view-list .table td.ll-date,
+.ll-view-list .table td.ll-authorname,
+.ll-view-list .table td.ll-bookname .btn-link {
+    white-space: nowrap;
+}
+/* the ebook and audiobook dates are on two lines, the line break is a span so list can make it a space */
+.ll-break {
+    display: block;
+}
+.ll-view-list .ll-break {
+    display: inline-block;
+    width: .5em;
+}
+/* grid: each row becomes a card with the picture, names and status */
+.ll-view-grid table.ll-grid-table,
+.ll-view-grid table.ll-grid-table > tbody {
+    display: block;
+    width: 100% !important;
+    border: 0;
+    background: transparent;
+}
+.ll-view-grid table.ll-grid-table > thead {
+    display: none;
+}
+.ll-view-grid table.ll-grid-table > tbody {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+.ll-view-grid table.ll-grid-table > tbody > tr {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    border: 1px solid rgba(128, 128, 128, .35);
+    border-radius: 4px;
+    padding: 6px;
+    text-align: center;
+}
+.ll-view-grid table.ll-grid-table > tbody > tr > td {
+    display: none;
+    border: 0;
+    padding: 2px 0;
+}
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-bookart,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-authorimg,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-bookname,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-authorname,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-status,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.dataTables_empty {
+    display: block;
+}
+.ll-view-grid table.ll-grid-table > tbody > tr > td.hidden {
+    display: none;
+}
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-select {
+    display: block;
+    position: absolute;
+    top: 4px;
+    left: 8px;
+    z-index: 1;
+}
+.ll-view-grid td.ll-bookart { order: 1; }
+.ll-view-grid td.ll-authorimg { order: 1; }
+.ll-view-grid td.ll-bookname { order: 2; font-weight: bold; }
+.ll-view-grid td.ll-authorname { order: 3; font-size: 90%; }
+.ll-view-grid td.ll-status { order: 4; margin-top: auto; }
+/* on the authors page the author is the card title and the latest book the subtitle */
+.ll-view-grid td.ll-authorimg ~ td.ll-authorname { order: 2; font-weight: bold; font-size: 100%; }
+.ll-view-grid td.ll-authorimg ~ td.ll-bookname { order: 3; font-weight: normal; font-size: 90%; }
+.ll-view-grid td.ll-bookart img,
+.ll-view-grid td.ll-authorimg img {
+    width: 100%;
+    max-width: 140px;
+    margin: 0 auto;
+}
+.ll-view-grid td.ll-bookname .btn-link,
+.ll-view-grid td.ll-authorname .btn-link {
+    padding: 0;
+    white-space: normal;
+    text-align: center;
+}
+.ll-view-grid td.ll-bookname i {
+    font-weight: normal;
+    font-size: 90%;
+}
+.ll-view-grid td.ll-status p {
+    display: inline-block;
+    margin: 0 2px 2px 0;
+}
+.ll-view-grid td.ll-status .btn-xs {
+    padding: 0 4px;
+}

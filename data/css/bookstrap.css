@@ -172,7 +172,9 @@ textarea#telemetry_data {
 .ll-view-list .table td.ll-bookart,
 .ll-view-list .table td.ll-authorimg,
 .ll-view-list .table td .ll-title-extra,
-.ll-view-list .table td.ll-status br {
+.ll-view-list .table td.ll-status br,
+.ll-view-list .toggles a.ll-toggle-bookart,
+.ll-view-list .toggles a.ll-toggle-authorimg {
     display: none;
 }
 .ll-view-list .table td.ll-status,
@@ -190,6 +192,9 @@ textarea#telemetry_data {
     width: .5em;
 }
 /* grid: each row becomes a card with the picture, names and status */
+.ll-view-grid .toggles.ll-grid-toggles a.toggle-vis:not(.ll-toggle-bookart):not(.ll-toggle-authorimg):not(.ll-toggle-bookname):not(.ll-toggle-authorname):not(.ll-toggle-status) {
+    display: none;
+}
 .ll-view-grid table.ll-grid-table,
 .ll-view-grid table.ll-grid-table > tbody {
     display: block;

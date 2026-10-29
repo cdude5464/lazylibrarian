@@ -211,9 +211,16 @@
           });
           select.val(current);
           var label = $('<span class="ll-view-label"></span>').text(${_js('View:')} + ' ').append(select);
-          var toggles = $('.toggles');
+          var toggles = $('.toggles').first();
+          // the column toggles get their column's header class too, so a mode can hide the ones it doesn't show
+          var headers = tables.first().find('thead tr').first().children('th');
+          toggles.find('a.toggle-vis').each(function () {
+              var name = (headers.eq($(this).attr('data-column')).attr('class') || '').split(' ')[0];
+              if (name && name !== 'hidden') { $(this).addClass('ll-toggle-' + name); }
+          });
+          if (tables.first().hasClass('ll-grid-table')) { toggles.addClass('ll-grid-toggles'); }
           if (toggles.length) {
-              toggles.first().append(' | ', label);
+              toggles.append(' | ', label);
           } else {
               tables.first().closest('.table-responsive').before($('<div class="text-right"></div>').append(label));
           }

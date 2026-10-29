@@ -4270,7 +4270,8 @@
         var secretIds = ['api_key', 'api_ro_key', 'gb_api', 'gr_api', 'gr_secret', 'gr_oauth_token',
                          'gr_oauth_secret', 'lt_devkey', 'cv_apikey', 'sab_api', 'slsk_api', 'anna_key',
                          'bok_remix_userkey', 'boxcar_token', 'pushbullet_token', 'pushover_apitoken',
-                         'pushover_keys', 'prowl_apikey', 'telegram_token', 'slack_token'];
+                         'pushover_keys', 'prowl_apikey', 'telegram_token', 'slack_token', 'ms_trans_id',
+                         'growl_password'];
         var showTitle = "${_('Show') | h}";
         var hideTitle = "${_('Hide') | h}";
         var mask = '••••••••';
@@ -4279,8 +4280,8 @@
         $.each(secretIds, function (i, id) {
             $fields = $fields.add('#' + id);
         });
-        $fields = $fields.add($('input[id^="newznab_"], input[id^="torznab_"]').filter(function () {
-            return /^(newznab|torznab)_\d+_api$/.test(this.id);
+        $fields = $fields.add($('input[id^="newznab_"], input[id^="torznab_"], input[id^="apprise_"]').filter(function () {
+            return /^((newznab|torznab)_\d+_api|apprise_\d+_url)$/.test(this.id);
         }));
 
         $fields.each(function () {

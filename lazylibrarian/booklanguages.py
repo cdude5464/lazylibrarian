@@ -151,6 +151,34 @@ def _search_languages(preflang: str) -> list | None:
     return [(name, codes) for _, name, codes in sorted(found)]
 
 
+# Country codes people enter for a language whose code is different (CZ is Czechia, Czech is cs)
+COUNTRY_LANGUAGES = {'cn': 'zh', 'cz': 'cs', 'dk': 'da', 'gr': 'el', 'jp': 'ja', 'kr': 'ko', 'se': 'sv', 'ua': 'uk'}
+
+
+def search_language_value(item: str, source: str) -> str:
+    """ What ANNA_SEARCH_LANG (source 'anna') or BOK_SEARCH_LANG (source 'zlib') stores for a language
+        entered as item: the upper case code for Anna's Archive, the lower case English name for Z-Library.
+        item can be any code or English name of a BOOK_LANGUAGES language, or a country code in
+        COUNTRY_LANGUAGES, case insensitive. '' if it's none of these, or Anna's Archive doesn't support it """
+    from lazylibrarian.annas import Language as AnnaLanguage
+
+    code = item.strip().lower()
+    if not code or code == 'any':
+        return ''
+    if source == 'anna' and code.upper() in AnnaLanguage.__members__:
+        return code.upper()
+    for wanted in (code, COUNTRY_LANGUAGES.get(code)):
+        if not wanted:
+            continue
+        for name, codes in BOOK_LANGUAGES:
+            if wanted in (lang_code.lower() for lang_code in codes):
+                if source == 'anna':
+                    value = codes[0].upper()
+                    return value if value in AnnaLanguage.__members__ else ''
+                return name.lower()
+    return ''
+
+
 # Magazines and comics have a language of their own, not the Import languages,
 # so automatic search languages search them in all languages
 ALL_LANGUAGE_SEARCHES = ('mag', 'comic')
@@ -191,7 +219,8 @@ def search_language_picker(search_lang: str, source: str, preflang: str = '',
     """ The languages of an ANNA_SEARCH_LANG (source 'anna') or BOK_SEARCH_LANG (source 'zlib')
         value for their pickers. 'value' is what the setting stores for a language: the upper case
         code for Anna's Archive, which only lists the languages it supports, the lower case English
-        name for Z-Library. Matching is case insensitive.
+        name for Z-Library. Matching is case insensitive, and any code or name of a language, or a
+        country code like CZ, selects that language (see search_language_value), so saving corrects it.
         The mode is 'auto' for an empty value (the Import languages), 'any' if ANY is in it, else 'custom'.
         Each entry of the value the picker doesn't know is an entry of its own, so saving keeps it.
         Before "Show all" the picker shows the selected entries in the order they appear in the
@@ -200,9 +229,10 @@ def search_language_picker(search_lang: str, source: str, preflang: str = '',
     from lazylibrarian.annas import Language as AnnaLanguage
 
     wanted = [item for item in get_list(search_lang, ',') if item]
+    keys = [(search_language_value(item, source) or item).lower() for item in wanted]
     position = {}
-    for idx, item in enumerate(wanted):
-        position.setdefault(item.lower(), idx)
+    for idx, key in enumerate(keys):
+        position.setdefault(key, idx)
     if not wanted:
         mode = 'auto'
     elif 'any' in position:
@@ -231,10 +261,10 @@ def search_language_picker(search_lang: str, source: str, preflang: str = '',
 
     known = {lang['value'].lower() for lang in languages} | {'any'}
     other = []
-    for item in wanted:
-        if item.lower() not in known:
-            known.add(item.lower())
-            other.append({'value': item, 'label': item, 'selected': True, 'position': position[item.lower()],
+    for item, key in zip(wanted, keys):
+        if key not in known:
+            known.add(key)
+            other.append({'value': item, 'label': item, 'selected': True, 'position': position[key],
                           'shown': True})
 
     selected = sorted((lang for lang in other + languages if lang['selected']), key=lambda lang: lang['position'])

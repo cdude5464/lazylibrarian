@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-10-29 09:10+0000\n"
+"POT-Creation-Date: 2026-10-29 09:38+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -449,7 +449,7 @@ msgstr ""
 #: data/interfaces/bookstrap/books.html:240
 #: data/interfaces/bookstrap/managebooks.html:589
 #: data/interfaces/bookstrap/members.html:198
-#: data/interfaces/bookstrap/searchresults.html:248
+#: data/interfaces/bookstrap/searchresults.html:238
 msgid "No books found"
 msgstr ""
 
@@ -529,7 +529,7 @@ msgstr ""
 #: data/interfaces/bookstrap/managebooks.html:285
 #: data/interfaces/bookstrap/managebooks.html:642
 #: data/interfaces/bookstrap/members.html:219
-#: data/interfaces/bookstrap/searchresults.html:276
+#: data/interfaces/bookstrap/searchresults.html:266
 #: data/interfaces/bookstrap/series.html:290
 msgid "Processing..."
 msgstr ""
@@ -543,7 +543,7 @@ msgstr ""
 #: data/interfaces/bookstrap/magazines.html:338
 #: data/interfaces/bookstrap/managebooks.html:668
 #: data/interfaces/bookstrap/members.html:246
-#: data/interfaces/bookstrap/searchresults.html:303
+#: data/interfaces/bookstrap/searchresults.html:293
 #: data/interfaces/bookstrap/series.html:317
 msgid "Summary:"
 msgstr ""
@@ -558,7 +558,7 @@ msgstr ""
 #: data/interfaces/bookstrap/managebooks.html:464
 #: data/interfaces/bookstrap/managebooks.html:671
 #: data/interfaces/bookstrap/members.html:249
-#: data/interfaces/bookstrap/searchresults.html:306
+#: data/interfaces/bookstrap/searchresults.html:296
 #: data/interfaces/bookstrap/series.html:320
 msgid "Successful:"
 msgstr ""
@@ -572,7 +572,7 @@ msgstr ""
 #: data/interfaces/bookstrap/magazines.html:343
 #: data/interfaces/bookstrap/managebooks.html:673
 #: data/interfaces/bookstrap/members.html:251
-#: data/interfaces/bookstrap/searchresults.html:308
+#: data/interfaces/bookstrap/searchresults.html:298
 #: data/interfaces/bookstrap/series.html:322
 msgid "Failed:"
 msgstr ""
@@ -598,7 +598,7 @@ msgstr ""
 #: data/interfaces/bookstrap/magazines.html:373
 #: data/interfaces/bookstrap/managebooks.html:682
 #: data/interfaces/bookstrap/members.html:260
-#: data/interfaces/bookstrap/searchresults.html:317
+#: data/interfaces/bookstrap/searchresults.html:307
 #: data/interfaces/bookstrap/series.html:331
 msgid "OK"
 msgstr ""
@@ -612,7 +612,7 @@ msgstr ""
 #: data/interfaces/bookstrap/magazines.html:369
 #: data/interfaces/bookstrap/managebooks.html:697
 #: data/interfaces/bookstrap/members.html:275
-#: data/interfaces/bookstrap/searchresults.html:332
+#: data/interfaces/bookstrap/searchresults.html:322
 #: data/interfaces/bookstrap/series.html:346
 msgid "Error"
 msgstr ""
@@ -626,7 +626,7 @@ msgstr ""
 #: data/interfaces/bookstrap/magazines.html:370
 #: data/interfaces/bookstrap/managebooks.html:698
 #: data/interfaces/bookstrap/members.html:276
-#: data/interfaces/bookstrap/searchresults.html:333
+#: data/interfaces/bookstrap/searchresults.html:323
 #: data/interfaces/bookstrap/series.html:347
 msgid "An error occurred:"
 msgstr ""
@@ -700,7 +700,7 @@ msgstr ""
 #: data/interfaces/bookstrap/profile.html:136
 #: data/interfaces/bookstrap/register.html:68
 #: data/interfaces/bookstrap/response.html:26
-#: data/interfaces/bookstrap/searchresults.html:336
+#: data/interfaces/bookstrap/searchresults.html:326
 #: data/interfaces/bookstrap/series.html:350
 #: data/interfaces/bookstrap/users.html:199
 #: data/interfaces/bookstrap/users.html:228
@@ -6434,7 +6434,7 @@ msgstr ""
 #: data/interfaces/bookstrap/editmag.html:103
 #: data/interfaces/bookstrap/issues.html:295
 #: data/interfaces/bookstrap/magazines.html:349
-#: data/interfaces/bookstrap/searchresults.html:313
+#: data/interfaces/bookstrap/searchresults.html:303
 #: data/interfaces/bookstrap/series.html:327
 msgid "Operation Complete"
 msgstr ""
@@ -7224,7 +7224,7 @@ msgstr ""
 msgid "Want eBook and Audio"
 msgstr ""
 
-#: data/interfaces/bookstrap/searchresults.html:258
+#: data/interfaces/bookstrap/searchresults.html:248
 msgid "Search table here"
 msgstr ""
 

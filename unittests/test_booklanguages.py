@@ -76,6 +76,9 @@ class BookLanguagesTest(unittest.TestCase):
         self.assertEqual(anna_languages('ANY'), [])
         self.assertEqual(anna_languages('EN, ANY'), [])
         self.assertEqual(anna_languages(''), [])
+        # a country code or any code or name of the language finds the language
+        self.assertEqual(anna_languages('SK, CZ'), [Language.SK, Language.CS])
+        self.assertEqual(anna_languages('Czech, ces'), [Language.CS])
 
     def test_order(self):
         # selected first in their order, then All and Unknown, then the browser languages, then the rest, by name
@@ -195,3 +198,15 @@ class BookLanguagesTest(unittest.TestCase):
         shown = [lang['value'] for lang in picker['languages'] if lang['shown']]
         self.assertEqual(shown[0], 'DE')
         self.assertEqual(sorted(shown), ['CS', 'DE', 'SK'])
+
+    def test_search_picker_corrects_codes(self):
+        # CZ is the country, the picker selects Czech so saving stores CS
+        picker = search_language_picker('SK, CZ', 'anna')
+        selected = [lang['value'] for lang in picker['languages'] if lang['selected']]
+        self.assertEqual(selected, ['SK', 'CS'])
+        picker = search_language_picker('cs, CZ, czech', 'zlib')
+        selected = [lang['value'] for lang in picker['languages'] if lang['selected']]
+        self.assertEqual(selected, ['czech'])
+        # a language Anna's Archive doesn't support stays as it was entered
+        picker = search_language_picker('dk', 'anna')
+        self.assertEqual([lang['value'] for lang in picker['languages'] if lang['selected']], ['dk'])

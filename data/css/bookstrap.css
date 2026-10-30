@@ -129,6 +129,29 @@ textarea#telemetry_data {
 .checkbox-grid .checkbox {
     margin: 0 0 4px 0;
 }
+/* Config section headings: space above, to separate them from the section before,
+   and less below, so a heading sits with its own options. Padding, because Chrome
+   drops the top margin of a legend inside a fieldset. */
+.configtable legend {
+    padding-top: 15px;
+    margin-bottom: 10px;
+}
+.configtable .row > .col-md-6:first-child > fieldset:first-child > legend:first-child,
+.configtable .row > .col-md-6:first-child > legend:first-child {
+    padding-top: 0;
+}
+@media (min-width: 992px) {
+    .configtable .row > .col-md-6 > fieldset:first-child > legend:first-child,
+    .configtable .row > .col-md-6 > legend:first-child {
+        padding-top: 0;
+    }
+}
+.configtable legend + .checkbox,
+.configtable legend + .row.checkbox,
+.configtable legend + .section-body > .checkbox:first-child,
+.configtable legend + .section-body > .row.checkbox:first-child {
+    margin-top: 0;
+}
 
 /* Table view modes, picked per browser in the View dropdown next to the column toggles */
 .ll-view-select {

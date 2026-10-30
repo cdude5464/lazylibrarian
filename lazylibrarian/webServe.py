@@ -435,8 +435,10 @@ def serve_template(templatename, **kwargs):
         module_directory = None
     else:
         module_directory = os.path.join(DIRS.CACHEDIR, 'mako')
-    _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                               module_directory=module_directory)
+    # an interface only needs the pages it changes, anything missing comes from bookstrap
+    bookstrap_dir = os.path.join(str(interface_dir), 'bookstrap')
+    _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir])),
+                               input_encoding='utf-8', module_directory=module_directory)
     # noinspection PyBroadException
     try:
         style = CONFIG['BOOKSTRAP_THEME']

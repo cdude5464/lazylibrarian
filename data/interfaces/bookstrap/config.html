@@ -66,6 +66,8 @@
                 <div class="col-md-6">
                   <fieldset>
                     <legend>${_('Appearance')}</legend>
+                    <div class="row">
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="ui_language">${_('Interface language:')}</label>
                       <select id="ui_language" name="ui_language" class="form-control">
@@ -77,6 +79,8 @@
                         %endfor
                       </select>
                     </div>
+                    </div>
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="http_look">${_('Interface:')}</label>
                       <select id="http_look" name="http_look" class="form-control">
@@ -92,6 +96,10 @@
                         <input type="checkbox" name="use_bookstrap" id="bookstrap" value="1" ${checked} />
                         ${_('Use Bookstrap')}</label>
                     </div>
+                    </div>
+                    </div>
+                    <div class="row">
+                    <div class="col-sm-6">
                     <fieldset id="bookstrap_options">
                       <div class="form-group">
                         <label for="bookstrap_theme" class="control-label">${_('Bootswatch Theme:')}</label>
@@ -103,6 +111,8 @@
                         </select>
                       </div>
                     </fieldset>
+                    </div>
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="homepage">${_('Homepage:')}</label>
                       <select id="homepage" name="homepage" class="form-control">
@@ -117,35 +127,26 @@
                         %endfor
                       </select>
                     </div>
+                    </div>
+                    </div>
                     <%
                       appearance_groups = [
-                        (_('Show in the menu:'), [('ebook_tab', 'EBOOK_TAB', _('Show eBooks')),
-                                                  ('audio_tab', 'AUDIO_TAB', _('Show AudioBooks')),
-                                                  ('mag_tab', 'MAG_TAB', _('Show Magazines')),
-                                                  ('comic_tab', 'COMIC_TAB', _('Show Comics')),
-                                                  ('series_tab', 'SERIES_TAB', _('Show Series'))]),
-                        (_('Lists:'), [('ratestars', 'RATESTARS', _('Show rating as stars')),
-                                       ('toggles', 'TOGGLES', _('Show column toggles')),
-                                       ('show_genres', 'SHOW_GENRES', _('Show genres')),
-                                       ('show_reason', 'SHOW_REASON', _('Show reason author was added')),
-                                       ('sort_surname', 'SORT_SURNAME', _('Show author surname first')),
-                                       ('sort_definite', 'SORT_DEFINITE', _('Show titles ignoring article (The, A)')),
+                        (_('Show in the menu:'), [('ebook_tab', 'EBOOK_TAB', _('eBooks')),
+                                                  ('audio_tab', 'AUDIO_TAB', _('AudioBooks')),
+                                                  ('mag_tab', 'MAG_TAB', _('Magazines')),
+                                                  ('comic_tab', 'COMIC_TAB', _('Comics')),
+                                                  ('series_tab', 'SERIES_TAB', _('Series'))]),
+                        (_('Lists:'), [('ratestars', 'RATESTARS', _('Rating as stars')),
+                                       ('toggles', 'TOGGLES', _('Column toggles')),
+                                       ('show_genres', 'SHOW_GENRES', _('Genres')),
+                                       ('show_reason', 'SHOW_REASON', _('Reason author was added')),
+                                       ('sort_surname', 'SORT_SURNAME', _('Author surname first')),
+                                       ('sort_definite', 'SORT_DEFINITE', _('Titles ignoring article (The, A)')),
                                        ('ignore_paused', 'IGNORE_PAUSED', _('Ignore paused authors'))]),
                       ]
                     %>
                     %for group_label, boxes in appearance_groups:
-                    <div class="form-group">
-                      <label class="control-label">${group_label}</label>
-                      <div class="checkbox-grid">
-                        %for name, key, box_label in boxes:
-                        <div class="checkbox">
-                          <label for="${name}">
-                            <input type="checkbox" id="${name}" name="${name}" value="1"${' checked="checked"' if CONFIG[key] else ''} />
-                            ${box_label}</label>
-                        </div>
-                        %endfor
-                      </div>
-                    </div>
+                    ${enable_grid(boxes, group_label)}
                     %endfor
                   </fieldset>
                   <fieldset>
@@ -163,10 +164,10 @@
                       <label for="${name}" class="control-label">${label}</label>
                       <select id="${name}" name="${name}" class="form-control">
                         %if picker['other'] is not None:
-                        <option value="${picker['other']['format'] | h}" selected>${picker['other']['example'] | h} (${picker['other']['format'] | h})</option>
+                        <option value="${picker['other']['format'] | h}" selected>${picker['other']['example'] | h}</option>
                         %endif
                         %for fmt in picker['formats']:
-                        <option value="${fmt['format'] | h}"${' selected' if fmt['format'] == picker['selected'] else ''}>${fmt['example'] | h} (${fmt['format'] | h})</option>
+                        <option value="${fmt['format'] | h}"${' selected' if fmt['format'] == picker['selected'] else ''}>${fmt['example'] | h}</option>
                         %endfor
                       </select>
                       <span class="help-block">${help}</span>
@@ -254,28 +255,13 @@
                         <input type="number" id="logsize" name="logsize" value="${CONFIG['LOGSIZE']}" class="form-control" placeholder="${_('Log File Size') | h}">
                       </div>
 
-                      <div class="row checkbox">
-                        <div class="col-md-6">
-                          <% checked = 'checked="checked"' if CONFIG['LOGREDACT'] else '' %>
-                          <label for="logredact" class="control-label">
-                          <input type="checkbox" id="logredact" name="logredact" value="1" ${checked} />
-                          ${_('Redact on-screen log')}</label>
-                        </div>
-                        <div class="col-md-6">
-                          <% checked = 'checked="checked"' if CONFIG['HOSTREDACT'] else '' %>
-                          <label for="hostredact" class="control-label">
-                          <input type="checkbox" id="hostredact" name="hostredact" value="1" ${checked} />
-                          ${_('Also redact hostnames')}</label>
-                        </div>
-                      </div>
-                      <div class="row checkbox">
-                        <div class="col-md-6">
-                        <% checked = 'checked="checked"' if CONFIG['LOGFILEREDACT'] else '' %>
-                      <label for="logfileredact" class="control-label">
-                      <input type="checkbox" id="logfileredact" name="logfileredact" value="1" ${checked} />
-                          ${_('Redact logs saved to disc')}</label>
-                          </div>
-                      </div>
+                      <%
+                        redact_boxes = [('logredact', 'LOGREDACT', _('On-screen log')),
+                                        ('hostredact', 'HOSTREDACT', _('Hostnames')),
+                                        ('logfileredact', 'LOGFILEREDACT', _('Log files saved to disc'))]
+                      %>
+                      ## TRANSLATORS: label above the checkboxes that hide sensitive data (keys, passwords, hostnames) in the logs
+                      ${enable_grid(redact_boxes, _('Redact:'))}
                       <fieldset id=debug_options>
                       <legend>${_('Additional Debug Logging')}</legend>
                       <div class="row checkbox">
@@ -4164,10 +4150,14 @@
 <!-- form -->
 </form>
 </%def>
-<%def name="enable_grid(boxes)">
+<%def name="enable_grid(boxes, label=None)">
   <div class="form-group">
+    %if label is None:
     ## TRANSLATORS: label above the checkboxes that switch notification services or download clients on
     <label class="control-label">${_('Enable:')}</label>
+    %else:
+    <label class="control-label">${label}</label>
+    %endif
     <div class="checkbox-grid">
       %for name, key, box_label in boxes:
       <div class="checkbox">

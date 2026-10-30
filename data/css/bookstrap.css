@@ -123,7 +123,7 @@ textarea#telemetry_data {
 }
 .checkbox-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     column-gap: 16px;
 }
 .checkbox-grid .checkbox {

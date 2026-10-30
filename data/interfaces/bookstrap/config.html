@@ -570,16 +570,22 @@
                     <fieldset id="api_options">
                       <div class="form-group">
                         <label for="api_key">${_('API Full Access key')}</label>
-                        <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
-                        <br>
+                        <div class="input-group">
+                          <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Full Access key:')} <strong>${CONFIG['API_KEY']}</strong></small>
                       </div>
                       <div class="form-group">
-                        <label for="api_key">${_('API Read-Only key')}</label>
-                        <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
-                        <br>
+                        <label for="api_ro_key">${_('API Read-Only key')}</label>
+                        <div class="input-group">
+                          <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Read-Only key:')} <strong>${CONFIG['API_RO_KEY']}</strong></small>
                       </div>
                     </fieldset>

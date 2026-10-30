@@ -134,7 +134,7 @@
     </template>
   </div>
 
-  <div class="llb-grid">
+  <div class="llb-grid" :class="'llb-v-' + view">
     <template x-for="b in books" :key="b.id">
       <article class="llb-card d-flex flex-column gap-1" :class="sel[b.id] && 'llb-sel'" tabindex="0"
                @click="open(b, $event)" @keydown.enter.prevent="open(b, $event)" @keydown.space.prevent="open(b, $event)">
@@ -148,7 +148,7 @@
           <span class="llb-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
         </div>
         <span class="llb-title" :title="b.title" x-text="b.title"></span>
-        <span class="llb-sub text-body-secondary">
+        <span class="llb-sub llb-author text-body-secondary">
           %if perm&lazylibrarian.perm_authorbooks:
           <a :href="'author_page?library=eBook&authorid=' + encodeURIComponent(b.authorId)" x-text="b.author"></a>
           %else:
@@ -156,9 +156,9 @@
           %endif
         </span>
         <template x-if="b.series">
-          <span class="llb-sub text-body-secondary"><a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span>
+          <span class="llb-sub llb-series text-body-secondary"><a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span>
         </template>
-        <div class="d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
+        <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
           <span class="badge rounded-pill llb-pill" :class="pillClass(b.status)" x-text="llStatus(b.status)"></span>
           <template x-if="b.status === 'Open'">
             <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=eBook'">${_('Open')}</a>
@@ -212,6 +212,7 @@ document.addEventListener('alpine:init', function () {
     select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')},
     pickFirst: ${_js('Select at least one book first')}, searching: ${_js('Searching...')},
     failed: ${_js('Something went wrong, try again')}, all: ${_js('All')},
+    grid: ${_js('Covers')}, compact: ${_js('Compact')}, list: ${_js('List')},
     selected: ${_jsn('%(count)s selected', '%(count)s selected')},
     books: ${_jsn('%(count)s book', '%(count)s books')}
   };
@@ -235,7 +236,9 @@ document.addEventListener('alpine:init', function () {
   Alpine.data('llBooks', function () {
     return {
       T: T, books: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
-      q: '', f: '', sort: '2:asc', selecting: false, sel: {}, toastText: '',
+      q: '', f: '', sort: '2:asc', selecting: false, sel: {}, toastText: '', view: 'grid',
+      views: [{id: 'grid', icon: 'fa-th-large', label: T.grid}, {id: 'compact', icon: 'fa-th', label: T.compact},
+              {id: 'list', icon: 'fa-list', label: T.list}],
       chips: [{f: '', label: T.all}].concat(['Open', 'Wanted', 'Snatched', 'Have', 'Skipped'].map(function (s) {
         return {f: s, label: llStatus(s)};
       })),
@@ -244,6 +247,7 @@ document.addEventListener('alpine:init', function () {
 
       start: function () {
         var self = this;
+        try { var v = localStorage.getItem('llb-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('llb-books') || 'null');
           if (saved) { this.q = saved.q || ''; this.f = saved.f || ''; this.sort = saved.sort || this.sort; }
@@ -312,6 +316,16 @@ document.addEventListener('alpine:init', function () {
           return;
         }
         bookinfo(b.id);
+      },
+
+      setView: function (v) {
+        this.view = v;
+        try { localStorage.setItem('llb-view', v); } catch (e) {}
+        var self = this;
+        // a smaller view can leave the end of the list on screen, so fetch more if needed
+        this.$nextTick(function () {
+          if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+        });
       },
 
       stopSelect: function () { this.selecting = false; this.sel = {}; },

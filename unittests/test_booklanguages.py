@@ -12,6 +12,8 @@ from lazylibrarian.booklanguages import (
     GB_COUNTRIES,
     anna_search_languages,
     country_picker,
+    language_filter_options,
+    language_filter_sql,
     language_picker,
     magazine_language_picker,
     search_language_picker,
@@ -195,3 +197,27 @@ class BookLanguagesTest(unittest.TestCase):
         shown = [lang['value'] for lang in picker['languages'] if lang['shown']]
         self.assertEqual(shown[0], 'DE')
         self.assertEqual(sorted(shown), ['CS', 'DE', 'SK'])
+
+    def test_language_filter_once_each(self):
+        # each language once whatever codes the sources used, unknown values kept once
+        values = ['cs', 'slo', 'pl', 'cze', 'en', 'nl', 'Czech', 'Slovak', 'ger', None, '',
+                  'Unknown', 'unknown', 'cs, sk', 'Klingon']
+        options = language_filter_options(values)
+        self.assertEqual([option['BookLang'] for option in options],
+                         ['Czech', 'Dutch', 'English', 'German', 'Klingon', 'Polish', 'Slovak', 'Unknown'])
+
+    def test_language_filter_sql(self):
+        import sqlite3
+        db = sqlite3.connect(':memory:')
+        db.execute('CREATE TABLE books (BookLang TEXT)')
+        for value in ['cs', 'cze', 'Czech', 'cs, sk', 'slo', 'Slovak', 'ger', 'Klingon', None]:
+            db.execute('INSERT INTO books VALUES (?)', (value,))
+
+        def found(lang):
+            condition, args = language_filter_sql(lang)
+            return sorted(row[0] for row in db.execute(f'SELECT BookLang FROM books WHERE {condition}', args))
+
+        self.assertEqual(found('Czech'), ['Czech', 'cs', 'cs, sk', 'cze'])
+        self.assertEqual(found('Slovak'), ['Slovak', 'cs, sk', 'slo'])
+        self.assertEqual(found('Klingon'), ['Klingon'])
+        db.close()

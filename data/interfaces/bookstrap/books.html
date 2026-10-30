@@ -36,7 +36,7 @@
             <select class="form-control input-sm" name="chooselanguage" id="chooselanguage">
             <option value="">${_('All')}</option>
             %for language in languages:
-            <option value="${language['BookLang']}">${language['BookLang']}</option>
+            <option value="${language['BookLang'] | h}">${language['label'] | h}</option>
             %endfor
             </select>
           </div>
@@ -128,7 +128,7 @@
         $('#chooselanguage').change(function(){
             window.location = 'books?booklang=' + $(this).val()
         })
-        $('#chooselanguage').val(getUrlVars()['book_lang']);
+        $('#chooselanguage').val(decodeURIComponent(getUrlVars()['booklang'] || ''));
 
         var oTable = $('#book_table').DataTable({
             "dom": "<'row'<'col-xs-6'l><'col-xs-6'f>><'row'<'col-sm-12'tr>><'row'<'col-sm-5'i><'col-sm-7'p>>",

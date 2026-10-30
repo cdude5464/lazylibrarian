@@ -252,14 +252,19 @@ def annas_hosts_update():
 
 
 def anna_languages(value: str) -> list[Language]:
-    """ The Anna's Archive languages in a comma separated ANNA_SEARCH_LANG value, unknown codes
-        are skipped. An empty list searches all languages, as does ANY anywhere in the value """
-    codes = [code.strip().upper() for code in get_list(value, ',')]
-    if 'ANY' in codes:
+    """ The Anna's Archive languages in a comma separated ANNA_SEARCH_LANG value, codes it doesn't
+        know are skipped. Any code or English name of a language counts, and the country codes in
+        COUNTRY_LANGUAGES (CZ for Czech). An empty list searches all languages, as does ANY anywhere
+        in the value """
+    from lazylibrarian.booklanguages import search_language_value
+
+    codes = [code.strip() for code in get_list(value, ',')]
+    if 'ANY' in (code.upper() for code in codes):
         return []
     languages = []
     for code in codes:
-        if code in Language.__members__ and Language[code] not in languages:
+        code = search_language_value(code, 'anna')
+        if code and Language[code] not in languages:
             languages.append(Language[code])
     return languages
 

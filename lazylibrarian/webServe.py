@@ -8280,7 +8280,10 @@ class WebInterface:
             displaylength = int(iDisplayLength)
             CONFIG.set_int('DISPLAYLENGTH', displaylength)
 
-            filtered, total = LOGCONFIG.get_ui_logrows(sSearch)
+            # minimum level from the Level select, eg WARNING; anything else shows all levels
+            minlevel = logging.getLevelName(str(kwargs.get('level', '')).upper())
+            minlevel = minlevel if isinstance(minlevel, int) else 0
+            filtered, total = LOGCONFIG.get_ui_logrows(sSearch, minlevel)
 
             sortcolumn = int(iSortCol_0)
             filtered.sort(key=lambda y: y[sortcolumn] if y[sortcolumn] is not None else '',

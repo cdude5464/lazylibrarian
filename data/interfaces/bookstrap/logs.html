@@ -35,6 +35,13 @@
           <option value="300">${_('5 Minutes')}</option>
           <option value="600">${_('10 Minutes')}</option>
         </select>
+        <label for="loglevel" class="">${_('Level')}</label>
+        <select id="loglevel" class="button btn btn-sm btn-primary">
+          <option value="" selected="selected">${_('All levels')}</option>
+          <option value="INFO">${_('Info and above')}</option>
+          <option value="WARNING">${_('Warnings and errors')}</option>
+          <option value="ERROR">${_('Errors only')}</option>
+        </select>
       </div>
     </div>
     %if CONFIG['TOGGLES']:
@@ -73,6 +80,16 @@
 <%def name="javascriptIncludes()">
   <script>
     $(document).ready(function() {
+        // remembered level filter, per browser
+        try {
+            var savedLevel = localStorage.getItem('ll_log_level');
+            if (savedLevel !== null) {
+                $('#loglevel').val(savedLevel);
+            }
+        } catch (e) {}
+        if ($('#loglevel').val() === null) {
+            $('#loglevel').val('');
+        }
         var oTable = $('#log_table').DataTable({
                 "bAutoWidth": false,
                 "aoColumnDefs": [
@@ -116,12 +133,19 @@
                 },
                 "fnServerData": function (sSource, aoData, fnCallback) {
                     // Add some extra data to the sender
+                    aoData.push({"name": "level", "value": $('#loglevel').val()});
                     $.getJSON(sSource, aoData, function (json) {
                         fnCallback(json)
                     });
                 }
             });
             $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
+            $('#loglevel').change(function() {
+                try {
+                    localStorage.setItem('ll_log_level', $(this).val());
+                } catch (e) {}
+                oTable.draw();
+            });
             //$(window).resize(function() {oTable.draw(false)});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();

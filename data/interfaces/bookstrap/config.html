@@ -3720,12 +3720,10 @@
                 %endif
                 %if CONFIG['MAG_TAB']:
                 <div class="col-md-6">
-                <br>
                 <legend>${_('Magazine Size Limits')}</legend>
                 ${size_limits('reject_magmin', 'REJECT_MAGMIN', 'reject_magsize', 'REJECT_MAGSIZE')}
                 </div>
                 <div class="col-md-12">
-                <br>
                 <legend>${_('Magazine Options (per title)')}</legend>
                 </div>
                 %for mag in config['magazines_list']:
@@ -3743,25 +3741,17 @@
                     <label for="genre_list[${mag['Title']}]" class="input-group-addon">${_('Genres')}</label>
                     <input type="text" id="genre_list[${mag['Title']}]" name="genre_list[${mag['Title']}]" value="${mag['Genre']}" class="form-control" placeholder="${_('Genre list') | h}">
                   </div>
-                  <div class="row">
-                    <div class="col-sm-4">
-                      <div class="input-group">
-                        <label for="datetype[${mag['Title']}]" class="input-group-addon">${_('Date Style')}</label>
-                        <input type="text" id="datetype[${mag['Title']}]" name="datetype[${mag['Title']}]" value="${mag['DateType']}" class="form-control" placeholder="auto">
-                      </div>
-                    </div>
-                    <div class="col-sm-4">
-                      <div class="input-group">
-                        <label for="coverpage[${mag['Title']}]" class="input-group-addon">${_('Cover Page')}</label>
-                        <input type="number" id="coverpage[${mag['Title']}]" name="coverpage[${mag['Title']}]" value="${mag['CoverPage']}" min=1 class="form-control" placeholder="1">
-                      </div>
-                    </div>
-                    <div class="col-sm-4">
-                      <div class="input-group">
-                        <label for="language[${mag['Title']}]" class="input-group-addon">${_('Language')}</label>
-                        <input type="text" id="language[${mag['Title']}]" name="language[${mag['Title']}]" value="${mag['Language']}" class="form-control" placeholder="${_('For opf/pdf') | h}" title="${_('For opf/pdf') | h}">
-                      </div>
-                    </div>
+                  <div class="input-group">
+                    <label for="datetype[${mag['Title']}]" class="input-group-addon">${_('Date Style')}</label>
+                    <input type="text" id="datetype[${mag['Title']}]" name="datetype[${mag['Title']}]" value="${mag['DateType']}" class="form-control" placeholder="auto">
+                  </div>
+                  <div class="input-group">
+                    <label for="coverpage[${mag['Title']}]" class="input-group-addon">${_('Cover Page')}</label>
+                    <input type="number" id="coverpage[${mag['Title']}]" name="coverpage[${mag['Title']}]" value="${mag['CoverPage']}" min=1 class="form-control" placeholder="1">
+                  </div>
+                  <div class="input-group">
+                    <label for="language[${mag['Title']}]" class="input-group-addon">${_('Language')}</label>
+                    <input type="text" id="language[${mag['Title']}]" name="language[${mag['Title']}]" value="${mag['Language']}" class="form-control" placeholder="${_('For opf/pdf') | h}" title="${_('For opf/pdf') | h}">
                   </div>
                 </div>
                 %endfor
@@ -4144,21 +4134,15 @@
 </form>
 </%def>
 <%def name="size_limits(min_id, min_key, max_id, max_key)">
-  <div class="row">
-    <div class="col-sm-6 form-group">
-      <div class="input-group">
-        <label for="${min_id}" class="input-group-addon">${_('Min size')}</label>
-        <input type="number" id="${min_id}" name="${min_id}" value="${CONFIG[min_key]}" class="form-control" placeholder="${_('Reject minimum size') | h}">
-        <span class="input-group-addon">${_('Mb')}</span>
-      </div>
-    </div>
-    <div class="col-sm-6 form-group">
-      <div class="input-group">
-        <label for="${max_id}" class="input-group-addon">${_('Max size')}</label>
-        <input type="number" id="${max_id}" name="${max_id}" value="${CONFIG[max_key]}" class="form-control" placeholder="${_('Reject maximum size') | h}">
-        <span class="input-group-addon">${_('Mb')}</span>
-      </div>
-    </div>
+  <div class="input-group">
+    <label for="${min_id}" class="input-group-addon">${_('Min size')}</label>
+    <input type="number" id="${min_id}" name="${min_id}" value="${CONFIG[min_key]}" class="form-control" placeholder="${_('Reject minimum size') | h}">
+    <span class="input-group-addon">${_('Mb')}</span>
+  </div>
+  <div class="input-group">
+    <label for="${max_id}" class="input-group-addon">${_('Max size')}</label>
+    <input type="number" id="${max_id}" name="${max_id}" value="${CONFIG[max_key]}" class="form-control" placeholder="${_('Reject maximum size') | h}">
+    <span class="input-group-addon">${_('Mb')}</span>
   </div>
 </%def>
 <%def name="enable_grid(boxes, label=None)">

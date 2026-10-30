@@ -141,8 +141,8 @@ textarea#telemetry_data {
     padding-top: 0;
 }
 @media (min-width: 992px) {
-    .configtable .row > .col-md-6 > fieldset:first-child > legend:first-child,
-    .configtable .row > .col-md-6 > legend:first-child {
+    .configtable .row > .col-md-6:nth-child(-n+2) > fieldset:first-child > legend:first-child,
+    .configtable .row > .col-md-6:nth-child(-n+2) > legend:first-child {
         padding-top: 0;
     }
 }

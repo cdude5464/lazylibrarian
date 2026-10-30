@@ -2907,29 +2907,20 @@
                     %endfor
                   </select>
                 </div>
-              %if APPRISE_VER and APPRISE_VER[0].isdigit():
-                <div class="checkbox">
-                  <% checked = 'checked="checked"' if CONFIG['HIDE_OLD_NOTIFIERS'] else '' %>
-                  <label for="hide_old_notifiers" class="control-label">
-                    <input type="checkbox" id="hide_old_notifiers" name="hide_old_notifiers" value="1" ${checked} />
-                    ${_('Hide old notifiers')}</label>
-                </div>
-              %endif
               </div>
             </div>
             <%
-              old_notifiers = not CONFIG.get_bool('HIDE_OLD_NOTIFIERS')
-              notifier_boxes = []
-              if old_notifiers:
-                  notifier_boxes += [('use_twitter', 'USE_TWITTER', 'Twitter'), ('use_boxcar', 'USE_BOXCAR', 'Boxcar'),
+              notifier_boxes = [('use_twitter', 'USE_TWITTER', 'Twitter'), 
+                                     ('use_boxcar', 'USE_BOXCAR', 'Boxcar'),
                                      ('use_pushbullet', 'USE_PUSHBULLET', 'Pushbullet'),
                                      ('use_pushover', 'USE_PUSHOVER', 'Pushover'),
-                                     ('use_androidpn', 'USE_ANDROIDPN', 'AndroidPN')]
-              notifier_boxes.append(('use_email', 'USE_EMAIL', _('Email')))
-              if old_notifiers:
-                  notifier_boxes += [('use_prowl', 'USE_PROWL', 'Prowl'), ('use_growl', 'USE_GROWL', 'Growl'),
-                                     ('use_telegram', 'USE_TELEGRAM', 'Telegram'), ('use_slack', 'USE_SLACK', 'Slack')]
-              notifier_boxes.append(('use_custom', 'USE_CUSTOM', _('Custom')))
+                                     ('use_androidpn', 'USE_ANDROIDPN', 'AndroidPN'),
+                                     ('use_email', 'USE_EMAIL', _('Email')),
+                                     ('use_prowl', 'USE_PROWL', 'Prowl'), 
+                                     ('use_growl', 'USE_GROWL', 'Growl'),
+                                     ('use_telegram', 'USE_TELEGRAM', 'Telegram'), 
+                                     ('use_slack', 'USE_SLACK', 'Slack'),
+                                     ('use_custom', 'USE_CUSTOM', _('Custom'))]
             %>
             <div class="row">
               <div class="col-md-12">
@@ -2938,7 +2929,6 @@
             </div>
             <div class="row">
               <div class="col-md-6">
-              %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
                 <div id="twitteroptions">
                   <fieldset>
                     <legend>Twitter</legend>
@@ -3104,7 +3094,7 @@
                     </div>
                   </fieldset>
                 </div>
-              %endif
+              
                 <div id="emailoptions">
                   <fieldset>
                     <legend>${_('Email')}</legend>
@@ -3207,7 +3197,7 @@
                 </div>
               </div>
               <div class="col-md-6">
-              %if CONFIG.get_bool('HIDE_OLD_NOTIFIERS') == False:
+
                 <div id="prowloptions">
                   <fieldset>
                     <legend>Prowl</legend>
@@ -3349,7 +3339,7 @@
                     </div>
                   </fieldset>
                 </div>
-              %endif
+
                 <div id="customoptions">
                   <fieldset>
                     <legend>${_('Custom')}</legend>

@@ -35,11 +35,24 @@
   <link rel="apple-touch-icon" href="images/ll.png">
   <link rel="manifest" href="images/manifest.json">
   <script>
-    // follow the system light/dark setting
+    // light or dark: the choice made with the theme button, otherwise the system setting
     (function () {
       var m = window.matchMedia('(prefers-color-scheme: dark)');
-      function set() { document.documentElement.setAttribute('data-bs-theme', m.matches ? 'dark' : 'light'); }
-      set(); if (m.addEventListener) { m.addEventListener('change', set); }
+      function pref() {
+        try { var t = localStorage.getItem('ll-theme'); return (t === 'light' || t === 'dark') ? t : 'auto'; } catch (e) { return 'auto'; }
+      }
+      window.llApplyTheme = function () {
+        var p = pref(), root = document.documentElement;
+        root.setAttribute('data-bs-theme', p === 'auto' ? (m.matches ? 'dark' : 'light') : p);
+        root.setAttribute('data-ll-theme', p);
+      };
+      window.llCycleTheme = function () {
+        var next = {auto: 'light', light: 'dark', dark: 'auto'}[pref()];
+        try { localStorage.setItem('ll-theme', next); } catch (e) {}
+        window.llApplyTheme();
+      };
+      window.llApplyTheme();
+      if (m.addEventListener) { m.addEventListener('change', window.llApplyTheme); }
     })();
   </script>
   <%doc>
@@ -61,6 +74,10 @@
     .btn-ll { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
               --bs-btn-hover-bg: var(--ll-accent); --bs-btn-hover-border-color: var(--ll-accent); --bs-btn-hover-color: var(--ll-accent-contrast); }
     [x-cloak] { display: none !important; }
+    .ll-theme-btn { background: none; border: 0; }
+    .ll-theme-btn .ll-t { display: none; }
+    [data-ll-theme="auto"] .ll-theme-btn .ll-t-auto, [data-ll-theme="light"] .ll-theme-btn .ll-t-light,
+    [data-ll-theme="dark"] .ll-theme-btn .ll-t-dark { display: inline; }
   </style>
   <script>
     // translation helpers, same contract as the bookstrap interface (see lazylibrarian/i18n.py)
@@ -102,6 +119,13 @@
           %endfor
         </ul>
         <ul class="navbar-nav gap-1">
+          <li class="nav-item">
+            <button type="button" class="nav-link ll-theme-btn" onclick="llCycleTheme()" aria-label="${_('Switch theme') | h}" title="${_('Switch theme') | h}">
+              <i class="fa fa-adjust ll-t ll-t-auto" aria-hidden="true"></i><span class="ll-t ll-t-auto d-lg-none"> ${_('Theme: automatic')}</span>
+              <i class="fa fa-sun ll-t ll-t-light" aria-hidden="true"></i><span class="ll-t ll-t-light d-lg-none"> ${_('Theme: light')}</span>
+              <i class="fa fa-moon ll-t ll-t-dark" aria-hidden="true"></i><span class="ll-t ll-t-dark d-lg-none"> ${_('Theme: dark')}</span>
+            </button>
+          </li>
           %if perm & lazylibrarian.perm_config:
           <li class="nav-item"><a class="nav-link" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
             %if lazylibrarian.WHATS_NEW:

@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-10-30 11:15+0000\n"
+"POT-Creation-Date: 2026-10-30 11:46+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -32,7 +32,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:1892
 #: data/interfaces/bookstrap/config.html:2078
 #: data/interfaces/bookstrap/config.html:2079
-#: data/interfaces/bookstrap/config.html:3781
+#: data/interfaces/bookstrap/config.html:3771
 #: data/interfaces/bookstrap/editbook.html:32
 #: data/interfaces/bookstrap/index.html:37
 #: data/interfaces/bookstrap/issues.html:10
@@ -106,7 +106,7 @@ msgstr ""
 
 #: data/interfaces/bookstrap/audio.html:36
 #: data/interfaces/bookstrap/books.html:35
-#: data/interfaces/bookstrap/config.html:3793
+#: data/interfaces/bookstrap/config.html:3783
 msgid "Language"
 msgstr ""
 
@@ -1780,7 +1780,7 @@ msgstr ""
 
 #: data/interfaces/bookstrap/comics.html:177
 #: data/interfaces/bookstrap/comics.html:179
-#: data/interfaces/bookstrap/config.html:4209
+#: data/interfaces/bookstrap/config.html:4199
 #: data/interfaces/bookstrap/magazines.html:184
 #: data/interfaces/bookstrap/magazines.html:186
 msgid "Show"
@@ -1890,13 +1890,13 @@ msgid "Filters"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:56
-#: data/interfaces/bookstrap/config.html:4038
+#: data/interfaces/bookstrap/config.html:4028
 msgid "Languages"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:58
-#: data/interfaces/bookstrap/config.html:3751
-#: data/interfaces/bookstrap/config.html:3785
+#: data/interfaces/bookstrap/config.html:3741
+#: data/interfaces/bookstrap/config.html:3775
 msgid "Genres"
 msgstr ""
 
@@ -2027,7 +2027,7 @@ msgid "Server Details"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:181
-#: data/interfaces/bookstrap/config.html:3281
+#: data/interfaces/bookstrap/config.html:3271
 msgid "Host"
 msgstr ""
 
@@ -2101,7 +2101,7 @@ msgid "Quiet"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:243
-#: data/interfaces/bookstrap/config.html:3248
+#: data/interfaces/bookstrap/config.html:3238
 msgid "Normal"
 msgstr ""
 
@@ -2309,7 +2309,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:549
 #: data/interfaces/bookstrap/config.html:1092
 #: data/interfaces/bookstrap/config.html:1141
-#: data/interfaces/bookstrap/config.html:3099
+#: data/interfaces/bookstrap/config.html:3089
 #: data/interfaces/bookstrap/login.html:20
 #: data/interfaces/bookstrap/users.html:33
 msgid "Username"
@@ -2324,7 +2324,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:551
 #: data/interfaces/bookstrap/config.html:1997
 #: data/interfaces/bookstrap/config.html:2029
-#: data/interfaces/bookstrap/config.html:3283
+#: data/interfaces/bookstrap/config.html:3273
 #: data/interfaces/bookstrap/login.html:24
 #: data/interfaces/bookstrap/profile.html:69
 #: data/interfaces/bookstrap/users.html:58
@@ -3392,7 +3392,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:1683
 #: data/interfaces/bookstrap/config.html:1865
 #: data/interfaces/bookstrap/config.html:2065
-#: data/interfaces/bookstrap/config.html:3399
+#: data/interfaces/bookstrap/config.html:3389
 msgid "Name"
 msgstr ""
 
@@ -3456,7 +3456,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:2003
 #: data/interfaces/bookstrap/config.html:2047
 #: data/interfaces/bookstrap/config.html:2084
-#: data/interfaces/bookstrap/config.html:3234
+#: data/interfaces/bookstrap/config.html:3224
 msgid "Priority"
 msgstr ""
 
@@ -3492,7 +3492,7 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:2008
 #: data/interfaces/bookstrap/config.html:2052
 #: data/interfaces/bookstrap/config.html:2089
-#: data/interfaces/bookstrap/config.html:3413
+#: data/interfaces/bookstrap/config.html:3403
 #: data/interfaces/bookstrap/profile.html:64
 #: data/interfaces/bookstrap/users.html:96
 #: lazylibrarian/notifiers/telegram.py:72
@@ -3503,8 +3503,8 @@ msgstr ""
 #: data/interfaces/bookstrap/config.html:1658
 #: data/interfaces/bookstrap/config.html:1977
 #: data/interfaces/bookstrap/config.html:2057
-#: data/interfaces/bookstrap/config.html:3527
-#: data/interfaces/bookstrap/config.html:3616
+#: data/interfaces/bookstrap/config.html:3517
+#: data/interfaces/bookstrap/config.html:3606
 msgid "API Limit"
 msgstr ""
 
@@ -3747,8 +3747,8 @@ msgid "zlibrary host"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:2023
-#: data/interfaces/bookstrap/config.html:2928
-#: data/interfaces/bookstrap/config.html:3110
+#: data/interfaces/bookstrap/config.html:2918
+#: data/interfaces/bookstrap/config.html:3100
 #: data/interfaces/bookstrap/profile.html:20
 msgid "Email"
 msgstr ""
@@ -3785,7 +3785,7 @@ msgid "Daily Downloads: (used %(count)s)"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:2066
-#: data/interfaces/bookstrap/config.html:3400
+#: data/interfaces/bookstrap/config.html:3390
 msgid "name"
 msgstr ""
 
@@ -4690,364 +4690,360 @@ msgstr ""
 msgid "Same as the interface"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2915
-msgid "Hide old notifiers"
-msgstr ""
-
-#: data/interfaces/bookstrap/config.html:2932
-#: data/interfaces/bookstrap/config.html:3355
+#: data/interfaces/bookstrap/config.html:2923
+#: data/interfaces/bookstrap/config.html:3345
 msgid "Custom"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2950
-#: data/interfaces/bookstrap/config.html:2983
-#: data/interfaces/bookstrap/config.html:3009
-#: data/interfaces/bookstrap/config.html:3039
-#: data/interfaces/bookstrap/config.html:3077
-#: data/interfaces/bookstrap/config.html:3116
-#: data/interfaces/bookstrap/config.html:3219
-#: data/interfaces/bookstrap/config.html:3271
-#: data/interfaces/bookstrap/config.html:3299
-#: data/interfaces/bookstrap/config.html:3330
-#: data/interfaces/bookstrap/config.html:3361
+#: data/interfaces/bookstrap/config.html:2940
+#: data/interfaces/bookstrap/config.html:2973
+#: data/interfaces/bookstrap/config.html:2999
+#: data/interfaces/bookstrap/config.html:3029
+#: data/interfaces/bookstrap/config.html:3067
+#: data/interfaces/bookstrap/config.html:3106
+#: data/interfaces/bookstrap/config.html:3209
+#: data/interfaces/bookstrap/config.html:3261
+#: data/interfaces/bookstrap/config.html:3289
+#: data/interfaces/bookstrap/config.html:3320
+#: data/interfaces/bookstrap/config.html:3351
 msgid "Notify on snatch"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2956
-#: data/interfaces/bookstrap/config.html:2989
-#: data/interfaces/bookstrap/config.html:3015
-#: data/interfaces/bookstrap/config.html:3045
-#: data/interfaces/bookstrap/config.html:3083
-#: data/interfaces/bookstrap/config.html:3122
-#: data/interfaces/bookstrap/config.html:3225
-#: data/interfaces/bookstrap/config.html:3277
-#: data/interfaces/bookstrap/config.html:3305
-#: data/interfaces/bookstrap/config.html:3336
-#: data/interfaces/bookstrap/config.html:3367
+#: data/interfaces/bookstrap/config.html:2946
+#: data/interfaces/bookstrap/config.html:2979
+#: data/interfaces/bookstrap/config.html:3005
+#: data/interfaces/bookstrap/config.html:3035
+#: data/interfaces/bookstrap/config.html:3073
+#: data/interfaces/bookstrap/config.html:3112
+#: data/interfaces/bookstrap/config.html:3215
+#: data/interfaces/bookstrap/config.html:3267
+#: data/interfaces/bookstrap/config.html:3295
+#: data/interfaces/bookstrap/config.html:3326
+#: data/interfaces/bookstrap/config.html:3357
 msgid "Notify on download"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2960
+#: data/interfaces/bookstrap/config.html:2950
 msgid "Request Authorization"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2963
+#: data/interfaces/bookstrap/config.html:2953
 msgid "Twitter Key"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2964
+#: data/interfaces/bookstrap/config.html:2954
 msgid "Twitter Authorization Key"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2965
+#: data/interfaces/bookstrap/config.html:2955
 msgid ""
 "Enter the key from the twitter authorization page here, DO NOT press "
 "Enter or save the config. The key is single-use and will not be saved. "
 "Press [Verify Key] to complete authorization."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2968
+#: data/interfaces/bookstrap/config.html:2958
 msgid "Verify Key"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2971
+#: data/interfaces/bookstrap/config.html:2961
 msgid "Test Twitter"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2993
+#: data/interfaces/bookstrap/config.html:2983
 msgid "Boxcar Token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2994
+#: data/interfaces/bookstrap/config.html:2984
 msgid "Boxcar token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:2997
+#: data/interfaces/bookstrap/config.html:2987
 msgid "Test Boxcar"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3019
-#: data/interfaces/bookstrap/config.html:3020
+#: data/interfaces/bookstrap/config.html:3009
+#: data/interfaces/bookstrap/config.html:3010
 msgid "Pushbullet API"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3023
+#: data/interfaces/bookstrap/config.html:3013
 msgid "Device ID"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3024
+#: data/interfaces/bookstrap/config.html:3014
 msgid "Pushbullet DeviceID"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3027
+#: data/interfaces/bookstrap/config.html:3017
 msgid "Test Pushbullet"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3049
+#: data/interfaces/bookstrap/config.html:3039
 msgid "Pushover API"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3050
+#: data/interfaces/bookstrap/config.html:3040
 msgid "Pushover API Token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3053
-#: data/interfaces/bookstrap/config.html:3054
+#: data/interfaces/bookstrap/config.html:3043
+#: data/interfaces/bookstrap/config.html:3044
 msgid "Pushover Keys"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3057
-#: data/interfaces/bookstrap/config.html:3058
+#: data/interfaces/bookstrap/config.html:3047
+#: data/interfaces/bookstrap/config.html:3048
 msgid "Pushover Device"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3061
-#: data/interfaces/bookstrap/config.html:3062
+#: data/interfaces/bookstrap/config.html:3051
+#: data/interfaces/bookstrap/config.html:3052
 msgid "Pushover Priority"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3065
+#: data/interfaces/bookstrap/config.html:3055
 msgid "Test Pushover"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3091
+#: data/interfaces/bookstrap/config.html:3081
 msgid "Broadcast notification"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3095
-#: data/interfaces/bookstrap/config.html:3096
+#: data/interfaces/bookstrap/config.html:3085
+#: data/interfaces/bookstrap/config.html:3086
 msgid "AndroidPN Notification URL"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3100
+#: data/interfaces/bookstrap/config.html:3090
 msgid "AndroidPN Username"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3103
+#: data/interfaces/bookstrap/config.html:3093
 msgid "Test AndroidPN"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3130
+#: data/interfaces/bookstrap/config.html:3120
 msgid "Attach book on download"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3135
+#: data/interfaces/bookstrap/config.html:3125
 msgid "Email From"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3136
+#: data/interfaces/bookstrap/config.html:3126
 msgid "Email From Address"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3139
+#: data/interfaces/bookstrap/config.html:3129
 msgid "Email To"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3140
+#: data/interfaces/bookstrap/config.html:3130
 msgid "Email To Address"
+msgstr ""
+
+#: data/interfaces/bookstrap/config.html:3135
+#: data/interfaces/bookstrap/config.html:3136
+msgid "SMTP Server"
+msgstr ""
+
+#: data/interfaces/bookstrap/config.html:3139
+#: data/interfaces/bookstrap/config.html:3140
+msgid "SMTP Port"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3145
 #: data/interfaces/bookstrap/config.html:3146
-msgid "SMTP Server"
+msgid "SMTP User"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3149
 #: data/interfaces/bookstrap/config.html:3150
-msgid "SMTP Port"
-msgstr ""
-
-#: data/interfaces/bookstrap/config.html:3155
-#: data/interfaces/bookstrap/config.html:3156
-msgid "SMTP User"
-msgstr ""
-
-#: data/interfaces/bookstrap/config.html:3159
-#: data/interfaces/bookstrap/config.html:3160
 msgid "SMTP Password"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3182
+#: data/interfaces/bookstrap/config.html:3172
 msgid "Enable Email Custom Type (requires full Calibre install)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3185
+#: data/interfaces/bookstrap/config.html:3175
 msgid ""
 "Send a different file type than the one downloaded and convert if "
 "necessary. Useful if you download ePUB files but need to send a MOBI to a"
 " Kindle. Only file types listed here will be converted."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3189
+#: data/interfaces/bookstrap/config.html:3179
 msgid "Filetype to send"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3195
+#: data/interfaces/bookstrap/config.html:3185
 msgid "Filetypes to convert from"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3204
+#: data/interfaces/bookstrap/config.html:3194
 msgid "Test Email"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3229
-#: data/interfaces/bookstrap/config.html:3230
+#: data/interfaces/bookstrap/config.html:3219
+#: data/interfaces/bookstrap/config.html:3220
 msgid "Prowl API Key"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3231
+#: data/interfaces/bookstrap/config.html:3221
 msgid "Separate multiple api keys with commas"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3244
+#: data/interfaces/bookstrap/config.html:3234
 msgid "Very Low"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3246
+#: data/interfaces/bookstrap/config.html:3236
 msgid "Moderate"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3250
+#: data/interfaces/bookstrap/config.html:3240
 msgid "High"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3252
+#: data/interfaces/bookstrap/config.html:3242
 msgid "Emergency"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3259
+#: data/interfaces/bookstrap/config.html:3249
 msgid "Test Prowl"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3284
-#: data/interfaces/bookstrap/config.html:3480
-#: data/interfaces/bookstrap/config.html:3492
-#: data/interfaces/bookstrap/config.html:3504
-#: data/interfaces/bookstrap/config.html:3516
-#: data/interfaces/bookstrap/config.html:3569
-#: data/interfaces/bookstrap/config.html:3581
-#: data/interfaces/bookstrap/config.html:3593
-#: data/interfaces/bookstrap/config.html:3605
+#: data/interfaces/bookstrap/config.html:3274
+#: data/interfaces/bookstrap/config.html:3470
+#: data/interfaces/bookstrap/config.html:3482
+#: data/interfaces/bookstrap/config.html:3494
+#: data/interfaces/bookstrap/config.html:3506
+#: data/interfaces/bookstrap/config.html:3559
+#: data/interfaces/bookstrap/config.html:3571
+#: data/interfaces/bookstrap/config.html:3583
+#: data/interfaces/bookstrap/config.html:3595
 msgid "none"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3287
+#: data/interfaces/bookstrap/config.html:3277
 msgid "Test Growl"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3309
-#: data/interfaces/bookstrap/config.html:3310
+#: data/interfaces/bookstrap/config.html:3299
+#: data/interfaces/bookstrap/config.html:3300
 msgid "Telegram Token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3310
+#: data/interfaces/bookstrap/config.html:3300
 #, python-format
 msgid "Contact %(bot)s to create a bot and get its token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3311
+#: data/interfaces/bookstrap/config.html:3301
 msgid "After creating the bot, send it a message from telegram to activate it"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3314
-#: data/interfaces/bookstrap/config.html:3315
+#: data/interfaces/bookstrap/config.html:3304
+#: data/interfaces/bookstrap/config.html:3305
 msgid "Telegram UserID"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3315
+#: data/interfaces/bookstrap/config.html:3305
 #, python-format
 msgid "Contact %(bot)s to get your user ID"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3318
+#: data/interfaces/bookstrap/config.html:3308
 msgid "Test Telegram"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3340
+#: data/interfaces/bookstrap/config.html:3330
 msgid "Slack Webhook URL (usually https://hooks.slack.com/services/)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3341
+#: data/interfaces/bookstrap/config.html:3331
 msgid "Slack Webhook URL"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3344
+#: data/interfaces/bookstrap/config.html:3334
 msgid "Slack Webhook Token (everything after https://hooks.slack.com/services/)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3345
+#: data/interfaces/bookstrap/config.html:3335
 msgid "Slack Webhook Token"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3348
+#: data/interfaces/bookstrap/config.html:3338
 msgid "Test Slack"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3371
+#: data/interfaces/bookstrap/config.html:3361
 msgid "Custom script to run"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3372
+#: data/interfaces/bookstrap/config.html:3362
 msgid "Custom Script"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3375
+#: data/interfaces/bookstrap/config.html:3365
 msgid "Test Custom"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3383
+#: data/interfaces/bookstrap/config.html:3373
 msgid "Apprise Notifiers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3384
+#: data/interfaces/bookstrap/config.html:3374
 #: data/interfaces/bookstrap/config_functions.js:294
 msgid "Supported Types"
 msgstr ""
 
 #. TRANSLATORS: one letter abbreviation of Snatch, the label of the 'Notify
 #. Snatch' checkbox
-#: data/interfaces/bookstrap/config.html:3402
+#: data/interfaces/bookstrap/config.html:3392
 msgctxt "apprise notifier"
 msgid "S"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3402
+#: data/interfaces/bookstrap/config.html:3392
 msgid "Notify Snatch"
 msgstr ""
 
 #. TRANSLATORS: one letter abbreviation of Download, the label of the 'Notify
 #. Download' checkbox
-#: data/interfaces/bookstrap/config.html:3405
+#: data/interfaces/bookstrap/config.html:3395
 msgctxt "apprise notifier"
 msgid "D"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3405
+#: data/interfaces/bookstrap/config.html:3395
 msgid "Notify Download"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3411
+#: data/interfaces/bookstrap/config.html:3401
 #, python-format
 msgid "URL #%(number)s see docs for format"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3423
+#: data/interfaces/bookstrap/config.html:3413
 msgid "Options"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3429
+#: data/interfaces/bookstrap/config.html:3419
 msgid "Show title in download notification"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3435
+#: data/interfaces/bookstrap/config.html:3425
 msgid "Show url in download notification"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3435
+#: data/interfaces/bookstrap/config.html:3425
 msgid "(WARNING may contain api key)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3446
+#: data/interfaces/bookstrap/config.html:3436
 msgid ""
 "You only need to alter category settings if auto-detection fails or "
 "returns incorrect values. If you make any alterations, tick the lock "
@@ -5055,365 +5051,365 @@ msgid ""
 "read from the provider and is not affected by lock."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3468
-#: data/interfaces/bookstrap/config.html:3557
+#: data/interfaces/bookstrap/config.html:3458
+#: data/interfaces/bookstrap/config.html:3547
 msgid "General Search:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3469
-#: data/interfaces/bookstrap/config.html:3558
+#: data/interfaces/bookstrap/config.html:3459
+#: data/interfaces/bookstrap/config.html:3548
 #: data/interfaces/bookstrap/editbook.html:24
 msgid "General Search"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3472
-#: data/interfaces/bookstrap/config.html:3561
+#: data/interfaces/bookstrap/config.html:3462
+#: data/interfaces/bookstrap/config.html:3551
 msgid "Extended Search:"
+msgstr ""
+
+#: data/interfaces/bookstrap/config.html:3463
+#: data/interfaces/bookstrap/config.html:3552
+msgid "Extended Search"
+msgstr ""
+
+#: data/interfaces/bookstrap/config.html:3469
+#: data/interfaces/bookstrap/config.html:3558
+msgid "eBook Search:"
 msgstr ""
 
 #: data/interfaces/bookstrap/config.html:3473
 #: data/interfaces/bookstrap/config.html:3562
-msgid "Extended Search"
-msgstr ""
-
-#: data/interfaces/bookstrap/config.html:3479
-#: data/interfaces/bookstrap/config.html:3568
-msgid "eBook Search:"
-msgstr ""
-
-#: data/interfaces/bookstrap/config.html:3483
-#: data/interfaces/bookstrap/config.html:3572
 msgid "eBook Categories:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3491
-#: data/interfaces/bookstrap/config.html:3580
+#: data/interfaces/bookstrap/config.html:3481
+#: data/interfaces/bookstrap/config.html:3570
 msgid "Magazine Search:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3495
-#: data/interfaces/bookstrap/config.html:3584
+#: data/interfaces/bookstrap/config.html:3485
+#: data/interfaces/bookstrap/config.html:3574
 msgid "Magazine Categories:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3503
-#: data/interfaces/bookstrap/config.html:3592
+#: data/interfaces/bookstrap/config.html:3493
+#: data/interfaces/bookstrap/config.html:3582
 msgid "AudioBook Search:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3507
-#: data/interfaces/bookstrap/config.html:3596
+#: data/interfaces/bookstrap/config.html:3497
+#: data/interfaces/bookstrap/config.html:3586
 msgid "AudioBook Categories:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3515
-#: data/interfaces/bookstrap/config.html:3604
+#: data/interfaces/bookstrap/config.html:3505
+#: data/interfaces/bookstrap/config.html:3594
 msgid "Comic Search:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3519
-#: data/interfaces/bookstrap/config.html:3608
+#: data/interfaces/bookstrap/config.html:3509
+#: data/interfaces/bookstrap/config.html:3598
 msgid "Comic Categories:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3526
-#: data/interfaces/bookstrap/config.html:3615
+#: data/interfaces/bookstrap/config.html:3516
+#: data/interfaces/bookstrap/config.html:3605
 #, python-format
 msgid "Daily API Limit: (used %(count)s)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3530
-#: data/interfaces/bookstrap/config.html:3619
+#: data/interfaces/bookstrap/config.html:3520
+#: data/interfaces/bookstrap/config.html:3609
 msgid "Rate Limit:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3531
-#: data/interfaces/bookstrap/config.html:3620
+#: data/interfaces/bookstrap/config.html:3521
+#: data/interfaces/bookstrap/config.html:3610
 msgid "Rate Limit"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3537
-#: data/interfaces/bookstrap/config.html:3626
+#: data/interfaces/bookstrap/config.html:3527
+#: data/interfaces/bookstrap/config.html:3616
 msgid "Tick to lock settings"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3639
+#: data/interfaces/bookstrap/config.html:3629
 msgid "Book Reject List"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3641
-#: data/interfaces/bookstrap/config.html:3652
+#: data/interfaces/bookstrap/config.html:3631
+#: data/interfaces/bookstrap/config.html:3642
+#: data/interfaces/bookstrap/config.html:3672
 #: data/interfaces/bookstrap/config.html:3682
-#: data/interfaces/bookstrap/config.html:3692
-#: data/interfaces/bookstrap/config.html:3778
-#: data/interfaces/bookstrap/config.html:4071
-#: data/interfaces/bookstrap/config.html:4077
+#: data/interfaces/bookstrap/config.html:3768
+#: data/interfaces/bookstrap/config.html:4061
+#: data/interfaces/bookstrap/config.html:4067
 msgid "Reject word list"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3642
-#: data/interfaces/bookstrap/config.html:3653
-#: data/interfaces/bookstrap/config.html:3693
+#: data/interfaces/bookstrap/config.html:3632
+#: data/interfaces/bookstrap/config.html:3643
+#: data/interfaces/bookstrap/config.html:3683
 msgid "Comma separated list of words to reject:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3643
-#: data/interfaces/bookstrap/config.html:3654
+#: data/interfaces/bookstrap/config.html:3633
+#: data/interfaces/bookstrap/config.html:3644
 msgid ""
 "Search results with any of these words in the title or filenames (where "
 "available) will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3650
+#: data/interfaces/bookstrap/config.html:3640
 msgid "AudioBook Reject List"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3660
+#: data/interfaces/bookstrap/config.html:3650
 msgid "Preferred Words List"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3662
+#: data/interfaces/bookstrap/config.html:3652
 msgid "Prefer word list"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3663
+#: data/interfaces/bookstrap/config.html:3653
 msgid "Comma separated list of words to prefer:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3664
+#: data/interfaces/bookstrap/config.html:3654
 msgid ""
 "Search results with any of these words in the title or filenames (where "
 "available) will be preferred"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3669
+#: data/interfaces/bookstrap/config.html:3659
 msgid "Publisher Reject List"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3671
+#: data/interfaces/bookstrap/config.html:3661
 msgid "Reject publishers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3672
+#: data/interfaces/bookstrap/config.html:3662
 msgid "Comma separated list of publishers to reject:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3673
+#: data/interfaces/bookstrap/config.html:3663
 msgid ""
 "Libraryscan will ignore books by these publishers on import if found in "
 "opf files or providers info"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3680
+#: data/interfaces/bookstrap/config.html:3670
 msgid "Magazine Reject/Allow Lists (all titles)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3683
+#: data/interfaces/bookstrap/config.html:3673
 msgid "Comma separated list of words to reject in titles and filenames:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3690
+#: data/interfaces/bookstrap/config.html:3680
 msgid "Comic Reject List (all titles)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3694
+#: data/interfaces/bookstrap/config.html:3684
 msgid "Search results with any of these words in the title will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3700
+#: data/interfaces/bookstrap/config.html:3690
 msgid "Extension Reject List (all types)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3702
+#: data/interfaces/bookstrap/config.html:3692
 msgid "Reject extensions list"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3703
+#: data/interfaces/bookstrap/config.html:3693
 msgid "Comma separated list of extensions to reject:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3704
+#: data/interfaces/bookstrap/config.html:3694
 msgid ""
 "Results with any of these extensions in the filenames will be rejected "
 "(where info is available)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3710
+#: data/interfaces/bookstrap/config.html:3700
 msgid "eBook Size Limits"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3712
-#: data/interfaces/bookstrap/config.html:3724
-#: data/interfaces/bookstrap/config.html:3736
-#: data/interfaces/bookstrap/config.html:3762
+#: data/interfaces/bookstrap/config.html:3702
+#: data/interfaces/bookstrap/config.html:3714
+#: data/interfaces/bookstrap/config.html:3726
+#: data/interfaces/bookstrap/config.html:3752
 msgid "Min size"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3713
-#: data/interfaces/bookstrap/config.html:3725
-#: data/interfaces/bookstrap/config.html:3737
-#: data/interfaces/bookstrap/config.html:3763
+#: data/interfaces/bookstrap/config.html:3703
+#: data/interfaces/bookstrap/config.html:3715
+#: data/interfaces/bookstrap/config.html:3727
+#: data/interfaces/bookstrap/config.html:3753
 msgid "Reject minimum size"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3714
-#: data/interfaces/bookstrap/config.html:3726
-#: data/interfaces/bookstrap/config.html:3738
-#: data/interfaces/bookstrap/config.html:3764
+#: data/interfaces/bookstrap/config.html:3704
+#: data/interfaces/bookstrap/config.html:3716
+#: data/interfaces/bookstrap/config.html:3728
+#: data/interfaces/bookstrap/config.html:3754
 msgid "Max size"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3715
-#: data/interfaces/bookstrap/config.html:3727
-#: data/interfaces/bookstrap/config.html:3739
-#: data/interfaces/bookstrap/config.html:3765
+#: data/interfaces/bookstrap/config.html:3705
+#: data/interfaces/bookstrap/config.html:3717
+#: data/interfaces/bookstrap/config.html:3729
+#: data/interfaces/bookstrap/config.html:3755
 msgid "Reject maximum size"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3716
-#: data/interfaces/bookstrap/config.html:3728
-#: data/interfaces/bookstrap/config.html:3740
-#: data/interfaces/bookstrap/config.html:3766
+#: data/interfaces/bookstrap/config.html:3706
+#: data/interfaces/bookstrap/config.html:3718
+#: data/interfaces/bookstrap/config.html:3730
+#: data/interfaces/bookstrap/config.html:3756
 msgid "Mb"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3722
+#: data/interfaces/bookstrap/config.html:3712
 msgid "AudioBook Size Limits"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3734
+#: data/interfaces/bookstrap/config.html:3724
 msgid "Comic Size Limits"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3745
+#: data/interfaces/bookstrap/config.html:3735
 msgid "Comic Options (per title)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3752
-#: data/interfaces/bookstrap/config.html:3786
+#: data/interfaces/bookstrap/config.html:3742
+#: data/interfaces/bookstrap/config.html:3776
 msgid "Genre list"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3760
+#: data/interfaces/bookstrap/config.html:3750
 msgid "Magazine Size Limits"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3771
+#: data/interfaces/bookstrap/config.html:3761
 msgid "Magazine Options (per title)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3777
+#: data/interfaces/bookstrap/config.html:3767
 msgid "Reject"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3782
+#: data/interfaces/bookstrap/config.html:3772
 msgid "Search expression"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3789
+#: data/interfaces/bookstrap/config.html:3779
 msgid "Date Style"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3791
+#: data/interfaces/bookstrap/config.html:3781
 msgid "Cover Page"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3795
+#: data/interfaces/bookstrap/config.html:3785
 msgid "For opf/pdf"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3809
+#: data/interfaces/bookstrap/config.html:3799
 msgid "Book Languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3815
+#: data/interfaces/bookstrap/config.html:3805
 msgid "Import languages:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3824
+#: data/interfaces/bookstrap/config.html:3814
 msgid "Other code, Enter to add"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3824
+#: data/interfaces/bookstrap/config.html:3814
 msgid "Other language code"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3829
-#: data/interfaces/bookstrap/config.html:3901
-#: data/interfaces/bookstrap/config.html:3954
+#: data/interfaces/bookstrap/config.html:3819
+#: data/interfaces/bookstrap/config.html:3891
+#: data/interfaces/bookstrap/config.html:3944
 msgid "Show fewer"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3830
-#: data/interfaces/bookstrap/config.html:3902
-#: data/interfaces/bookstrap/config.html:3955
+#: data/interfaces/bookstrap/config.html:3820
+#: data/interfaces/bookstrap/config.html:3892
+#: data/interfaces/bookstrap/config.html:3945
 #, python-format
 msgid "Show all %d options"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3833
+#: data/interfaces/bookstrap/config.html:3823
 msgid "Each language adds all of its codes, hover a language to see them."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3834
+#: data/interfaces/bookstrap/config.html:3824
 msgid ""
 "The numbers are the order: where a book is in more of these languages, "
 "the first one is preferred, eg Slovak before Czech on Databáze knih. "
 "Click a language off and on again to move it to the end."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3835
+#: data/interfaces/bookstrap/config.html:3825
 msgid ""
 "All languages turns the language check off. Unknown also accepts books "
 "without a language, try it if GoodReads is missing results."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3836
+#: data/interfaces/bookstrap/config.html:3826
 msgid "A code not in the list can be added under Show all."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3837
+#: data/interfaces/bookstrap/config.html:3827
 msgid ""
 "Annas Archive and Z-Library search these languages too, unless you change"
 " theirs below."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3843
+#: data/interfaces/bookstrap/config.html:3833
 msgid "Use Google Translate to identify language from book title"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3847
+#: data/interfaces/bookstrap/config.html:3837
 msgid "Microsoft Azure key:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3849
+#: data/interfaces/bookstrap/config.html:3839
 #, python-format
 msgid ""
 "Create a Translator resource in the %(portal)s, with Region set to "
 "Global, then copy one of its keys from Keys and Endpoint"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3849
+#: data/interfaces/bookstrap/config.html:3839
 msgid "Azure portal"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3850
+#: data/interfaces/bookstrap/config.html:3840
 msgid "Microsoft Azure can be used to identify language from book title"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3851
+#: data/interfaces/bookstrap/config.html:3841
 msgid "The free tier (F0) is enough for language detection."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3854
+#: data/interfaces/bookstrap/config.html:3844
 msgid "Language Maintenance:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3856
+#: data/interfaces/bookstrap/config.html:3846
 msgid "Refresh Book Languages Now"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3858
+#: data/interfaces/bookstrap/config.html:3848
 msgid ""
 "Re-evaluates book languages across the database using title, description,"
 " and smart language heuristics. Corrects false-positive foreign "
@@ -5424,289 +5420,289 @@ msgid ""
 "background."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3864
+#: data/interfaces/bookstrap/config.html:3854
 msgid "Search Languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3867
+#: data/interfaces/bookstrap/config.html:3857
 msgid "Annas Archive Search Languages:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3869
+#: data/interfaces/bookstrap/config.html:3859
 msgid ""
 "If one of the Import languages is not supported by Annas Archive, it "
 "searches all languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3870
+#: data/interfaces/bookstrap/config.html:3860
 msgid "Z-Library Search Languages:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3878
-#: data/interfaces/bookstrap/config.html:3885
+#: data/interfaces/bookstrap/config.html:3868
+#: data/interfaces/bookstrap/config.html:3875
 #, python-format
 msgid "Automatic: %s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3880
-#: data/interfaces/bookstrap/config.html:3885
-#: data/interfaces/bookstrap/config.html:3906
+#: data/interfaces/bookstrap/config.html:3870
+#: data/interfaces/bookstrap/config.html:3875
+#: data/interfaces/bookstrap/config.html:3896
 #: lazylibrarian/booklanguages.py:122
 msgid "All languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3882
-#: data/interfaces/bookstrap/config.html:3885
+#: data/interfaces/bookstrap/config.html:3872
+#: data/interfaces/bookstrap/config.html:3875
 #, python-format
 msgid "Custom: %s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3890
+#: data/interfaces/bookstrap/config.html:3880
 msgid "Change"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3907
+#: data/interfaces/bookstrap/config.html:3897
 msgid "Back to Automatic"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3910
+#: data/interfaces/bookstrap/config.html:3900
 msgid ""
 "Automatic searches the Import languages above. Magazines and comics are "
 "searched in all languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3918
+#: data/interfaces/bookstrap/config.html:3908
 msgid "GoogleBooks Country:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3920
+#: data/interfaces/bookstrap/config.html:3910
 msgid "Automatic (where the server is)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3925
+#: data/interfaces/bookstrap/config.html:3915
 msgid ""
 "Country for geographically restricted content. GoogleBooks takes only one"
 " country. It does not limit the book languages."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3931
+#: data/interfaces/bookstrap/config.html:3921
 msgid "Name and Title Languages"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3936
+#: data/interfaces/bookstrap/config.html:3926
 msgid "Languages of names, titles and dates:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3958
+#: data/interfaces/bookstrap/config.html:3948
 msgid ""
 "Each language adds its month and season names to the Month Names and "
 "Season Names tables, and to Date Language."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3959
+#: data/interfaces/bookstrap/config.html:3949
 msgid ""
 "It also adds its words for issue and volume numbers, words allowed in "
 "magazine titles, author name suffixes and articles for sorting titles. At"
 " least one language stays on."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3962
+#: data/interfaces/bookstrap/config.html:3952
 msgid "Date Language (for issue names and shown dates):"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3969
+#: data/interfaces/bookstrap/config.html:3959
 msgid ""
 "The language LazyLibrarian writes month names in, e.g. \"The Magpi - "
 "January 2017\" or \"The Magpi - január 2017\"."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3970
+#: data/interfaces/bookstrap/config.html:3960
 msgid ""
 "Used for magazine issue file and folder names, issue titles in Calibre "
 "and OPF metadata, and dates shown with a month name (the date formats are"
 " under Interface)."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3971
+#: data/interfaces/bookstrap/config.html:3961
 msgid ""
 "It does not affect reading dates: month names in magazine titles are "
 "recognised in all the languages switched on above."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3976
+#: data/interfaces/bookstrap/config.html:3966
 msgid "Author Names and Titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3978
+#: data/interfaces/bookstrap/config.html:3968
 msgid "Author Name suffix"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3980
+#: data/interfaces/bookstrap/config.html:3970
 msgid "Comma separated list of suffixes to ignore when showing surname first"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3983
+#: data/interfaces/bookstrap/config.html:3973
 msgid "Definite Articles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3985
+#: data/interfaces/bookstrap/config.html:3975
 msgid "Comma separated list of definite articles for sorting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3988
+#: data/interfaces/bookstrap/config.html:3978
 msgid "Non-splitting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3990
+#: data/interfaces/bookstrap/config.html:3980
 msgid ""
 "Comma separated list of prefixes and (items in braces) to ignore when "
 "splitting titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3995
+#: data/interfaces/bookstrap/config.html:3985
 msgid "Magazine Titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:3997
+#: data/interfaces/bookstrap/config.html:3987
 msgid "Default language for magazines:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4001
+#: data/interfaces/bookstrap/config.html:3991
 msgid "Not set"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4007
+#: data/interfaces/bookstrap/config.html:3997
 msgid ""
 "The language a magazine gets when it is added. It is written into the "
 "metadata of every issue (the opf file and the pdf), so readers and "
 "Calibre show the right language."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4008
+#: data/interfaces/bookstrap/config.html:3998
 msgid ""
 "It does not filter searches. Each magazine can have its own language, set"
 " it under Magazines below."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4011
+#: data/interfaces/bookstrap/config.html:4001
 msgid "Issue Number Identifiers:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4012
+#: data/interfaces/bookstrap/config.html:4002
 msgid "Allowed issue identifiers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4015
+#: data/interfaces/bookstrap/config.html:4005
 msgid "Volume Number Identifiers:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4016
+#: data/interfaces/bookstrap/config.html:4006
 msgid "Allowed volume identifiers"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4019
+#: data/interfaces/bookstrap/config.html:4009
 msgid "Words allowed in magazine titles:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4020
+#: data/interfaces/bookstrap/config.html:4010
 msgid "Allowed in magazine titles"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4021
+#: data/interfaces/bookstrap/config.html:4011
 msgid ""
 "Words a magazine title may contain besides its name and date, when the "
 "magazine uses strict rejection (* in its reject words). The season names "
 "below are always allowed too."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4024
+#: data/interfaces/bookstrap/config.html:4014
 msgid "Season Names:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4027
-#: data/interfaces/bookstrap/config.html:4041
+#: data/interfaces/bookstrap/config.html:4017
+#: data/interfaces/bookstrap/config.html:4031
 #, python-format
 msgid "Month %(number)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4031
+#: data/interfaces/bookstrap/config.html:4021
 msgid ""
 "An issue named after a season is dated to the month of its row, e.g. "
 "\"Winter 2017\" to January 2017."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4034
+#: data/interfaces/bookstrap/config.html:4024
 msgid "Month Names:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4046
+#: data/interfaces/bookstrap/config.html:4036
 msgid ""
 "Long and short month names of each language, in the order of the "
 "languages. Month names in magazine titles are recognised in all of them, "
 "and the Date Language picks the ones LazyLibrarian writes."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4057
+#: data/interfaces/bookstrap/config.html:4047
 msgid "Genre Settings"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4059
+#: data/interfaces/bookstrap/config.html:4049
 msgid "Genres per book"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4061
+#: data/interfaces/bookstrap/config.html:4051
 msgid "Genre Users"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4069
+#: data/interfaces/bookstrap/config.html:4059
 msgid "Reject Genres"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4072
+#: data/interfaces/bookstrap/config.html:4062
 msgid ""
 "Comma separated list of genres to reject: Results that match any of these"
 " words will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4075
+#: data/interfaces/bookstrap/config.html:4065
 msgid "Reject Parts"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4078
+#: data/interfaces/bookstrap/config.html:4068
 msgid ""
 "Comma separated list of part-words in genres to reject: Results that "
 "contain any of these part-words will be ignored"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4081
+#: data/interfaces/bookstrap/config.html:4071
 msgid "Replace Genre"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4082
+#: data/interfaces/bookstrap/config.html:4072
 msgid ""
 "Replace one genre name with another (replace happens before processing "
 "reject lists)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4085
+#: data/interfaces/bookstrap/config.html:4075
 msgid "Replace genre"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4087
+#: data/interfaces/bookstrap/config.html:4077
 msgid "with"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4091
+#: data/interfaces/bookstrap/config.html:4081
 msgid "To remove an existing entry leave the text box below it empty"
 msgstr ""
 
 #. TRANSLATORS: placeholder of an empty replacement, an empty value deletes the
 #. entry
-#: data/interfaces/bookstrap/config.html:4097
+#: data/interfaces/bookstrap/config.html:4087
 msgid "<delete>"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4107
+#: data/interfaces/bookstrap/config.html:4097
 msgid ""
 "LazyLibrarian has the ability to send basic information about the "
 "installation, how it is configured, and how it is used to a server. This "
@@ -5714,94 +5710,94 @@ msgid ""
 "improving, and which parts nobody uses."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4109
+#: data/interfaces/bookstrap/config.html:4099
 msgid ""
 "All telemetry information is 100% anonymized. You can press the button "
 "below to see what telemetry data would be sent for your system."
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4113
+#: data/interfaces/bookstrap/config.html:4103
 msgid "Telemetry Settings"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4118
+#: data/interfaces/bookstrap/config.html:4108
 msgid "Enable sending anonymous telemetry data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4123
+#: data/interfaces/bookstrap/config.html:4113
 msgid "Telemetry server"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4125
+#: data/interfaces/bookstrap/config.html:4115
 msgid "Test telemetry server"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4129
+#: data/interfaces/bookstrap/config.html:4119
 msgid "Telemetry send interval (hours)"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4137
+#: data/interfaces/bookstrap/config.html:4127
 msgid "Include configuration summary"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4144
+#: data/interfaces/bookstrap/config.html:4134
 msgid "Include usage summary"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4151
+#: data/interfaces/bookstrap/config.html:4141
 msgid ""
 "Refresh to see the current telemetry data that will be sent when "
 "telemetry is enabled:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4153
+#: data/interfaces/bookstrap/config.html:4143
 msgid "Click Refresh Telemetry to see the current data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4157
+#: data/interfaces/bookstrap/config.html:4147
 msgid "Refresh telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4158
+#: data/interfaces/bookstrap/config.html:4148
 msgid "Reset usage data"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4160
+#: data/interfaces/bookstrap/config.html:4150
 msgid "Submit telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4171
+#: data/interfaces/bookstrap/config.html:4161
 #, python-format
 msgid "Repo: %(repo)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4171
+#: data/interfaces/bookstrap/config.html:4161
 #, python-format
 msgid "Updated: %(date)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4171 lazylibrarian/webServe.py:7855
+#: data/interfaces/bookstrap/config.html:4161 lazylibrarian/webServe.py:7855
 #, python-format
 msgid "Branch: %(branch)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4172
+#: data/interfaces/bookstrap/config.html:4162
 #, python-format
 msgid "Current Version: %(version)s"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4172
+#: data/interfaces/bookstrap/config.html:4162
 #, python-format
 msgid "Latest Version: %(version)s"
 msgstr ""
 
 #. TRANSLATORS: label above the checkboxes that switch notification services or
 #. download clients on
-#: data/interfaces/bookstrap/config.html:4180
+#: data/interfaces/bookstrap/config.html:4170
 msgid "Enable:"
 msgstr ""
 
-#: data/interfaces/bookstrap/config.html:4210
+#: data/interfaces/bookstrap/config.html:4200
 msgid "Hide"
 msgstr ""
 

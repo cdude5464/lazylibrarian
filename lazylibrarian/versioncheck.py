@@ -236,7 +236,8 @@ def git_remote_branch() -> str:
 def git_run_args() -> dict:
     """ subprocess.run arguments for git calls that reach the remote: never wait on a password prompt or a dead
         connection """
-    return {'check': True, 'capture_output': True, 'text': True, 'timeout': 300,
+    return {'check': True, 'capture_output': True, 'text': True, 'encoding': 'utf-8', 'errors': 'replace',
+            'timeout': 300,
             'env': {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}}
 
 
@@ -258,6 +259,60 @@ def remote_head(url: str, branch: str) -> str:
             return ''
     logger.warning('git not found - please ensure git executable is in your PATH')
     return ''
+
+
+def fetch_branch(cur_git: str, tmp_dir: str, branch: str):
+    """ Fetch the remote branch into an empty folder, commits and trees only """
+    logger = logging.getLogger(__name__)
+    # Initialize a temporary bare repository
+    subprocess.run([cur_git, "init"], cwd=tmp_dir, **git_run_args())
+    logger.debug("Initialised temporary repository")
+    # Add the GitLab remote URL
+    subprocess.run([cur_git, "remote", "add", "origin", git_remote_url()], cwd=tmp_dir, **git_run_args())
+    logger.debug("Added remote url")
+    # Perform a blobless fetch for the tracking branches.
+    # This pulls commit logs/skeletons but skips all file downloads (blobs).
+    fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin", f"refs/heads/{branch}"]
+    subprocess.run(fetch_cmd, cwd=tmp_dir, **git_run_args())
+    logger.debug("Repository fetched")
+
+
+# hash, short hash, commit date, parents, author and title, split by unit separators. The title goes last
+# so a separator in it stays part of it, and with -z each commit ends with a NUL, which git doesn't allow in them.
+GIT_LOG_FORMAT = '--format=%H%x1f%h%x1f%cI%x1f%P%x1f%an%x1f%s'
+
+
+def git_commits(*logs: list, branch: str = '') -> list | None:
+    """ Fetch the branch once and run git log with each list of arguments, FETCH_HEAD being the branch tip.
+        Each result is a list of dicts with the fields the gitlab commits api uses, so callers can use either.
+        None if git can't be run or can't answer, eg a hash it doesn't have """
+    logger = logging.getLogger(__name__)
+    branch = branch or git_remote_branch()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for cur_git in git_programs():
+            try:
+                fetch_branch(cur_git, tmp_dir, branch)
+                results = []
+                for args in logs:
+                    out = subprocess.run([cur_git, 'log', '-z', GIT_LOG_FORMAT, *args], cwd=tmp_dir, **git_run_args())
+                    commits = []
+                    for record in out.stdout.split('\0'):
+                        fields = record.split('\x1f', 5)
+                        if len(fields) == 6:
+                            commits.append({'id': fields[0], 'short_id': fields[1], 'committed_date': fields[2],
+                                            'parent_ids': fields[3].split(), 'author_name': fields[4],
+                                            'title': fields[5]})
+                    results.append(commits)
+                return results
+            except OSError as err:
+                logger.debug(f"Unable to run {cur_git}: {err}")
+            except subprocess.CalledProcessError as e:
+                logger.debug(f"Git log failed: {(e.stderr or '').strip()}")
+                return None
+            except subprocess.TimeoutExpired:
+                logger.debug('Git timed out reading the commit list')
+                return None
+    return None
 
 
 def check_for_updates():
@@ -416,17 +471,7 @@ def get_commit_difference_from_git() -> tuple[int, str]:
     with tempfile.TemporaryDirectory() as tmp_dir:
         for cur_git in git_programs():
             try:
-                # Initialize a temporary bare repository
-                subprocess.run([cur_git, "init"], cwd=tmp_dir, **git_run_args())
-                logger.debug("Initialised temporary repository")
-                # Add the GitLab remote URL
-                subprocess.run([cur_git, "remote", "add", "origin", git_remote_url()], cwd=tmp_dir, **git_run_args())
-                logger.debug("Added remote url")
-                # Perform a blobless fetch for the tracking branches.
-                # This pulls commit logs/skeletons but skips all file downloads (blobs).
-                fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin", f"refs/heads/{branch}"]
-                subprocess.run(fetch_cmd, cwd=tmp_dir, **git_run_args())
-                logger.debug("Repository fetched")
+                fetch_branch(cur_git, tmp_dir, branch)
                 # Get the subject lines of log differences between the two hashes
                 log_cmd = [
                     cur_git,

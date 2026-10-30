@@ -82,7 +82,7 @@
               <select class="form-control input-sm" name="chooselanguage" id="chooselanguage">
                 <option value="">${_('All')}</option>
                 %for language in languages:
-                  <option value="${language['BookLang']}">${language['BookLang']}</option>
+                  <option value="${language['BookLang'] | h}">${language['label'] | h}</option>
                 %endfor
               </select>
             %endif

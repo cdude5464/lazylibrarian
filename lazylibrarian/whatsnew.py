@@ -14,6 +14,8 @@
 #    Tell the user what changed since the version they last saw, from the commit titles on gitlab.
 #    Docker and source installs are updated from outside, so current and latest are usually the
 #    same and the update check has nothing to show; this compares against WHATS_NEW_SEEN instead.
+#    The commits come from git, like the update check, as every install calling the gitlab api from the same
+#    project runs into its rate limits. The api is only used when git isn't installed.
 
 import html
 import logging
@@ -100,6 +102,20 @@ def gitlab_get(path: str, params: dict | None = None):
         return None
 
 
+def git_commits(*logs: list, ref: str = '') -> list | None:
+    """ versioncheck.git_commits, imported here as versioncheck imports this module """
+    from lazylibrarian import versioncheck
+    return versioncheck.git_commits(*logs, branch=ref)
+
+
+def changes_between(from_hash: str, to_hash: str) -> list | None:
+    """ Commits after from_hash up to to_hash, oldest first, from git or else the gitlab api """
+    res = git_commits(['--reverse', f'{from_hash}..{to_hash}'])
+    if res is not None:
+        return res[0]
+    return compare(from_hash, to_hash)
+
+
 def compare(from_hash: str, to_ref: str) -> list | None:
     """ Commits after from_hash up to to_ref, oldest first, or None if gitlab can't tell us """
     res = gitlab_get('repository/compare', {'from': from_hash, 'to': to_ref})
@@ -138,7 +154,7 @@ def check_whats_new():
         return
     if _checked.get('key') == (seen, current):
         return
-    commits = compare(seen, current)
+    commits = changes_between(seen, current)
     if commits is None:
         # try again at the next version check, keep what we had
         return
@@ -166,22 +182,36 @@ def recent_changes(count: int = 100) -> dict:
             return cached
 
     data = {'error': False, 'upcoming': [], 'installed': [], 'known': is_hash(current)}
-    recent = gitlab_get('repository/commits', {'ref_name': ref, 'per_page': count})
-    if recent == [] and ref != 'master':
-        # a local branch gitlab doesn't have
-        ref = 'master'
-        recent = gitlab_get('repository/commits', {'ref_name': ref, 'per_page': count})
-    if not isinstance(recent, list):
-        data['error'] = True
-        return data
-    data['branch'] = ref
-    upcoming_ids = set()
+    logs = [['-n', str(count), 'FETCH_HEAD']]
     if data['known']:
-        newer = compare(current, ref)
-        if newer is None:
+        logs.append([f'{current}..FETCH_HEAD'])
+    found = None
+    for name in dict.fromkeys([ref, 'master']):
+        # master too, for a local branch the remote doesn't have
+        found = git_commits(*logs, ref=name)
+        if found is not None:
+            ref = name
+            break
+    if found is not None:
+        recent = found[0]
+        upcoming_ids = {item['id'] for item in found[1]} if data['known'] else set()
+    else:
+        recent = gitlab_get('repository/commits', {'ref_name': ref, 'per_page': count})
+        if recent == [] and ref != 'master':
+            # a local branch gitlab doesn't have
+            ref = 'master'
+            recent = gitlab_get('repository/commits', {'ref_name': ref, 'per_page': count})
+        if not isinstance(recent, list):
             data['error'] = True
             return data
-        upcoming_ids = {item.get('id') for item in newer}
+        upcoming_ids = set()
+        if data['known']:
+            newer = compare(current, ref)
+            if newer is None:
+                data['error'] = True
+                return data
+            upcoming_ids = {item.get('id') for item in newer}
+    data['branch'] = ref
     # the commits api lists newest first, keep_commits expects oldest first
     for item in keep_commits(list(reversed(recent))):
         if item['id'] in upcoming_ids:

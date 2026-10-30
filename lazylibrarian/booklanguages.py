@@ -315,3 +315,49 @@ def magazine_language_picker(pref_maglang: str) -> dict:
         if lang['code'].lower() == value.lower():
             return {'languages': languages, 'selected': lang['code'], 'other': None}
     return {'languages': languages, 'selected': value, 'other': value}
+
+
+def _book_language(code: str) -> tuple:
+    """ The BOOK_LANGUAGES entry (name, codes) a language code belongs to, (None, None) if none """
+    code = code.strip().lower()
+    for name, codes in BOOK_LANGUAGES:
+        if code in (item.lower() for item in codes):
+            return name, codes
+    return None, None
+
+
+def language_filter_options(booklangs) -> list:
+    """ The languages for the language filter of the eBook, AudioBook and author book lists, one each.
+        booklangs are the BookLang values in the list (strings or rows with a BookLang column), which
+        sources report in different ways (cs, cze, Czech), sometimes several separated by commas.
+        Each code of a language counts as that language, a value the table doesn't know is an entry
+        of its own (compared case insensitive).
+        Returns [{'BookLang', 'booklang', 'label'}] sorted by label, BookLang/booklang being the value
+        to filter on: the English name for a known language """
+    options = {}
+    for value in booklangs:
+        if value is not None and not isinstance(value, str):
+            value = value['BookLang']
+        for item in get_list(value or '', ','):
+            if not item:
+                continue
+            name, _ = _book_language(item)
+            if name:
+                options.setdefault(name.lower(), {'BookLang': name, 'booklang': name,
+                                                  'label': i18n.gettext(name)})
+            else:
+                options.setdefault(item.lower(), {'BookLang': item, 'booklang': item, 'label': item})
+    return sorted(options.values(), key=lambda option: option['label'].lower())
+
+
+def language_filter_sql(booklang: str, column: str = 'BookLang') -> tuple:
+    """ SQL condition and its args for books in the language chosen in a language filter:
+        BookLang is one of the codes of that language, or a comma separated list with one of them.
+        Returns (condition, args) """
+    _, codes = _book_language(booklang)
+    if not codes:
+        codes = [booklang]
+    wanted = sorted({code.strip().lower().replace(' ', '') for code in codes})
+    value = f"',' || replace(lower({column}), ' ', '') || ','"
+    condition = ' OR '.join(f"{value} LIKE ?" for _ in wanted)
+    return f"({condition})", [f"%,{code},%" for code in wanted]

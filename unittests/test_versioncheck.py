@@ -156,3 +156,32 @@ class VersionCheckTest(LLTestCase):
             self.assertEqual(versioncheck.get_commit_difference_from_git(), (-1, ''))
             latest, _ = versioncheck.get_latest_version_from_git()
         self.assertTrue(latest.startswith('Not_Available_From_Git'))
+
+    def test_git_commits_parsed_like_the_api(self):
+        out = (f'{LATEST}\x1f{LATEST[:9]}\x1f2026-10-28T12:32:00+01:00\x1f{CURRENT}\x1fmiško\x1fShow the date\0'
+               f'{CURRENT}\x1f{CURRENT[:9]}\x1f2026-10-27T10:00:00+01:00\x1fp1 p2\x1fphil\x1fOdd \x1f title\0')
+
+        def run(cmd, **kwargs):
+            return subprocess.CompletedProcess(cmd, 0, stdout=out if cmd[1] == 'log' else '', stderr='')
+        with mock.patch.object(versioncheck, 'CONFIG', config()), \
+                mock.patch.object(versioncheck.subprocess, 'run', side_effect=run) as git:
+            res = versioncheck.git_commits(['-n', '5', 'FETCH_HEAD'], [f'{CURRENT}..FETCH_HEAD'], branch='dev')
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0][0], {'id': LATEST, 'short_id': LATEST[:9], 'title': 'Show the date',
+                                     'author_name': 'miško', 'committed_date': '2026-10-28T12:32:00+01:00',
+                                     'parent_ids': [CURRENT]})
+        # a separator inside a title stays part of it
+        self.assertEqual((res[0][1]['parent_ids'], res[0][1]['title']), (['p1', 'p2'], 'Odd \x1f title'))
+        cmds = [c.args[0] for c in git.call_args_list]
+        self.assertEqual(sum(1 for c in cmds if c[1] == 'fetch'), 1)
+        self.assertIn('refs/heads/dev', [c for c in cmds if c[1] == 'fetch'][0])
+        self.assertEqual([c[4:] for c in cmds if c[1] == 'log'], [['-n', '5', 'FETCH_HEAD'], [f'{CURRENT}..FETCH_HEAD']])
+        self.assertEqual({(c[2], git.call_args.kwargs['encoding']) for c in cmds if c[1] == 'log'}, {('-z', 'utf-8')})
+
+    def test_git_commits_none_without_git_or_on_error(self):
+        err = subprocess.CalledProcessError(128, ['git', 'log'], stderr='fatal: bad object\n')
+        for effect in (FileNotFoundError(2, 'missing'), err, subprocess.TimeoutExpired(['git'], 300)):
+            with mock.patch.object(versioncheck, 'CONFIG', config()), \
+                    mock.patch.object(versioncheck.platform, 'system', return_value='Linux'), \
+                    mock.patch.object(versioncheck.subprocess, 'run', side_effect=effect):
+                self.assertIsNone(versioncheck.git_commits(['FETCH_HEAD']))

@@ -72,6 +72,8 @@ from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.booklanguages import (
     anna_search_languages,
     country_picker,
+    language_filter_options,
+    language_filter_sql,
     language_picker,
     magazine_language_picker,
     search_language_picker,
@@ -2860,6 +2862,7 @@ class WebInterface:
                 "SELECT DISTINCT BookLang from books WHERE AuthorID=? AND Status !='Ignored'",
                 (authorid,))
         db.close()
+        languages = language_filter_options(languages)
 
         types = []
         if CONFIG.get_bool('EBOOK_TAB'):
@@ -3524,8 +3527,8 @@ class WebInterface:
                     email = res['SendTo']
             if not booklang or booklang == 'None':
                 booklang = None
-            languages = db.select(
-                "SELECT DISTINCT BookLang from books WHERE AUDIOSTATUS !='Skipped' AND AUDIOSTATUS !='Ignored'")
+            languages = language_filter_options(db.select(
+                "SELECT DISTINCT BookLang from books WHERE AUDIOSTATUS !='Skipped' AND AUDIOSTATUS !='Ignored'"))
         finally:
             db.close()
         return serve_template(templatename="audio.html", title=i18n.gettext('AudioBooks'), books=[],
@@ -3547,7 +3550,8 @@ class WebInterface:
                     email = res['SendTo']
             if not booklang or booklang == 'None':
                 booklang = None
-            languages = db.select("SELECT DISTINCT BookLang from books WHERE STATUS !='Skipped' AND STATUS !='Ignored'")
+            languages = language_filter_options(
+                db.select("SELECT DISTINCT BookLang from books WHERE STATUS !='Skipped' AND STATUS !='Ignored'"))
         finally:
             db.close()
         return serve_template(templatename="books.html", title=i18n.gettext('eBooks'), books=[],
@@ -3652,9 +3656,10 @@ class WebInterface:
 
             if (kwargs['source'] in ["Books", "Author", "Audio"] and 'booklang' in kwargs and
                     kwargs['booklang'] != '' and kwargs['booklang'] != 'None'):
-                # for these we need to check and filter on BookLang if set
-                cmd += " and BOOKLANG=?"
-                args.append(kwargs['booklang'])
+                # for these we need to check and filter on BookLang if set, any code of the language
+                condition, lang_args = language_filter_sql(kwargs['booklang'], 'books.BookLang')
+                cmd += f" and {condition}"
+                args.extend(lang_args)
 
             if kwargs['source'] in ["Books", "Audio"] and userid and (userprefs & lazylibrarian.pref_myfeeds or
                                                                       userprefs & lazylibrarian.pref_myafeeds):

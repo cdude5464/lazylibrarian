@@ -564,7 +564,7 @@ def _update_downloads_provider_count(provider: str = "manually added"):
 
 
 def _transfer_matching_files(
-    sourcedir: str, targetdir: str, fname_prefix: str, copy=False
+    sourcedir: str, targetdir: str, fname_prefix: str, copy=False, exact=False
 ):
     """
     Selectively transfer files matching a filename prefix from source to target directory.
@@ -581,6 +581,7 @@ def _transfer_matching_files(
         targetdir: Target directory to transfer to
         fname_prefix: Filename prefix to match (e.g., "Book Title")
         copy: If True, copy files; if False, move files
+        exact: If True, fname_prefix is the whole file name and only that file is transferred
 
     Returns:
         Count of files transferred
@@ -597,7 +598,8 @@ def _transfer_matching_files(
         ourfile = str(_ourfile)
         logger.debug(f"Checking if {ourfile} matches {fname_prefix}")
         # Only transfer files that start with our book's name and are valid media files
-        if ourfile.startswith(fname_prefix) and is_valid_type(ourfile, extensions=valid_extensions):
+        matched = ourfile == fname_prefix if exact else ourfile.startswith(fname_prefix)
+        if matched and is_valid_type(ourfile, extensions=valid_extensions):
             try:
                 srcfile = os.path.join(sourcedir, ourfile)
                 dstfile = os.path.join(targetdir, ourfile)
@@ -1755,7 +1757,20 @@ def _process_matched_directory(
     all_download_dirs.add(_norm(get_directory('Download')))
     all_download_dirs.discard('')
 
+    shared_file = False
     if candidate_ptr and _norm(candidate_ptr) in all_download_dirs:
+        download_dir = candidate_ptr
+        candidate_ptr = os.path.join(candidate_ptr, book_state.download_title)
+        book_state.update_candidate(candidate_ptr)
+    elif (candidate_ptr and book_state.download_title
+          and book_state.download_title == os.path.basename(book_state.download_title)
+          and is_valid_type(book_state.download_title, extensions=CONFIG.get_all_types_list())
+          and path_isdir(candidate_ptr)
+          and path_isfile(os.path.join(candidate_ptr, book_state.download_title))):
+        # A single-file torrent in a folder shared with other downloads, such as a
+        # qBittorrent category save path. Isolate just our file, other names in the
+        # folder can share its prefix. Archives keep the folder search and extraction.
+        shared_file = True
         download_dir = candidate_ptr
         candidate_ptr = os.path.join(candidate_ptr, book_state.download_title)
         book_state.update_candidate(candidate_ptr)
@@ -1792,7 +1807,8 @@ def _process_matched_directory(
 
             # Selectively transfer ONLY files matching this book's name
             cnt = _transfer_matching_files(
-                file_dir, targetdir, fname_prefix, copy=copy_files
+                file_dir, targetdir, fname if shared_file else fname_prefix,
+                copy=copy_files, exact=shared_file
             )
 
             if cnt:
@@ -4193,10 +4209,11 @@ def _process_destination(
 
     dir_list = listdir(book_path)  # Refresh our directory listing
     copied_count = 0
+    copied_to = {}
 
     # ok, we've got a target directory, try to copy only the files we want, renaming them on the fly.
     logger.info(f"COPY FILES STARTING - {book_path} ==> {udest_path}")
-    for _fname in dir_list:
+    for _fname in sorted(dir_list):
         fname = enforce_str(_fname)
         if not _should_copy_file(fname, best_format, book_type):
             logger.debug(f"Skip: {fname}")
@@ -4204,6 +4221,12 @@ def _process_destination(
 
         srcfile = os.path.join(book_path, fname)
         destfile = _get_dest_filename(fname, uglobal_name, book_type, udest_path)
+        # two files renamed to one name means the folder holds another download,
+        # don't let the last one silently replace ours
+        if destfile in copied_to:
+            logger.warning(f"Skip: {fname} would overwrite {copied_to[destfile]} at {destfile}")
+            continue
+        copied_to[destfile] = fname
 
         try:
             destfile = safe_copy(srcfile, destfile)

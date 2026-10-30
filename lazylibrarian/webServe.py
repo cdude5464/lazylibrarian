@@ -661,8 +661,8 @@ def serve_template(templatename, **kwargs):
                     template_dir = os.path.join(str(interface_dir), CONFIG['HTTP_LOOK'])
 
                 module_directory = os.path.join(DIRS.CACHEDIR, 'mako', str(userid))
-                _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                                           module_directory=module_directory)
+                _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir])),
+                                           input_encoding='utf-8', module_directory=module_directory)
             try:
                 template = _hplookup.get_template(templatename)
             except (AttributeError, KeyError):

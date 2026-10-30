@@ -129,6 +129,18 @@ textarea#telemetry_data {
 .checkbox-grid .checkbox {
     margin: 0 0 4px 0;
 }
+legend.section-toggle {
+    cursor: pointer;
+}
+legend.section-toggle .section-caret {
+    width: 1em;
+    margin-right: .3em;
+    font-size: 80%;
+    transition: transform .15s;
+}
+legend.section-collapsed .section-caret {
+    transform: rotate(-90deg);
+}
 
 /* Table view modes, picked per browser in the View dropdown next to the column toggles */
 .ll-view-select {

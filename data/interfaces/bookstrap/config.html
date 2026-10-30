@@ -36,6 +36,8 @@
       <input type="button" value="${_('Export Filters') | h}" id="savefilters" class="btn btn-default" />
       <input type="button" value="${_('Import Filters') | h}" id="loadfilters" class="btn btn-default" />
       <button class="button btn btn-sm btn-warning" type="button" value="showblocked" id="showblocked"> ${_('Blocked Providers')}</button>
+      <button type="button" id="collapse_all" class="btn btn-default">${_('Collapse all')}</button>
+      <button type="button" id="expand_all" class="btn btn-default">${_('Expand all')}</button>
       <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
     </div>
 </h1>
@@ -4187,7 +4189,75 @@
         initLanguagePicker();
         initMonthLanguagePicker();
         initSecretToggles();
+        initCollapsibleSections();
     });
+
+    // Section headings (legends) collapse or expand their section when clicked.
+    // Collapsed sections are remembered per browser, everything starts expanded.
+    // The section contents are only hidden, so they are still saved with the form.
+    function initCollapsibleSections() {
+        var storeKey = 'll_config_collapsed';
+        var collapsed = [];
+        try {
+            collapsed = JSON.parse(localStorage.getItem(storeKey) || '[]');
+            if (!$.isArray(collapsed)) { collapsed = []; }
+        } catch (e) {
+            collapsed = [];
+        }
+
+        function save() {
+            try {
+                localStorage.setItem(storeKey, JSON.stringify(collapsed));
+            } catch (e) {}
+        }
+
+        function setState(legend, collapse, animate) {
+            var body = legend.next('.section-body');
+            var key = legend.data('section-key');
+            var pos = $.inArray(key, collapsed);
+            legend.toggleClass('section-collapsed', collapse).attr('aria-expanded', collapse ? 'false' : 'true');
+            if (animate) {
+                body[collapse ? 'slideUp' : 'slideDown'](150);
+            } else {
+                body.toggle(!collapse);
+            }
+            if (collapse && pos < 0) { collapsed.push(key); }
+            if (!collapse && pos >= 0) { collapsed.splice(pos, 1); }
+        }
+
+        $('.tab-content .tab-pane').each(function () {
+            var pane = $(this);
+            pane.find('fieldset > legend').each(function (index) {
+                var legend = $(this);
+                if (!legend.nextAll().length) { return; }
+                legend.nextAll().wrapAll('<div class="section-body"></div>');
+                legend.data('section-key', pane.attr('id') + ':' + index);
+                legend.addClass('section-toggle').attr({'tabindex': '0', 'role': 'button', 'aria-expanded': 'true'});
+                legend.prepend('<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>');
+                if ($.inArray(legend.data('section-key'), collapsed) >= 0) {
+                    setState(legend, true, false);
+                }
+            });
+        });
+
+        $('.tab-content').on('click keydown', 'legend.section-toggle', function (e) {
+            // the help icon in a heading shows its popover, it doesn't collapse the section
+            if ($(e.target).closest('.help-icon').length) { return; }
+            if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) { return; }
+            e.preventDefault();
+            var legend = $(this);
+            setState(legend, !legend.hasClass('section-collapsed'), true);
+            save();
+        });
+
+        $('#collapse_all, #expand_all').click(function () {
+            var collapse = this.id === 'collapse_all';
+            $('.tab-content .tab-pane.active legend.section-toggle').each(function () {
+                setState($(this), collapse, false);
+            });
+            save();
+        });
+    }
 
     // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
     function initSecretToggles() {

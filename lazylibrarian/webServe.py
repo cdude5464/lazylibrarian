@@ -7872,9 +7872,9 @@ class WebInterface:
     @cherrypy.expose
     @cherrypy.tools.allow(methods=['POST'])
     @require_auth()
-    def whats_new_seen(self):
+    def whats_new_seen(self, version=''):
         self.check_permitted(lazylibrarian.perm_config)
-        whatsnew.mark_seen()
+        whatsnew.mark_seen(version)
         return 'OK'
 
     @cherrypy.expose

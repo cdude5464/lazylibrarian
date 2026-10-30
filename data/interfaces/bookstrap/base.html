@@ -596,9 +596,9 @@
             icon_type: 'image',
             type: 'info',
             delay: 0,
-            // shown until closed, closing marks the running version as seen
+            // shown until closed, closing marks the version it was shown for as seen
             onClose: function() {
-                $.post('whats_new_seen', function() { $('#whatsnew .badge').remove(); });
+                $.post('whats_new_seen', {version: ${js(CONFIG['CURRENT_VERSION'])}}, function() { $('#whatsnew .badge').remove(); });
             }
         });
         $(document).on('click', '#whatsNewSeen', function(e) {

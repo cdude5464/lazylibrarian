@@ -68,7 +68,7 @@ def branch() -> str:
 
 def link_title(title: str) -> str:
     """ Escaped commit title with #123 linked to the issue and !123 to the merge request """
-    base = web_url()
+    base = html.escape(web_url())
     text = html.escape(title)
     text = re.sub(r'(?<![\w&])#(\d+)\b', rf'<a href="{base}/-/issues/\1" target="_blank" rel="noopener">#\1</a>',
                   text)
@@ -205,9 +205,12 @@ def compare(from_hash: str, to_ref: str) -> list | None:
     return res['commits']
 
 
-def mark_seen():
-    """ The user has seen the changes in the running version """
+def mark_seen(version: str = ''):
+    """ The user has seen the changes in the running version. version is the one a popup was shown for,
+        a tab left open across an update would otherwise hide the changes of a version it never showed """
     current = CONFIG['CURRENT_VERSION']
+    if version and not same_commit(version, current):
+        return
     with _lock:
         lazylibrarian.WHATS_NEW = []
         if not is_hash(current) or CONFIG['WHATS_NEW_SEEN'] == current:

@@ -430,6 +430,12 @@ def get_latest_version_from_git():
             try:
                 latest_version = remote_head(url, branch)
                 if not latest_version:
+                    # no git, or it couldn't reach the remote
+                    published = whatsnew.published_changes(branch)
+                    if published:
+                        logger.debug('Latest commit read from changes.json')
+                        latest_version = published['latest']
+                if not latest_version:
                     logger.warning('Could not get the latest commit from git')
                     latest_version = f'Not_Available_From_Git : {url}'
                 else:
@@ -492,12 +498,19 @@ def get_commit_difference_from_git() -> tuple[int, str]:
                 logger.error('Git timed out reading the commit list')
                 return commits, commit_list
 
-        if result is None:
-            logger.warning('git not found - please ensure git executable is in your PATH')
-            return commits, commit_list
+        if result is not None:
+            titles = result.stdout.splitlines()
+        else:
+            newer = commits_between_published(whatsnew.published_changes(branch))
+            if newer is None:
+                logger.warning('git not found - please ensure git executable is in your PATH')
+                return commits, commit_list
+            logger.debug('Differences read from changes.json')
+            # newest first, as git log lists them
+            titles = [item.get('title') or '' for item in reversed(newer)]
 
         # Clean and split the output into a structured list
-        temp_list = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        temp_list = [line.strip() for line in titles if line.strip()]
         commits = len(temp_list)
         commit_list = '\n'.join(temp_list)
         if commits > 1:
@@ -514,6 +527,13 @@ def get_commit_difference_from_git() -> tuple[int, str]:
                            "or error talking to the server, check the log for details")
             logger.info(commit_list)
     return commits, commit_list
+
+
+def commits_between_published(published: dict | None) -> list | None:
+    """ The commits from CURRENT_VERSION to LATEST_VERSION in changes.json, oldest first, None if it can't tell """
+    if not published:
+        return None
+    return whatsnew.commits_between(published['commits'], CONFIG['CURRENT_VERSION'], CONFIG['LATEST_VERSION'])
 
 
 def update_version_file(new_version_id):

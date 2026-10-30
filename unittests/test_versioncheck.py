@@ -44,6 +44,12 @@ def git_ok(stdout=''):
 
 class VersionCheckTest(LLTestCase):
 
+    def setUp(self):
+        super().setUp()
+        # no changes.json unless a test gives one
+        self.pages = mock.patch.object(versioncheck.whatsnew, 'published_changes', return_value=None).start()
+        self.addCleanup(mock.patch.stopall)
+
     def test_git_program_is_not_quoted(self):
         # subprocess gets an argument list, quotes would become part of the file name
         with mock.patch.object(versioncheck, 'CONFIG', config(GIT_PROGRAM='/opt/my git/git')), \
@@ -185,3 +191,29 @@ class VersionCheckTest(LLTestCase):
                     mock.patch.object(versioncheck.platform, 'system', return_value='Linux'), \
                     mock.patch.object(versioncheck.subprocess, 'run', side_effect=effect):
                 self.assertIsNone(versioncheck.git_commits(['FETCH_HEAD']))
+
+    def test_latest_version_from_changes_json_without_git(self):
+        self.pages.return_value = {'branch': 'master', 'latest': LATEST, 'commits': []}
+        with mock.patch.object(versioncheck, 'CONFIG', config(GIT_BRANCH='Package')), \
+                mock.patch.object(versioncheck.platform, 'system', return_value='Linux'), \
+                mock.patch.object(versioncheck.subprocess, 'run', side_effect=FileNotFoundError(2, 'missing')):
+            latest, _ = versioncheck.get_latest_version_from_git()
+        self.assertEqual(latest, LATEST)
+        self.pages.assert_called_once_with('master')
+
+    def test_commit_difference_from_changes_json_without_git(self):
+        merge = 'c' * 40
+        commits = [{'id': LATEST, 'parent_ids': [merge], 'title': 'Newest'},
+                   {'id': merge, 'parent_ids': [CURRENT], 'title': "Merge branch 'x'"},
+                   {'id': CURRENT, 'parent_ids': [], 'title': 'Installed'}]
+        self.pages.return_value = {'branch': 'master', 'latest': LATEST, 'commits': commits}
+        with mock.patch.object(versioncheck, 'CONFIG', config()), \
+                mock.patch.object(versioncheck.platform, 'system', return_value='Linux'), \
+                mock.patch.object(versioncheck.subprocess, 'run', side_effect=FileNotFoundError(2, 'missing')):
+            self.assertEqual(versioncheck.get_commit_difference_from_git(), (2, "Newest\nMerge branch 'x'"))
+        # a version it doesn't list is unknown, as without it
+        self.pages.return_value = {'branch': 'master', 'latest': LATEST, 'commits': commits[:1]}
+        with mock.patch.object(versioncheck, 'CONFIG', config()), \
+                mock.patch.object(versioncheck.platform, 'system', return_value='Linux'), \
+                mock.patch.object(versioncheck.subprocess, 'run', side_effect=FileNotFoundError(2, 'missing')):
+            self.assertEqual(versioncheck.get_commit_difference_from_git(), (-1, ''))

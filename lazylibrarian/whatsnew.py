@@ -15,7 +15,8 @@
 #    Docker and source installs are updated from outside, so current and latest are usually the
 #    same and the update check has nothing to show; this compares against WHATS_NEW_SEEN instead.
 #    The commits come from git, like the update check, as every install calling the gitlab api from the same
-#    project runs into its rate limits. The api is only used when git isn't installed.
+#    project runs into its rate limits. Without git they come from the changes.json the CI publishes on gitlab
+#    pages, and only when that can't answer (another branch, a version it doesn't list) from the api.
 
 import html
 import logging
@@ -33,7 +34,11 @@ from lazylibrarian.config2 import CONFIG
 SKIP_TITLE = re.compile(r'^(Merge |chore\((l10n|ci)\)|ci(\([^)]*\))?:|Translated using Weblate|'
                         r'i18n: update lazylibrarian\.pot)', re.IGNORECASE)
 PAGE_CACHE_SECONDS = 3600
+CHANGES_CACHE_SECONDS = 600
+# published by the pages job in .gitlab-ci.yml, pages urls use the project path as it is spelled
+CHANGES_URL = 'https://lazylibrarian.gitlab.io/LazyLibrarian/changes.json'
 _page_cache: dict = {}
+_changes_cache: dict = {}
 _checked: dict = {}  # the seen and current hashes WHATS_NEW was last worked out for
 _lock = threading.Lock()
 
@@ -84,10 +89,22 @@ def keep_commits(commits: list) -> list:
     return kept
 
 
+def changes_url() -> str:
+    """ Where the CI pages job publishes changes.json, '' for a fork or another host, which use git or the api """
+    if (CONFIG['GIT_HOST'].lower(), CONFIG['GIT_USER'].lower(), CONFIG['GIT_REPO'].lower()) != \
+            ('gitlab.com', 'lazylibrarian', 'lazylibrarian'):
+        return ''
+    return CHANGES_URL
+
+
 def gitlab_get(path: str, params: dict | None = None):
     """ Decoded json from the gitlab api, or None if it can't be reached """
+    return get_json(f"{project_url()}/{path}", params)
+
+
+def get_json(url: str, params: dict | None = None):
+    """ Decoded json from url, or None if it can't be reached """
     logger = logging.getLogger(__name__)
-    url = f"{project_url()}/{path}"
     try:
         timeout = CONFIG.get_int('HTTP_TIMEOUT') or 30
         verify = (CONFIG['SSL_CERTS'] or True) if CONFIG.get_bool('SSL_VERIFY') else False
@@ -102,6 +119,65 @@ def gitlab_get(path: str, params: dict | None = None):
         return None
 
 
+def published_changes(ref: str) -> dict | None:
+    """ The latest commit and recent commits (newest first) of branch ref from changes.json,
+        None if it isn't published for that branch or can't be read. Cached for a few minutes """
+    url = changes_url()
+    if not url:
+        return None
+    with _lock:
+        if _changes_cache.get('url') == url and time.time() - _changes_cache.get('time', 0) < CHANGES_CACHE_SECONDS:
+            data = _changes_cache.get('data')
+            return data if data and data['branch'] == ref else None
+    data = get_json(url)
+    try:
+        commits = [item for item in data['commits'] if isinstance(item, dict) and is_hash(item.get('id', ''))
+                   and isinstance(item.get('parent_ids'), list)
+                   and all(isinstance(parent, str) for parent in item['parent_ids'])]
+        data = {'branch': str(data['branch']), 'latest': str(data['latest']), 'commits': commits}
+        if not is_hash(data['latest']) or not commits:
+            data = None
+    except (TypeError, KeyError):
+        data = None
+    with _lock:
+        _changes_cache.update({'url': url, 'time': time.time(), 'data': data})
+    return data if data and data['branch'] == ref else None
+
+
+def commits_between(commits: list, from_hash: str, to_hash: str) -> list | None:
+    """ The commits in to_hash that from_hash doesn't have, oldest first, like git log from..to.
+        commits is a newest first list with parent_ids. None if either hash isn't in it, or if the
+        new commits reach past the end of the list (a branch started before it), so some may be missing """
+    def find(value):
+        return next((item['id'] for item in commits if same_commit(item['id'], value)), '') if is_hash(value) else ''
+
+    parents = {item['id']: item.get('parent_ids') or [] for item in commits}
+
+    def ancestors(start):
+        found, todo = set(), [start]
+        while todo:
+            commit = todo.pop()
+            if commit in parents and commit not in found:
+                found.add(commit)
+                todo.extend(parents[commit])
+        return found
+
+    base, tip = find(from_hash), find(to_hash)
+    if not base or not tip:
+        return None
+    installed = ancestors(base)
+    wanted, todo = set(), [tip]
+    while todo:
+        commit = todo.pop()
+        if commit in installed or commit in wanted:
+            continue
+        if commit not in parents:
+            return None
+        wanted.add(commit)
+        todo.extend(parents[commit])
+    return [item for item in reversed(commits) if item['id'] in wanted]
+
+
 def git_commits(*logs: list, ref: str = '') -> list | None:
     """ versioncheck.git_commits, imported here as versioncheck imports this module """
     from lazylibrarian import versioncheck
@@ -109,10 +185,15 @@ def git_commits(*logs: list, ref: str = '') -> list | None:
 
 
 def changes_between(from_hash: str, to_hash: str) -> list | None:
-    """ Commits after from_hash up to to_hash, oldest first, from git or else the gitlab api """
+    """ Commits after from_hash up to to_hash, oldest first, from git, changes.json or else the gitlab api """
     res = git_commits(['--reverse', f'{from_hash}..{to_hash}'])
     if res is not None:
         return res[0]
+    published = published_changes(branch())
+    if published:
+        res = commits_between(published['commits'], from_hash, to_hash)
+        if res is not None:
+            return res
     return compare(from_hash, to_hash)
 
 
@@ -192,6 +273,12 @@ def recent_changes(count: int = 100) -> dict:
         if found is not None:
             ref = name
             break
+    if found is None:
+        published = published_changes(ref)
+        if published:
+            newer = commits_between(published['commits'], current, published['latest']) if data['known'] else []
+            if newer is not None:
+                found = [published['commits'][:count], newer]
     if found is not None:
         recent = found[0]
         upcoming_ids = {item['id'] for item in found[1]} if data['known'] else set()

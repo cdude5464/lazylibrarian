@@ -4227,7 +4227,8 @@
 
         $('.tab-content .tab-pane').each(function () {
             var pane = $(this);
-            pane.find('fieldset > legend').each(function (index) {
+            // fieldset sections, and the provider columns on the Categories tab
+            pane.find('fieldset > legend, div.col-md-6 > legend').each(function (index) {
                 var legend = $(this);
                 if (!legend.nextAll().length) { return; }
                 legend.nextAll().wrapAll('<div class="section-body"></div>');

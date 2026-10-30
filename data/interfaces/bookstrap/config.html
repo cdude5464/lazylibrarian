@@ -3727,7 +3727,7 @@
                 <legend>${_('Magazine Options (per title)')}</legend>
                 </div>
                 %for mag in config['magazines_list']:
-                <div class="col-md-6">
+                <div class="col-md-6 addon-align">
                 <label>${mag['Title']}</label>
                   <div class="input-group">
                     <label for="reject_list[${mag['Title']}]" class="input-group-addon">${_('Reject')}&nbsp;</label>
@@ -4134,6 +4134,7 @@
 </form>
 </%def>
 <%def name="size_limits(min_id, min_key, max_id, max_key)">
+  <div class="addon-align">
   <div class="input-group">
     <label for="${min_id}" class="input-group-addon">${_('Min size')}</label>
     <input type="number" id="${min_id}" name="${min_id}" value="${CONFIG[min_key]}" class="form-control" placeholder="${_('Reject minimum size') | h}">
@@ -4143,6 +4144,7 @@
     <label for="${max_id}" class="input-group-addon">${_('Max size')}</label>
     <input type="number" id="${max_id}" name="${max_id}" value="${CONFIG[max_key]}" class="form-control" placeholder="${_('Reject maximum size') | h}">
     <span class="input-group-addon">${_('Mb')}</span>
+  </div>
   </div>
 </%def>
 <%def name="enable_grid(boxes, label=None)">
@@ -4172,7 +4174,27 @@
         initLanguagePicker();
         initMonthLanguagePicker();
         initSecretToggles();
+        alignAddons($('.tab-content .tab-pane.active'));
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            alignAddons($($(e.target).attr('href')));
+        });
     });
+
+    // Give the labels of stacked fields in an addon-align block the same width, the widest
+    // one, so the inputs line up. Measured when the tab is visible, so it fits any language.
+    function alignAddons($scope) {
+        $scope.find('.addon-align').each(function () {
+            var $labels = $(this).find('.input-group > .input-group-addon:first-child');
+            var widest = 0;
+            $labels.css('width', '');
+            $labels.each(function () {
+                widest = Math.max(widest, $(this).outerWidth());
+            });
+            if (widest > 0) {
+                $labels.css('width', widest + 'px');
+            }
+        });
+    }
 
     // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
     function initSecretToggles() {

@@ -4169,17 +4169,6 @@
 <%def name="javascriptIncludes()">
   <%include file="config_functions.js"/>
   <script type="text/javascript">
-    $(document).ready(function() {
-        initThisPage();
-        initLanguagePicker();
-        initMonthLanguagePicker();
-        initSecretToggles();
-        alignAddons($('.tab-content .tab-pane.active'));
-        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
-            alignAddons($($(e.target).attr('href')));
-        });
-    });
-
     // Give the labels of stacked fields in an addon-align block the same width, the widest
     // one, so the inputs line up. Measured when the tab is visible, so it fits any language.
     function alignAddons($scope) {
@@ -4195,6 +4184,25 @@
             }
         });
     }
+
+    $(document).ready(function() {
+        initThisPage();
+        alignAddons($('.tab-content .tab-pane.active'));
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            alignAddons($($(e.target).attr('href')));
+        });
+        // a section collapsed when its tab was shown had nothing to measure, so align it once it opens
+        $('.tab-content').on('click keydown', 'legend.section-toggle', function () {
+            var $pane = $(this).closest('.tab-pane');
+            setTimeout(function () { alignAddons($pane); }, 0);
+        });
+        $('#expand_all').on('click', function () {
+            setTimeout(function () { alignAddons($('.tab-content .tab-pane.active')); }, 0);
+        });
+        initLanguagePicker();
+        initMonthLanguagePicker();
+        initSecretToggles();
+    });
 
     // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
     function initSecretToggles() {

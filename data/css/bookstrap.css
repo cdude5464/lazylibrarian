@@ -121,14 +121,6 @@ textarea#telemetry_data {
 .searchlang-modes .btn {
     margin-right: 6px;
 }
-.checkbox-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-    column-gap: 16px;
-}
-.checkbox-grid .checkbox {
-    margin: 0 0 4px 0;
-}
 /* Config section headings: space above, to separate them from the section before,
    and less below, so a heading sits with its own options. Padding, because Chrome
    drops the top margin of a legend inside a fieldset. */
@@ -158,6 +150,14 @@ textarea#telemetry_data {
 .configtable legend + .section-body > .checkbox:first-child,
 .configtable legend + .section-body > .row.checkbox:first-child {
     margin-top: 0;
+}
+.checkbox-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    column-gap: 16px;
+}
+.checkbox-grid .checkbox {
+    margin: 0 0 4px 0;
 }
 
 /* Table view modes, picked per browser in the View dropdown next to the column toggles */

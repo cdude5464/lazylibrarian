@@ -41,6 +41,45 @@
              padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); transition: transform .25s ease; }
   .llb-bar-hidden { transform: translateY(110%); }
   .llb-chips { overflow-x: auto; scrollbar-width: none; }
+  .llb-views .btn { width: 34px; padding-left: 0; padding-right: 0; }
+
+  /* compact: smaller covers, title and status only */
+  .llb-v-compact.llb-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 12px; }
+  .llb-v-compact .llb-sub, .llb-v-compact .llb-act { display: none !important; }
+  .llb-v-compact .llb-title { font-size: .8rem; -webkit-line-clamp: 1; }
+  .llb-v-compact .llb-ct { font-size: .78rem; } .llb-v-compact .llb-ca { font-size: .55rem; }
+  .llb-v-compact .llb-pill { font-size: .64rem; padding: 2px 7px; }
+  @media (max-width: 480px) {
+    .llb-v-compact.llb-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
+    .llb-v-compact .llb-title { font-size: .7rem !important; }
+    .llb-v-compact .llb-pill { font-size: .58rem !important; padding: 2px 6px !important; }
+    .llb-v-compact .llb-gen { padding: 6px; } .llb-v-compact .llb-ct { font-size: .65rem !important; }
+    .llb-v-compact .llb-ca { display: none; }
+  }
+
+  /* list: one row per book with a small cover */
+  .llb-v-list.llb-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .llb-v-list .llb-card { display: grid !important; grid-template-columns: 48px minmax(0, 1fr) auto; gap: 2px 14px !important;
+                          grid-template-areas: "cover title status" "cover author status" "cover series status";
+                          align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--bs-border-color-translucent); }
+  .llb-v-list .llb-cover { grid-area: cover; width: 48px; border-radius: 5px; align-self: start; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .llb-v-list .llb-card:hover .llb-cover { transform: none; }
+  .llb-v-list .llb-card:hover { background: var(--bs-tertiary-bg); }
+  .llb-v-list .llb-gen { padding: 0; } .llb-v-list .llb-gen > span { display: none; }
+  .llb-v-list .llb-title { grid-area: title; -webkit-line-clamp: 1; font-size: .92rem; }
+  .llb-v-list .llb-author { grid-area: author; } .llb-v-list .llb-series { grid-area: series; }
+  .llb-v-list .llb-status { grid-area: status; margin-top: 0 !important; padding-top: 0 !important; justify-content: flex-end; }
+  .llb-v-list .llb-check { width: 20px; height: 20px; top: 2px; right: 2px; font-size: .6rem; }
+  .llb-v-list .llb-card.llb-sel { background: var(--bs-tertiary-bg); }
+  .llb-v-list .llb-card.llb-sel .llb-cover { outline-width: 2px; }
+  .llb-v-list .llb-skel { display: block !important; padding: 10px 4px; }
+  @media (max-width: 480px) {
+    .llb-v-list .llb-card { grid-template-columns: 44px minmax(0, 1fr); gap: 2px 12px !important;
+                            grid-template-areas: "cover title" "cover author" "cover series" "cover status"; }
+    .llb-v-list .llb-cover { width: 44px; }
+    .llb-v-list .llb-status { justify-content: flex-start; padding-top: 2px !important; }
+    .llb-v-list .llb-title { font-size: .88rem !important; } .llb-v-list .llb-sub { font-size: .75rem !important; }
+  }
   @media (prefers-reduced-motion: reduce) { .llb-cover, .llb-bar { transition: none; } .llb-skel .llb-cover { animation: none; } }
 </style>
 </%def>
@@ -54,6 +93,14 @@
       <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-search" aria-hidden="true"></i></span>
       <input type="search" id="llb-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
              placeholder="${_('Title, author, series') | h}" autocomplete="off" aria-label="${_('Search') | h}">
+    </div>
+    <div class="btn-group btn-group-sm llb-views" role="group" aria-label="${_('View') | h}">
+      <template x-for="v in views" :key="v.id">
+        <button type="button" class="btn" :class="view === v.id ? 'btn-secondary' : 'btn-outline-secondary'"
+                :aria-pressed="view === v.id" :title="v.label" :aria-label="v.label" @click="setView(v.id)">
+          <i class="fa" :class="v.icon" aria-hidden="true"></i>
+        </button>
+      </template>
     </div>
     <select id="llb-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
       <option value="2:asc">${_('Author')}</option>

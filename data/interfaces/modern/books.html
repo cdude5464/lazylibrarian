@@ -107,8 +107,10 @@
           %else:
           <span x-text="b.author"></span>
           %endif
-          <template x-if="b.series"><span> · <a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span></template>
         </span>
+        <template x-if="b.series">
+          <span class="llb-sub text-body-secondary"><a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span>
+        </template>
         <div class="d-flex align-items-center gap-2 flex-wrap">
           <span class="badge rounded-pill llb-pill" :class="pillClass(b.status)" x-text="llStatus(b.status)"></span>
           <template x-if="b.status === 'Open'">

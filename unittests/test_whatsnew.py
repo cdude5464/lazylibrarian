@@ -174,6 +174,27 @@ class WhatsNewTest(LLTestCase):
             whatsnew.mark_seen()
         cfg.save_config_and_backup_old.assert_called_once()
 
+    def test_popup_left_open_across_an_update_does_not_mark_the_new_version(self):
+        # a tab showing the popup for OLD, closed after the server was updated to NEW
+        cfg = config(WHATS_NEW_SEEN='c' * 40)
+        lazylibrarian.WHATS_NEW = [{'id': 'x'}]
+        with mock.patch.object(whatsnew, 'CONFIG', cfg):
+            whatsnew.mark_seen(OLD)
+            self.assertEqual(cfg['WHATS_NEW_SEEN'], 'c' * 40)
+            self.assertEqual(lazylibrarian.WHATS_NEW, [{'id': 'x'}])
+            whatsnew.mark_seen(NEW[:8])
+            self.assertEqual(cfg['WHATS_NEW_SEEN'], NEW)
+            self.assertEqual(lazylibrarian.WHATS_NEW, [])
+        cfg.save_config_and_backup_old.assert_called_once()
+
+    def test_repo_url_is_escaped(self):
+        with mock.patch.object(whatsnew, 'CONFIG', config(GIT_USER='a"><b')):
+            text = whatsnew.link_title('Fix #3103')
+        self.assertIn('href="https://gitlab.com/a&quot;&gt;&lt;b/lazylibrarian/-/issues/3103"', text)
+        page = os.path.join(os.path.dirname(__file__), '..', 'data', 'interfaces', 'bookstrap', 'whatsnew.html')
+        with open(page, encoding='utf-8') as f:
+            self.assertNotIn('href="${repo}', f.read())
+
     def test_compare_needs_a_commit_list(self):
         with mock.patch.object(whatsnew, 'gitlab_get', return_value={'message': '404 Not Found'}):
             self.assertIsNone(whatsnew.compare(OLD, NEW))

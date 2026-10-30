@@ -146,6 +146,13 @@ textarea#telemetry_data {
         padding-top: 0;
     }
 }
+/* Stacked fields whose labels alignAddons() in config.html gives the same width */
+.addon-align .input-group {
+    width: 100%;
+}
+.addon-align .input-group > .input-group-addon:first-child {
+    text-align: left;
+}
 .configtable legend + .checkbox,
 .configtable legend + .row.checkbox,
 .configtable legend + .section-body > .checkbox:first-child,

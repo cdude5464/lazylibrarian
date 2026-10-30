@@ -1,5 +1,10 @@
 # GitLab CI for LazyLibrarian
 #
+# pages: after each push to master, publish the latest commit and the recent commits as
+# changes.json on gitlab pages (https://lazylibrarian.gitlab.io/LazyLibrarian/changes.json).
+# The update check and the what's new page read it when git isn't installed, instead of the
+# gitlab api, which every install shares and which is rate limited.
+#
 # update-pot: after changes are merged into master, regenerate the translation template
 # lazylibrarian/locale/lazylibrarian.pot and commit it when the strings changed.
 # Hosted Weblate watches the repository and merges the new strings into the .po files,
@@ -10,14 +15,15 @@
 # the private key in it. The commit message contains [skip ci], so the push doesn't start
 # another pipeline.
 
-# Only create a pipeline when update-pot can run. Without this, every other push and every
-# merge request got a pipeline with no jobs, which GitLab shows as failed.
+# Only create a pipeline for master. Without this, every other push and every merge request
+# got a pipeline with no jobs, which GitLab shows as failed.
 workflow:
   rules:
-    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $POT_DEPLOY_KEY'
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
 
 stages:
   - translations
+  - deploy
 
 update-pot:
   stage: translations
@@ -50,3 +56,24 @@ update-pot:
     - mkdir -p ~/.ssh && ssh-keyscan -t ed25519,rsa "$CI_SERVER_HOST" >> ~/.ssh/known_hosts 2> /dev/null
     - export GIT_SSH_COMMAND="ssh -i $POT_DEPLOY_KEY -o IdentitiesOnly=yes"
     - git push "git@${CI_SERVER_HOST}:${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+
+# Runs after update-pot, and fetches master again so the pot commit it may have pushed is the latest.
+# That commit says [skip ci] and gets no pipeline of its own.
+pages:
+  stage: deploy
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: always
+  variables:
+    # full history, a shallow clone would show its oldest commits without parents
+    GIT_DEPTH: "0"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
+  script:
+    - git fetch origin "$CI_DEFAULT_BRANCH"
+    - mkdir -p public
+    - python3 scripts/ci/changes_json.py FETCH_HEAD "$CI_DEFAULT_BRANCH" public/changes.json
+  artifacts:
+    paths:
+      - public

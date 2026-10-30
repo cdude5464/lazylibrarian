@@ -48,10 +48,14 @@ class WhatsNewTest(LLTestCase):
         lazylibrarian.WHATS_NEW = []
         whatsnew._checked.clear()
         whatsnew._page_cache.clear()
-        # no git unless a test gives one, so the gitlab api path is what runs
+        whatsnew._changes_cache.clear()
+        # no git and no changes.json unless a test gives one, so the gitlab api path is what runs
         no_git = mock.patch.object(whatsnew, 'git_commits', return_value=None)
         self.git = no_git.start()
         self.addCleanup(no_git.stop)
+        self.no_pages = mock.patch.object(whatsnew, 'published_changes', return_value=None)
+        self.pages = self.no_pages.start()
+        self.addCleanup(mock.patch.stopall)
 
     def tearDown(self):
         lazylibrarian.WHATS_NEW = []
@@ -287,3 +291,69 @@ class WhatsNewTest(LLTestCase):
         api.assert_not_called()
         self.assertEqual([c.kwargs['ref'] for c in self.git.call_args_list], ['feature/local', 'master'])
         self.assertEqual(data['branch'], 'master')
+
+    def published(self, commits):
+        return {'branch': 'master', 'latest': commits[0]['id'], 'commits': commits}
+
+    def test_new_version_read_from_changes_json_without_git(self):
+        commits = [commit(NEW, 'Show the date', parents=0), commit('1' * 40, 'Fix series numbers', parents=0),
+                   commit(OLD, 'Seen already', parents=0)]
+        commits[0]['parent_ids'], commits[1]['parent_ids'] = ['1' * 40], [OLD]
+        self.pages.return_value = self.published(commits)
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'compare') as api:
+            whatsnew.check_whats_new()
+        api.assert_not_called()
+        self.pages.assert_called_once_with('master')
+        self.assertEqual([c['title'] for c in lazylibrarian.WHATS_NEW], ['Show the date', 'Fix series numbers'])
+
+    def test_api_used_when_changes_json_does_not_list_the_version(self):
+        self.pages.return_value = self.published([commit(NEW, 'Too recent for the seen version')])
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'compare', return_value=[commit(NEW, 'From the api')]) as api:
+            whatsnew.check_whats_new()
+        api.assert_called_once_with(OLD, NEW)
+
+    def test_recent_changes_from_changes_json(self):
+        upcoming = commit('c' * 40, 'Not installed yet')
+        upcoming['parent_ids'] = [NEW]
+        running = commit(NEW, 'Running version')
+        running['parent_ids'] = [OLD]
+        self.pages.return_value = self.published([upcoming, running, commit(OLD, 'Older', parents=0)])
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'gitlab_get') as api:
+            data = whatsnew.recent_changes(count=2)
+        api.assert_not_called()
+        self.assertEqual([c['title'] for c in data['upcoming']], ['Not installed yet'])
+        self.assertEqual([c['title'] for c in data['installed']], ['Running version'])
+
+    def test_commits_between_follows_merges_like_git(self):
+        # m merges side branch s1 into master after b; installed at b, so s1 and m are new,
+        # older side commit s0 was merged before b and is installed
+        a, s0, b, s1, m = ('a' * 40, '0' * 40, 'b' * 40, '1' * 40, 'f' * 40)
+        graph = [{'id': m, 'parent_ids': [b, s1]}, {'id': s1, 'parent_ids': [s0]},
+                 {'id': b, 'parent_ids': [a, s0]}, {'id': s0, 'parent_ids': [a]}, {'id': a, 'parent_ids': []}]
+        self.assertEqual([c['id'] for c in whatsnew.commits_between(graph, b, m)], [s1, m])
+        self.assertEqual([c['id'] for c in whatsnew.commits_between(graph, b[:8], m[:8])], [s1, m])
+        self.assertEqual(whatsnew.commits_between(graph, m, m), [])
+        self.assertIsNone(whatsnew.commits_between(graph, 'c' * 40, m))
+        self.assertIsNone(whatsnew.commits_between(graph, 'No Version File', m))
+
+    def test_published_changes_checked_and_cached(self):
+        self.no_pages.stop()
+        good = {'branch': 'master', 'latest': NEW,
+                'commits': [commit(NEW, 'A fix'), 'junk', dict(commit(OLD, 'Bad parents'), parent_ids='p')]}
+        with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                mock.patch.object(whatsnew, 'get_json', return_value=good) as get:
+            data = whatsnew.published_changes('master')
+            self.assertIsNone(whatsnew.published_changes('develop'))
+        get.assert_called_once_with('https://lazylibrarian.gitlab.io/LazyLibrarian/changes.json')
+        self.assertEqual([c['title'] for c in data['commits']], ['A fix'])
+        for bad in (None, [], {'branch': 'master'}, {'branch': 'master', 'latest': 'HEAD', 'commits': []}):
+            whatsnew._changes_cache.clear()
+            with mock.patch.object(whatsnew, 'CONFIG', config()), \
+                    mock.patch.object(whatsnew, 'get_json', return_value=bad):
+                self.assertIsNone(whatsnew.published_changes('master'))
+        for fork in (config(GIT_HOST='git.example.com'), config(GIT_USER='someone')):
+            with mock.patch.object(whatsnew, 'CONFIG', fork):
+                self.assertEqual(whatsnew.changes_url(), '')

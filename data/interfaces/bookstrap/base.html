@@ -205,17 +205,18 @@
       // The modes are only css, the grid and list need to know what each cell holds, so copy the header class to
       // the cells, and put what follows the title button (subtitle, site links, genres) in a span list can hide
       $(function () {
-          var tables = $('.table-responsive table');
+          // only tables with a picture column get the modes, without pictures they would all look the same
+          var tables = $('.table-responsive table').filter(function () {
+              return $(this).find('thead th.bookart, thead th.authorimg').length;
+          });
           if (!tables.length) { return; }
+          tables.addClass('ll-view-table ll-grid-table');
           var modes = [['detailed', ${_js('Detailed')}], ['compact', ${_js('Compact')}],
                        ['list', ${_js('List')}], ['grid', ${_js('Grid')}]];
-          var grid = tables.filter(function () { return $(this).find('thead th.bookart, thead th.authorimg').length; });
-          grid.addClass('ll-grid-table');
           var html = $('html');
           var current = 'detailed';
           var select = $('<select class="ll-view-select form-control input-sm"></select>');
           $.each(modes, function (i, mode) {
-              if (mode[0] === 'grid' && !grid.length) { return; }
               select.append($('<option></option>').val(mode[0]).text(mode[1]));
               if (html.hasClass('ll-view-' + mode[0])) { current = mode[0]; }
           });
@@ -228,7 +229,7 @@
               var name = (headers.eq($(this).attr('data-column')).attr('class') || '').split(' ')[0];
               if (name && name !== 'hidden') { $(this).addClass('ll-toggle-' + name); }
           });
-          if (tables.first().hasClass('ll-grid-table')) { toggles.addClass('ll-grid-toggles'); }
+          toggles.addClass('ll-grid-toggles');
           if (toggles.length) {
               toggles.append(' | ', label);
           } else {
@@ -260,7 +261,22 @@
           }
           tables.each(function () { markCells(this); });
           $(document).on('draw.dt', function (e) {
-              if ($(e.target).closest('.table-responsive').length) { markCells(e.target); }
+              if ($(e.target).hasClass('ll-view-table')) { markCells(e.target); }
+          });
+          // a click on the picture opens what the title opens (the book or author page, the magazine, the issue)
+          // instead of the picture itself. With ctrl, shift or cmd the picture still opens in a new tab
+          tables.on('click', 'td.ll-bookart a, td.ll-authorimg a', function (e) {
+              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { return; }
+              var row = $(this).closest('tr');
+              var cells = [$(this).closest('td').hasClass('ll-authorimg') ? 'td.ll-authorname' : 'td.ll-bookname',
+                           'td.ll-issuedate', 'td.ll-issue'];
+              var target = $();
+              $.each(cells, function (i, cell) {
+                  if (!target.length) { target = row.find(cell).find('a, button.btn-link').first(); }
+              });
+              if (!target.length) { return; }
+              e.preventDefault();
+              target[0].click();
           });
       });
     </script>

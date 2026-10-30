@@ -28,6 +28,7 @@ from lazylibrarian.postprocess import (
     _handle_snatched_timeout,
     _is_valid_media_file,
     _normalize_title,
+    _process_destination,
     _process_matched_directory,
     _should_delete_processed_files,
     _tokenize_file,
@@ -682,6 +683,96 @@ class PostprocessFileOperationsTest(LLTestCaseWithStartup):
                 "eBooks must not recurse into subfolders in the no-archive fallback",
             )
             self.assertEqual(skip_reason, "No valid file or archives found")
+
+    def test_single_file_torrent_in_shared_folder_is_isolated(self):
+        """A single-file torrent saved into a folder shared with other downloads (a
+        qBittorrent category path) must only bring its own file, not whichever
+        magazine in that folder is found first."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "magazines")
+            os.makedirs(shared)
+            # other torrents, two of them sharing our name as a prefix or stem
+            for name in ("Raspberry Pi 2026 163.pdf", "Raspberry Pi 2026 1634.pdf", "Raspberry Pi 2026 163.epub",
+                         "Another Book.epub", "Some Other Mag 12.epub"):
+                with open(os.path.join(shared, name), "w") as f:
+                    f.write(name)
+
+            # enrich_with_download_info sets these for a qBittorrent single-file torrent
+            book_state = BookState(book_id="Raspberry Pi", download_title="Raspberry Pi 2026 163.pdf",
+                                   aux_type="magazine")
+            book_state.update_candidate(shared)
+            logger = logging.getLogger("test")
+            with mock.patch("lazylibrarian.postprocess.CONFIG.get_bool", return_value=True):
+                is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+
+            self.assertTrue(is_valid, skip_reason)
+            self.assertTrue(book_state.candidate_ptr.endswith(".unpack"), book_state.candidate_ptr)
+            self.assertEqual(os.path.dirname(book_state.candidate_ptr), shared)
+            self.assertEqual(os.listdir(book_state.candidate_ptr), ["Raspberry Pi 2026 163.pdf"])
+            # copied, the other downloads and our seeding file are untouched
+            self.assertEqual(len(os.listdir(shared)), 6)
+            # cleanup removes only the isolated copy, never the shared folder
+            self.assertEqual(_should_delete_processed_files(book_state.candidate_ptr, root),
+                             (True, book_state.candidate_ptr))
+
+    def test_shared_folder_isolation_needs_a_plain_media_file_name(self):
+        """An archive keeps the folder search so it can be extracted, and a title
+        that is a path is never followed out of the folder."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "magazines")
+            os.makedirs(shared)
+            open(os.path.join(shared, "Raspberry Pi 2026 163.zip"), "w").close()
+            open(os.path.join(root, "outside.pdf"), "w").close()
+            logger = logging.getLogger("test")
+            for title in ("Raspberry Pi 2026 163.zip", "../outside.pdf"):
+                book_state = BookState(book_id="Raspberry Pi", download_title=title, aux_type="magazine")
+                book_state.update_candidate(shared)
+                with mock.patch("lazylibrarian.postprocess._transfer_matching_files") as transfer, \
+                        mock.patch("lazylibrarian.postprocess._extract_archives_in_directory",
+                                   return_value=(shared, False)):
+                    _process_matched_directory(book_state, root, 100.0, logger, logger)
+                transfer.assert_not_called()
+                self.assertFalse(any(n.endswith(".unpack") for n in os.listdir(shared)))
+
+    def test_multi_file_torrent_folder_is_not_isolated(self):
+        """A torrent's own folder is used as it is."""
+        with tempfile.TemporaryDirectory() as root:
+            folder = os.path.join(root, "Raspberry Pi 2026 163")
+            os.makedirs(folder)
+            open(os.path.join(folder, "Raspberry Pi 2026 163.pdf"), "w").close()
+            book_state = BookState(book_id="Raspberry Pi", download_title="Raspberry Pi 2026 163",
+                                   aux_type="magazine")
+            book_state.update_candidate(folder)
+            logger = logging.getLogger("test")
+            is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+            self.assertTrue(is_valid, skip_reason)
+            self.assertEqual(book_state.candidate_ptr, folder)
+
+    def test_destination_does_not_overwrite_with_a_second_file(self):
+        """Two files renamed to the same name must not replace each other."""
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join(root, "abc.unpack")
+            dest = os.path.join(root, "library")
+            os.makedirs(src)
+            for name in ("a first.pdf", "b second.pdf"):
+                with open(os.path.join(src, name), "w") as f:
+                    f.write(name)
+            metadata = mock.Mock(book_type="magazine", book_id="Raspberry Pi", dest_path=dest,
+                                 global_name="Raspberry Pi 163")
+            metadata.get_processing_fields.return_value = dict.fromkeys(
+                ("authorname", "bookname", "issueid", "title", "issuedate", "mag_genres", "cover"), "")
+            logger = logging.getLogger("test")
+            with mock.patch("lazylibrarian.postprocess._handle_magazine_comic_metadata"), \
+                    mock.patch("lazylibrarian.postprocess._should_use_calibre", return_value=False), \
+                    self.assertLogs(logger, level="WARNING") as logs:
+                success, _, _ = _process_destination(metadata, src, logger, preprocess=False)
+
+            self.assertTrue(success)
+            self.assertEqual(os.listdir(dest), ["Raspberry Pi 163.pdf"])
+            with open(os.path.join(dest, "Raspberry Pi 163.pdf")) as f:
+                kept = f.read()
+            self.assertIn(kept, ("a first.pdf", "b second.pdf"))
+            self.assertTrue(any("would overwrite" in m for m in logs.output))
 
 
 class PostprocessIntegrationTest(LLTestCaseWithStartup):

@@ -9,7 +9,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: https://gitlab.com/LazyLibrarian/LazyLibrarian/-/"
 "issues\n"
-"POT-Creation-Date: 2026-10-29 16:49+0000\n"
+"POT-Creation-Date: 2026-10-29 17:54+0000\n"
 "PO-Revision-Date: 2026-10-22 21:58+0000\n"
 "Last-Translator: misko903 <misko903@users.noreply.hosted.weblate.org>\n"
 "Language-Team: Polish <https://hosted.weblate.org/projects/lazylibrarian/"
@@ -1823,6 +1823,7 @@ msgstr "Najnowszy numer"
 
 #: data/interfaces/bookstrap/comics.html:177
 #: data/interfaces/bookstrap/comics.html:179
+#: data/interfaces/bookstrap/config.html:4275
 #: data/interfaces/bookstrap/magazines.html:184
 #: data/interfaces/bookstrap/magazines.html:186
 msgid "Show"
@@ -6055,6 +6056,10 @@ msgstr "Bieżąca wersja: %(version)s"
 #, python-format
 msgid "Latest Version: %(version)s"
 msgstr "Najnowsza wersja: %(version)s"
+
+#: data/interfaces/bookstrap/config.html:4276
+msgid "Hide"
+msgstr ""
 
 #: data/interfaces/bookstrap/config_functions.js:163
 msgid "Provider Status"

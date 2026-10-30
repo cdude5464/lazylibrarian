@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-10-30 21:18+0000\n"
+"POT-Creation-Date: 2026-10-30 21:21+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -340,7 +340,7 @@ msgstr ""
 #: data/interfaces/bookstrap/author.html:313
 #: data/interfaces/bookstrap/author.html:329
 #: data/interfaces/bookstrap/author_detail.html:41
-#: data/interfaces/bookstrap/base.html:399
+#: data/interfaces/bookstrap/base.html:415
 #: data/interfaces/bookstrap/books.html:88
 #: data/interfaces/bookstrap/books.html:109
 #: data/interfaces/bookstrap/config.html:112
@@ -480,7 +480,7 @@ msgstr[1] ""
 #: data/interfaces/bookstrap/audio.html:297
 #: data/interfaces/bookstrap/author.html:355
 #: data/interfaces/bookstrap/author_detail.html:80
-#: data/interfaces/bookstrap/base.html:661
+#: data/interfaces/bookstrap/base.html:677
 #: data/interfaces/bookstrap/books.html:316
 #: data/interfaces/bookstrap/comicissues.html:185
 #: data/interfaces/bookstrap/comics.html:268
@@ -497,7 +497,7 @@ msgstr ""
 #: data/interfaces/bookstrap/audio.html:301
 #: data/interfaces/bookstrap/author.html:359
 #: data/interfaces/bookstrap/author_detail.html:81
-#: data/interfaces/bookstrap/base.html:665
+#: data/interfaces/bookstrap/base.html:681
 #: data/interfaces/bookstrap/books.html:320
 #: data/interfaces/bookstrap/comicissues.html:189
 #: data/interfaces/bookstrap/comics.html:272
@@ -630,9 +630,9 @@ msgstr ""
 #: data/interfaces/bookstrap/audio.html:390
 #: data/interfaces/bookstrap/author.html:606
 #: data/interfaces/bookstrap/author.html:679
-#: data/interfaces/bookstrap/base.html:621
-#: data/interfaces/bookstrap/base.html:646
-#: data/interfaces/bookstrap/base.html:825
+#: data/interfaces/bookstrap/base.html:637
+#: data/interfaces/bookstrap/base.html:662
+#: data/interfaces/bookstrap/base.html:841
 #: data/interfaces/bookstrap/books.html:409
 #: data/interfaces/bookstrap/choosetype.html:48
 #: data/interfaces/bookstrap/config_functions.js:172
@@ -1306,112 +1306,112 @@ msgstr ""
 msgid "Are you sure you want to shutdown LazyLibrarian?"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:210
+#: data/interfaces/bookstrap/base.html:214
 msgid "Detailed"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:210
+#: data/interfaces/bookstrap/base.html:214
 msgid "Compact"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:211
+#: data/interfaces/bookstrap/base.html:215
 msgid "List"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:211
+#: data/interfaces/bookstrap/base.html:215
 msgid "Grid"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:223
+#: data/interfaces/bookstrap/base.html:224
 msgid "View:"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:367
+#: data/interfaces/bookstrap/base.html:383
 msgid "Toggle navigation"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:387
+#: data/interfaces/bookstrap/base.html:403
 #: data/interfaces/bookstrap/config.html:112 lazylibrarian/webServe.py:802
 #: lazylibrarian/webServe.py:873
 msgid "Authors"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:392
+#: data/interfaces/bookstrap/base.html:408
 #: data/interfaces/bookstrap/config.html:112 lazylibrarian/webServe.py:3558
 msgid "eBooks"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:407
+#: data/interfaces/bookstrap/base.html:423
 msgid "Audio"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:408
+#: data/interfaces/bookstrap/base.html:424
 #: data/interfaces/bookstrap/config.html:113 lazylibrarian/webServe.py:3535
 msgid "AudioBooks"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:418
+#: data/interfaces/bookstrap/base.html:434
 msgid "Mags"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:419
+#: data/interfaces/bookstrap/base.html:435
 #: data/interfaces/bookstrap/config.html:113 lazylibrarian/webServe.py:6635
 msgid "Magazines"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:428
+#: data/interfaces/bookstrap/base.html:444
 #: data/interfaces/bookstrap/config.html:114 lazylibrarian/webServe.py:5925
 #: lazylibrarian/webServe.py:6286
 msgid "Comics"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:434
-#: data/interfaces/bookstrap/base.html:436
+#: data/interfaces/bookstrap/base.html:450
+#: data/interfaces/bookstrap/base.html:452
 msgid "Manage"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:440 lazylibrarian/webServe.py:8308
+#: data/interfaces/bookstrap/base.html:456 lazylibrarian/webServe.py:8308
 msgid "History"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:443
+#: data/interfaces/bookstrap/base.html:459
 #: data/interfaces/bookstrap/config.html:234
 msgid "Logs"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:446
+#: data/interfaces/bookstrap/base.html:462
 msgid "Config"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:449
-#: data/interfaces/bookstrap/base.html:450
-#: data/interfaces/bookstrap/base.html:589 lazylibrarian/webServe.py:7869
+#: data/interfaces/bookstrap/base.html:465
+#: data/interfaces/bookstrap/base.html:466
+#: data/interfaces/bookstrap/base.html:605 lazylibrarian/webServe.py:7869
 msgid "What's new"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:456
+#: data/interfaces/bookstrap/base.html:472
 msgid "Help"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:460
+#: data/interfaces/bookstrap/base.html:476
 #: data/interfaces/bookstrap/config.html:466
 #: data/interfaces/bookstrap/config.html:550
 msgid "User"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:463
+#: data/interfaces/bookstrap/base.html:479
 msgid "Logout"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:480
+#: data/interfaces/bookstrap/base.html:496
 msgid "Go to top"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:486
+#: data/interfaces/bookstrap/base.html:502
 msgid "LazyLibrarian Telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:487
+#: data/interfaces/bookstrap/base.html:503
 msgid ""
 "LazyLibrarian has the ability to send basic information about the "
 "installation, how it is configured, and how it is used to a server. This "
@@ -1419,121 +1419,121 @@ msgid ""
 "parts nobody uses. All telemetry information is 100% anonymized."
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:488
+#: data/interfaces/bookstrap/base.html:504
 msgid "Turn on"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:488
-#: data/interfaces/bookstrap/base.html:617
+#: data/interfaces/bookstrap/base.html:504
+#: data/interfaces/bookstrap/base.html:633
 msgid "Enable Telemetry"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:489
+#: data/interfaces/bookstrap/base.html:505
 msgid "Ask me again later"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:489
+#: data/interfaces/bookstrap/base.html:505
 msgid "Maybe Later"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:492
+#: data/interfaces/bookstrap/base.html:508
 msgid "LazyLibrarian Update"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:494
+#: data/interfaces/bookstrap/base.html:510
 msgid "You are running an unknown version of lazylibrarian"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:496
+#: data/interfaces/bookstrap/base.html:512
 msgid "You are running an unknown version via source install"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:499
+#: data/interfaces/bookstrap/base.html:515
 msgid "Unable to get the latest version from git"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:501
+#: data/interfaces/bookstrap/base.html:517
 msgid ""
 "Running a local updated version. Push changes to git or rollback to "
 "Master release"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:504
+#: data/interfaces/bookstrap/base.html:520
 #, python-format
 msgid "New version available. You are one commit behind."
 msgid_plural "New version available. You are %(count)d commits behind."
 msgstr[0] ""
 msgstr[1] ""
 
-#: data/interfaces/bookstrap/base.html:508
+#: data/interfaces/bookstrap/base.html:524
 msgid "Manual update is required"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:512
+#: data/interfaces/bookstrap/base.html:528
 msgid "Update to the latest release"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:512
+#: data/interfaces/bookstrap/base.html:528
 #: data/interfaces/bookstrap/profile.html:84
 msgid "Update"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:519
+#: data/interfaces/bookstrap/base.html:535
 msgid "Ignore the update message for 24 hours"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:519
+#: data/interfaces/bookstrap/base.html:535
 msgid "Ignore"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:547
+#: data/interfaces/bookstrap/base.html:563
 #, python-format
 msgid ""
 "LazyLibrarian is only %(percent)s%% translated into %(language)s. You can"
 " help finish the translation on Hosted Weblate, no coding needed."
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:551
+#: data/interfaces/bookstrap/base.html:567
 #, python-format
 msgid ""
 "LazyLibrarian is not available in %(language)s yet. You can help "
 "translate it on Hosted Weblate, no coding needed."
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:558
+#: data/interfaces/bookstrap/base.html:574
 msgid "Help translate"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:559
+#: data/interfaces/bookstrap/base.html:575
 msgid "No thanks"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:562
+#: data/interfaces/bookstrap/base.html:578
 msgid "Translate LazyLibrarian"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:585
+#: data/interfaces/bookstrap/base.html:601
 #, python-format
 msgid "One change since you last looked:"
 msgid_plural "%(count)d changes since you last looked:"
 msgstr[0] ""
 msgstr[1] ""
 
-#: data/interfaces/bookstrap/base.html:590
+#: data/interfaces/bookstrap/base.html:606
 msgid "Dismiss"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:593
+#: data/interfaces/bookstrap/base.html:609
 msgid "LazyLibrarian updated"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:642
+#: data/interfaces/bookstrap/base.html:658
 #: data/interfaces/bookstrap/config.html:22
 #: data/interfaces/bookstrap/config_functions.js:946
 msgid "Check Version"
 msgstr ""
 
-#: data/interfaces/bookstrap/base.html:658
+#: data/interfaces/bookstrap/base.html:674
 msgid "Are you sure you want to logout?"
 msgstr ""
 

@@ -324,19 +324,39 @@ def language(lang):
             _local.translations = old_translations
 
 
-def resolve_notify_language(setting, ui_setting):
+# the language the web interface was last shown in, used for notifications when UI_LANGUAGE is auto
+_last_ui_language = ''
+
+
+def remember_ui_language(lang):
+    """ Note the language a web page was just shown in """
+    global _last_ui_language
+    if lang and lang in available_languages():
+        _last_ui_language = lang
+
+
+def last_ui_language():
+    return _last_ui_language
+
+
+def resolve_notify_language(setting, ui_setting, last_ui=''):
     """ The language for notifications (Telegram, email, ...), which are sent without a browser:
-        the NOTIFY_LANGUAGE setting, else UI_LANGUAGE unless that follows the browser, else English """
+        the NOTIFY_LANGUAGE setting, else UI_LANGUAGE, else (when that follows the browser)
+        the language the interface was last shown in, else English """
     for lang in (setting, ui_setting):
         lang = (lang or '').strip()
         if lang and lang.lower() != AUTO:
             return lang if lang in available_languages() else DEFAULT_LANGUAGE
+    last_ui = (last_ui or '').strip()
+    if last_ui and last_ui in available_languages():
+        return last_ui
     return DEFAULT_LANGUAGE
 
 
 def notify_language():
     from lazylibrarian.config2 import CONFIG
-    return resolve_notify_language(CONFIG.get_str('NOTIFY_LANGUAGE'), CONFIG.get_str('UI_LANGUAGE'))
+    return resolve_notify_language(CONFIG.get_str('NOTIFY_LANGUAGE'), CONFIG.get_str('UI_LANGUAGE'),
+                                   last_ui_language())
 
 
 def _current():

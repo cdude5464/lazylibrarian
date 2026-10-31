@@ -235,7 +235,9 @@ ${bk.headIncludes()}
     <select class="form-select form-select-sm w-auto rounded-pill" aria-label="${_('Language') | h}" onchange="window.location = this.value">
       <option value="${page_url(lang='') | h}">${_('All')}</option>
       %for lg in languages:
-      <option value="${page_url(lang=lg['BookLang']) | h}" ${'selected' if lg['BookLang'] == booklang else ''}>${lg['label'] | h}</option>
+        %if lg['BookLang']:
+      <option value="${page_url(lang=lg['BookLang']) | h}" ${'selected' if lg['BookLang'] == booklang else ''}>${lg['BookLang'] | h}</option>
+        %endif
       %endfor
     </select>
     %endif

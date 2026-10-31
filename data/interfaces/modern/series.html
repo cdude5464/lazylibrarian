@@ -1,0 +1,332 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'series'
+%>
+<%def name="headIncludes()">
+<style>
+  .lls-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 26px 20px; }
+  @media (max-width: 480px) { .lls-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 12px; } }
+  .lls-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .lls-filter { flex: 1 1 100%; order: 5; } }
+  .lls-views .btn { width: 34px; padding-left: 0; padding-right: 0; }
+  .lls-chips { overflow-x: auto; scrollbar-width: none; }
+  .lls-card { position: relative; display: flex; flex-direction: column; gap: 5px; min-width: 0; cursor: pointer; border-radius: 12px; }
+  .lls-card:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 3px; }
+  /* a small fanned stack of the first covers */
+  .lls-stack { position: relative; aspect-ratio: 4 / 3.3; margin-bottom: 4px; }
+  .lls-stack .c { position: absolute; bottom: 0; height: 92%; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden;
+                  background: var(--bs-secondary-bg); box-shadow: 0 1px 2px rgba(0,0,0,.1), 0 8px 18px -10px rgba(0,0,0,.5); transition: transform .2s ease; }
+  .lls-stack .c img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .lls-stack .c0 { left: 50%; transform: translateX(-50%); z-index: 3; }
+  .lls-stack .c1 { left: 50%; transform: translateX(-92%) rotate(-7deg); z-index: 2; height: 84%; filter: brightness(.82); }
+  .lls-stack .c2 { left: 50%; transform: translateX(-8%) rotate(7deg); z-index: 1; height: 84%; filter: brightness(.82); }
+  .lls-card:hover .lls-stack .c1 { transform: translateX(-100%) rotate(-10deg); }
+  .lls-card:hover .lls-stack .c2 { transform: translateX(0) rotate(10deg); }
+  .lls-gen { position: absolute; inset: 0; display: flex; align-items: flex-end; padding: 8px; color: #fff;
+             font-family: Georgia, "Times New Roman", serif; font-size: .85rem; line-height: 1.15; }
+  .lls-name { font-weight: 600; font-size: .92rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .lls-name a, .lls-author a { color: inherit; }
+  .lls-name a { text-decoration: none; }
+  .lls-author { font-size: .78rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lls-src { font-size: .65rem; letter-spacing: .05em; text-transform: uppercase; color: var(--bs-secondary-color); }
+  .lls-prog .bar { height: 4px; border-radius: 4px; background: var(--bs-secondary-bg); overflow: hidden; }
+  .lls-prog .bar i { display: block; height: 100%; background: var(--ll-accent); }
+  .lls-prog.full .bar i { background: var(--bs-success); }
+  .lls-prog .txt { font-size: .7rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .lls-pill { font-size: .66rem; font-weight: 600; padding: 3px 8px; }
+  .lls-check { position: absolute; top: 4px; right: 4px; z-index: 5; width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.95);
+               border: 2px solid #fff; display: flex; align-items: center; justify-content: center; color: var(--ll-accent); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .lls-card.lls-sel { background: var(--bs-tertiary-bg); outline: 3px solid var(--ll-accent); outline-offset: 4px; }
+  .lls-card.lls-sel .lls-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+
+  .lls-v-list.lls-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .lls-v-list .lls-card { display: grid; align-items: center; gap: 0 12px; padding: 6px 4px; border-radius: 0; outline: none;
+                          grid-template-columns: 40px minmax(0, 1fr) 130px auto;
+                          grid-template-areas: "stack name prog status" "stack author prog status";
+                          border-bottom: 1px solid var(--bs-border-color-translucent); }
+  .lls-v-list .lls-card:hover, .lls-v-list .lls-card.lls-sel { background: var(--bs-tertiary-bg); }
+  .lls-v-list .lls-stack { grid-area: stack; width: 40px; aspect-ratio: auto; height: 50px; margin: 0; }
+  .lls-v-list .lls-stack .c { height: 100%; }
+  .lls-v-list .lls-stack .c1, .lls-v-list .lls-stack .c2 { display: none; }
+  .lls-v-list .lls-gen { font-size: 0; }
+  .lls-v-list .lls-name { grid-area: name; -webkit-line-clamp: 1; font-size: .9rem; }
+  .lls-v-list .lls-author { grid-area: author; }
+  .lls-v-list .lls-src { display: none; }
+  .lls-v-list .lls-prog { grid-area: prog; }
+  .lls-v-list .lls-status { grid-area: status; justify-self: end; }
+  .lls-v-list .lls-check { top: 2px; left: 28px; right: auto; width: 18px; height: 18px; font-size: .55rem; border-width: 1px; }
+  @media (max-width: 480px) {
+    .lls-v-list .lls-card { grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: "stack name status" "stack author status" "stack prog status"; }
+    .lls-v-list .lls-stack { width: 34px; height: 46px; }
+    .lls-v-list .lls-prog { display: flex; align-items: center; gap: 8px; } .lls-v-list .lls-prog .bar { width: 80px; } .lls-v-list .lls-prog .txt { margin: 0; }
+  }
+  .lls-skel .lls-stack .c0 { animation: lls-pulse 1.2s ease-in-out infinite; }
+  @keyframes lls-pulse { 50% { opacity: .5; } }
+  .lls-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+             padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); transition: transform .25s ease; }
+  .lls-bar-hidden { transform: translateY(110%); }
+  @media (prefers-reduced-motion: reduce) { .lls-bar, .lls-stack .c { transition: none; } .lls-skel .lls-stack .c0 { animation: none; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    pref = context.get('pref') or 0
+    is_active = str(active) == 'True'
+    status_now = whichStatus if whichStatus not in (None, 'None', '') else 'All'
+    chips = [('All', _('All')), ('Complete', pgettext('series status', 'Complete')),
+             ('Partial', pgettext('series status', 'Partial')), ('Empty', pgettext('series status', 'Empty')),
+             ('Active', _('Active')), ('Wanted', _('Wanted')), ('Paused', _('Paused')), ('Ignored', _('Ignored'))]
+    def chip_url(st):
+        url = 'series?which_status=' + st + '&active=' + str(is_active)
+        if authorid:
+            url += '&authorid=' + str(authorid)
+        return url
+%>
+<div x-data="llSeries" x-init="start()">
+  %if authorid:
+  <a href="author_page?authorid=${authorid | u}" class="btn btn-sm btn-link text-body-secondary px-0 mb-1">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Return to Author')}
+  </a>
+  %endif
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm lls-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" id="lls-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             placeholder="${_('Filter series') | h}" autocomplete="off" aria-label="${_('Filter series') | h}">
+    </div>
+    <div class="btn-group btn-group-sm lls-views" role="group" aria-label="${_('View') | h}">
+      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
+              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
+      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
+              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
+    </div>
+    <select id="lls-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="2:asc">${_('Series Name')}</option>
+      <option value="1:asc">${_('Author')}</option>
+      <option value="3:desc">${_('Have')}</option>
+      <option value="4:asc">${_('Status')}</option>
+    </select>
+    %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
+            x-text="selecting ? T.done : T.select"></button>
+    %endif
+    %if not authorid:
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if is_active:
+        <li><a class="dropdown-item" href="series?active=False&which_status=${status_now | u}"><i class="fa fa-user-friends fa-fw me-2" aria-hidden="true"></i>${_('Show all authors')}</a></li>
+        %else:
+        <li><a class="dropdown-item" href="series?active=True&which_status=${status_now | u}"><i class="fa fa-user-check fa-fw me-2" aria-hidden="true"></i>${_('Only active/wanted authors')}</a></li>
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+        <li><a class="dropdown-item" href="toggle_my_series">
+          %if pref&lazylibrarian.pref_myseries:
+          <i class="fa fa-users fa-fw me-2" aria-hidden="true"></i>${_('Show all series')}
+          %else:
+          <i class="fa fa-user-circle fa-fw me-2" aria-hidden="true"></i>${_('Show only my series')}
+          %endif
+        </a></li>
+        %endif
+      </ul>
+    </div>
+    %endif
+  </div>
+
+  <div class="d-flex gap-2 lls-chips pb-1 mb-3" role="group" aria-label="${_('Status') | h}">
+    %for st, label in chips:
+    <a class="btn btn-sm rounded-pill text-nowrap ${'btn-secondary' if st == status_now else 'btn-outline-secondary'}"
+       href="${chip_url(st) | h}" ${'aria-current="true"' if st == status_now else ''}>${label}</a>
+    %endfor
+  </div>
+
+  <div class="lls-grid" :class="'lls-v-' + view">
+    <template x-for="s in series" :key="s.id">
+      <article class="lls-card" :class="sel[s.id] && 'lls-sel'" tabindex="0"
+               @click="open(s, $event)" @keydown.enter.prevent="open(s, $event)" @keydown.space.prevent="open(s, $event)">
+        <div class="lls-stack" aria-hidden="true">
+          <template x-for="(c, i) in s.stack" :key="i">
+            <div class="c" :class="'c' + i">
+              <template x-if="c"><img loading="lazy" :src="c" alt=""></template>
+              <template x-if="!c"><div class="lls-gen" :style="'background:hsl(' + ((s.hue + i * 40) % 360) + ' 34% ' + (34 - i * 4) + '%)'"><span x-text="i ? '' : s.name"></span></div></template>
+            </div>
+          </template>
+        </div>
+        <span class="lls-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        <span class="lls-name" :title="s.name"><a :href="'series_members?seriesid=' + encodeURIComponent(s.id)" x-text="s.name"></a></span>
+        <span class="lls-author">
+          %if perm&lazylibrarian.perm_authorbooks:
+          <a :href="'author_page?authorid=' + encodeURIComponent(s.authorId)" x-text="s.author"></a>
+          %else:
+          <span x-text="s.author"></span>
+          %endif
+          <span class="lls-src" x-show="s.source" x-text="' · ' + s.source"></span>
+        </span>
+        <div class="lls-prog" :class="s.total && s.have >= s.total && 'full'" :title="s.have + ' / ' + s.total">
+          <div class="bar"><i :style="'width:' + s.percent + '%'"></i></div>
+          <div class="txt" x-text="llNgettext(T.booksOf, s.total).replace('%(have)s', s.have)"></div>
+        </div>
+        <div class="lls-status"><span class="badge rounded-pill lls-pill" :class="pillClass(s.status)" :title="s.reason" x-text="llStatus(s.status)"></span></div>
+      </article>
+    </template>
+    <template x-for="n in (loading ? (series.length ? 4 : 10) : 0)" :key="'s' + n">
+      <div class="lls-card lls-skel"><div class="lls-stack"><div class="c c0"></div></div></div>
+    </template>
+    <div class="text-center text-body-secondary py-5" style="grid-column: 1 / -1" x-show="!loading && done && !series.length" x-cloak>${_('No series found')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && series.length ? T.allShown : ''"></div>
+
+  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+  <div class="lls-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'lls-bar-hidden'" role="region" aria-label="${_('Selected series') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    %if perm&lazylibrarian.perm_status:
+    %for st in ['Active', 'Wanted', 'Paused', 'Ignored']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('${st}')">${_(st)}</button>
+    %endfor
+    %endif
+    %if CONFIG['USER_ACCOUNTS']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Subscribe')">${_('Subscribe')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button>
+    %endif
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+  %endif
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    status_now = whichStatus if whichStatus not in (None, 'None', '') else 'All'
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 30;
+  var QUERY = 'whichStatus=' + encodeURIComponent(${js(status_now)}) + '&AuthorID=' + encodeURIComponent(${js(str(authorid or ''))}) +
+              '&active=' + encodeURIComponent(${js(str(active))}) + '&covers=1';
+  var REDIRECT = ${js(str(authorid or ''))};
+  var SOURCES = {HC: 'HardCover', OL: 'OpenLibrary', GB: 'GoogleBooks', GR: 'GoodReads', LT: 'LibraryThing', DB: 'Databáze knih'};
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')},
+    pickFirst: ${_js('Select at least one series first')}, failed: ${_js('Something went wrong, try again')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')},
+    series: ${_jsn('%(count)s series', '%(count)s series')},
+    booksOf: ${_jsn('%(have)s of %(count)s book', '%(have)s of %(count)s books')}
+  };
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
+
+  // get_series row: 0 id, 1 author, 2 name, 3 status, 4 authorid, 6 have, 7 total, 8 reason, 9 source, 10 percent, 11 covers
+  function toSeries(r) {
+    var covers = (r[11] || []).filter(function (c) { return c && !/nocover|no_cover/i.test(c); });
+    var total = +r[7] || 0;
+    var stack = [covers[0] || '', covers[1] || '', covers[2] || ''].slice(0, Math.max(1, Math.min(3, total || 1)));
+    return {
+      id: String(r[0]), author: r[1] || '', name: r[2] || '', status: String(r[3] || ''), authorId: r[4],
+      have: +r[6] || 0, total: total, reason: r[8] || '', source: SOURCES[r[9]] || '', percent: Math.max(0, Math.min(100, +r[10] || 0)),
+      stack: stack, hue: hue(String(r[2] || ''))
+    };
+  }
+
+  Alpine.data('llSeries', function () {
+    return {
+      T: T, series: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
+      q: '', sort: '2:asc', view: 'grid', selecting: false, sel: {}, toastText: '',
+      get countText() { return this.total || this.done ? llNgettext(T.series, this.total) : ''; },
+      get selCount() { return Object.keys(this.sel).length; },
+      start: function () {
+        var self = this;
+        try { var v = localStorage.getItem('lls-view'); if (v === 'grid' || v === 'list') { this.view = v; } } catch (e) {}
+        try {
+          var saved = JSON.parse(sessionStorage.getItem('lls-series') || 'null');
+          if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
+        } catch (e) {}
+        ['q', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'}).observe(this.$refs.sentinel);
+        this.load();
+      },
+      url: function () {
+        var p = this.sort.split(':');
+        return 'get_series?' + QUERY + '&iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] +
+          '&sSortDir_0=' + p[1] + '&sSearch=' + encodeURIComponent(this.q) + '&_=' + Date.now();
+      },
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.series = self.series.concat(rows.map(toSeries));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.series = []; this.done = false; this.loading = false;
+        try { sessionStorage.setItem('lls-series', JSON.stringify({q: this.q, sort: this.sort})); } catch (e) {}
+        this.load();
+      },
+      setView: function (v) {
+        this.view = v;
+        try { localStorage.setItem('lls-view', v); } catch (e) {}
+        var self = this;
+        this.$nextTick(function () {
+          if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+        });
+      },
+      pillClass: function (s) {
+        return {Active: 'text-bg-success', Wanted: 'text-bg-warning', Paused: 'bg-secondary-subtle text-secondary-emphasis',
+                Ignored: 'bg-danger-subtle text-danger-emphasis'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+      open: function (s, e) {
+        if (this.selecting) {
+          e.preventDefault();
+          if (this.sel[s.id]) { delete this.sel[s.id]; } else { this.sel[s.id] = true; }
+          this.sel = Object.assign({}, this.sel);
+          return;
+        }
+        if (e.target.closest('a')) { return; }
+        window.location = 'series_members?seriesid=' + encodeURIComponent(s.id);
+      },
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+      bulk: function (action) {
+        var ids = Object.keys(this.sel);
+        if (!ids.length) { this.toast(T.pickFirst); return; }
+        var self = this;
+        var body = new URLSearchParams({action: action});
+        if (REDIRECT) { body.append('redirect', REDIRECT); }
+        ids.forEach(function (id) { body.append(id, 'on'); });
+        this.stopSelect();
+        fetch('mark_series_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (d) { var t = document.createElement('div'); t.innerHTML = d.summary || ''; self.toast(t.textContent || action); self.reset(); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

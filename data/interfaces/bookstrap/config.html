@@ -4004,29 +4004,6 @@
                       ${_('Used for magazine issue file and folder names, issue titles in Calibre and OPF metadata, and dates shown with a month name (the date formats are under Interface).')}<br/>
                       ${_('It does not affect reading dates: month names in magazine titles are recognised in all the languages switched on above.')}</span>
                   </div>
-                </fieldset>
-                <br>
-                <fieldset>
-                  <legend>${_('Author Names and Titles')}</legend>
-                  <div class="form-group">
-                    <label for="name_postfix" class="control-label">${_('Author Name suffix')}</label>
-                    <input type="text" id="name_postfix" name="name_postfix" value="${CONFIG['NAME_POSTFIX']}" class="form-control" placeholder="eg snr, jnr">
-                    <span class="help-block">${_('Comma separated list of suffixes to ignore when showing surname first')}</span>
-                  </div>
-                  <div class="form-group">
-                    <label for="name_definite" class="control-label">${_('Definite Articles')}</label>
-                    <input type="text" id="name_definite" name="name_definite" value="${CONFIG['NAME_DEFINITE']}" class="form-control" placeholder="eg The, A, Les">
-                    <span class="help-block">${_('Comma separated list of definite articles for sorting titles')}</span>
-                  </div>
-                  <div class="form-group">
-                    <label for="imp_nosplit" class="control-label">${_('Non-splitting titles')}</label>
-                    <input type="text" id="imp_nosplit" name="imp_nosplit" value="${CONFIG['IMP_NOSPLIT']}" class="form-control" placeholder="eg Doctor Who">
-                    <span class="help-block">${_('Comma separated list of prefixes and (items in braces) to ignore when splitting titles')}</span>
-                  </div>
-                </fieldset>
-                <br>
-                <fieldset>
-                  <legend>${_('Magazine Titles')}</legend>
                   <div class="form-group">
                     <label for="pref_maglang" class="control-label">${_('Default language for magazines:')}</label>
                     <% maglangs = config['mag_languages'] %>
@@ -4078,6 +4055,24 @@
                     </div>
                     %endfor
                     <span class="help-block">${_('Long and short month names of each language, in the order of the languages. Month names in magazine titles are recognised in all of them, and the Date Language picks the ones LazyLibrarian writes.')}</span>
+                  </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Author Names and Titles')}</legend>
+                  <div class="form-group">
+                    <label for="name_postfix" class="control-label">${_('Author Name suffix')}</label>
+                    <input type="text" id="name_postfix" name="name_postfix" value="${CONFIG['NAME_POSTFIX']}" class="form-control" placeholder="eg snr, jnr">
+                    <span class="help-block">${_('Comma separated list of suffixes to ignore when showing surname first')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="name_definite" class="control-label">${_('Definite Articles')}</label>
+                    <input type="text" id="name_definite" name="name_definite" value="${CONFIG['NAME_DEFINITE']}" class="form-control" placeholder="eg The, A, Les">
+                    <span class="help-block">${_('Comma separated list of definite articles for sorting titles')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="imp_nosplit" class="control-label">${_('Non-splitting titles')}</label>
+                    <input type="text" id="imp_nosplit" name="imp_nosplit" value="${CONFIG['IMP_NOSPLIT']}" class="form-control" placeholder="eg Doctor Who">
+                    <span class="help-block">${_('Comma separated list of prefixes and (items in braces) to ignore when splitting titles')}</span>
                   </div>
                 </fieldset>
               </div>

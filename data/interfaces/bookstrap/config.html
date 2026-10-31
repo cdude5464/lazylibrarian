@@ -565,6 +565,12 @@
                     </fieldset>
                     <small>${_('Enabling/Disabling user accounts or changing webserver user/pass requires restart')}<br></small>
                   </fieldset>
+                  %if docker():
+                  ## no browser in a container; keep the saved value so saving the page does not change it
+                  %if CONFIG['LAUNCH_BROWSER']:
+                  <input type="hidden" name="launch_browser" value="1">
+                  %endif
+                  %else:
                   <fieldset>
                     <legend>${_('Startup')}</legend>
                     <div class="row checkbox">
@@ -576,6 +582,7 @@
                     </div>
                     </div>
                   </fieldset>
+                  %endif
                   <fieldset>
                     <legend>${_('API')}</legend>
                     <div class="checkbox">

@@ -707,15 +707,12 @@
         var ff = section('ebook_type') || section('audiobook_type') || section('mag_type') || section('comic_type');
         if (ff) { row.insertBefore(ff, row.firstChild); }
       })();
-      // Processing: bookstrap spreads its sections over three columns in no particular order; here they are one
-      // list in the order the work happens, each section found by a setting it holds
-      (function () {
-        var pane = document.getElementById('searchprocessing');
+      // Processing and Interface: bookstrap spreads their sections over columns in no particular order; here they are
+      // one list in a logical order, each section found by a setting it holds
+      function llcFlow(paneId, order) {
+        var pane = document.getElementById(paneId);
         var row = pane && pane.querySelector('.configtable > .row');
         if (!row) { return; }
-        var order = ['search_bookinterval', 'notfound_status', 'newauthor_books', 'imp_convert', 'imp_comiccover', 'pref_ebookopf',
-                     'imp_calibredb', 'download_dir', 'file_perm', 'fmt_series', 'ebook_wanted_formats', 'audio_options',
-                     'swap_coverpage', 'ffmpeg', 'cache_age'];
         var top = function (el) {
           var fs = el && el.closest('fieldset');
           while (fs && fs.parentElement.parentElement !== row) { fs = fs.parentElement.closest('fieldset'); }
@@ -737,7 +734,15 @@
           if (!col.querySelector('input, select, textarea, legend')) { col.remove(); }
         });
         row.insertBefore(flow, row.firstChild);
-      })();
+      }
+      // Processing in the order the work happens: when, with what status, what is imported, Calibre, where files go
+      // and how they are named, conversions and the programs for them, the rest
+      llcFlow('searchprocessing', ['search_bookinterval', 'notfound_status', 'newauthor_books', 'imp_convert', 'imp_comiccover',
+        'pref_ebookopf', 'imp_calibredb', 'download_dir', 'file_perm', 'fmt_series', 'ebook_wanted_formats', 'audio_options',
+        'swap_coverpage', 'ffmpeg', 'cache_age']);
+      // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
+      llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
+        'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'logdir']);
       // Genres: the sections in the order genres are processed: replace (before the reject lists), reject, reject
       // parts, then how many are kept per book
       (function () {

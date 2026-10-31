@@ -138,7 +138,7 @@
             </button>
           </li>
           %if perm & lazylibrarian.perm_config:
-          <li class="nav-item"><a class="nav-link ll-only-icon" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
+          <li class="nav-item"><a class="nav-link ll-only-icon${' active' if current == 'whatsnew' else ''}" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
             %if lazylibrarian.WHATS_NEW:
             <span class="badge rounded-pill text-bg-danger">${len(lazylibrarian.WHATS_NEW)}</span>
             %endif

@@ -1,0 +1,145 @@
+<%inherit file="modern_base.html" />
+<%!
+    from lazylibrarian.common import docker
+    page_id = 'whatsnew'
+%>
+<%def name="headIncludes()">
+<style>
+  .llw { max-width: 860px; }
+  .llw-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .llw-filter { flex: 1 1 100%; order: 5; } }
+  .llw-sec { margin: 1.6rem 0 .4rem; display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .llw-sec h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0; }
+  .llw-day { position: relative; padding-left: 1.4rem; margin-left: .35rem; border-left: 2px solid var(--bs-border-color-translucent); }
+  .llw-date { position: relative; font-size: .78rem; font-weight: 600; color: var(--bs-secondary-color); padding: .9rem 0 .3rem; font-variant-numeric: tabular-nums; }
+  .llw-date::before { content: ""; position: absolute; left: calc(-1.4rem - 6px); top: 1.15rem; width: 10px; height: 10px; border-radius: 50%;
+                      background: var(--bs-body-bg); border: 2px solid var(--bs-secondary-color); }
+  .llw-day.has-new .llw-date::before { background: var(--ll-accent); border-color: var(--ll-accent); }
+  .llw-item { padding: .45rem .7rem; margin: 0 0 .35rem -.7rem; border-radius: 8px; }
+  .llw-item.new { background: var(--bs-success-bg-subtle); }
+  .llw-title { font-size: .92rem; line-height: 1.4; overflow-wrap: anywhere; }
+  .llw-title a { text-underline-offset: 2px; }
+  .llw-pre { font-size: .66rem; font-weight: 600; padding: 2px 7px; margin-right: .35rem; vertical-align: 1px; }
+  .llw-meta { font-size: .74rem; color: var(--bs-secondary-color); margin-top: .1rem; }
+  .llw-meta a { color: inherit; font-family: var(--bs-font-monospace); }
+</style>
+</%def>
+<%def name="changelist(items, upcoming=False)">
+<%
+    unseen_ids = set(context.get('unseen') or [])
+    days = []
+    for item in items:
+        if days and days[-1][0] == item['date']:
+            days[-1][1].append(item)
+        else:
+            days.append((item['date'], [item]))
+%>
+  %for day, entries in days:
+  <div class="llw-day ${'has-new' if any(e['id'] in unseen_ids for e in entries) else ''}" x-show="dayVisible($el)">
+    <div class="llw-date">${day | h}</div>
+    %for item in entries:
+    <%
+        is_new = item['id'] in unseen_ids
+        # "area: what changed" titles get the area as a small tag
+        title_html = item['html']
+        prefix = ''
+        head = item['title'].split(':', 1)
+        if len(head) == 2 and 0 < len(head[0]) <= 20 and ' ' not in head[0].strip() and not head[0].startswith(('http', '#', '!')):
+            prefix = head[0].strip()
+            cut = title_html.find(':')
+            title_html = title_html[cut + 1:].lstrip() if cut >= 0 else title_html
+    %>
+    <div class="llw-item ${'new' if is_new else ''}" data-new="${'1' if is_new else ''}"
+         data-text="${(item['title'] + ' ' + item['author'] + ' ' + item['short_id']).lower() | h}" x-show="match($el)">
+      <div class="llw-title">
+        %if prefix:
+        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis llw-pre">${prefix | h}</span>\
+        %endif
+        ${title_html}
+        %if is_new:
+        <span class="badge rounded-pill text-bg-success llw-pre ms-1">${_('New')}</span>
+        %endif
+      </div>
+      <div class="llw-meta">${item['author'] | h} · <a href="${repo | h}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></div>
+    </div>
+    %endfor
+  </div>
+  %endfor
+</%def>
+<%def name="body()">
+<%
+    unseen = context.get('unseen') or []
+%>
+<div class="llw" x-data="llWhatsNew">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    %if unseen:
+    <span class="badge rounded-pill text-bg-success">${_('New')}: ${len(unseen)}</span>
+    %endif
+    <span class="flex-grow-1"></span>
+    %if not changes['error']:
+    <div class="input-group input-group-sm llw-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" class="form-control rounded-end-pill" x-model="q" placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+    </div>
+      %if unseen:
+    <button type="button" class="btn btn-sm rounded-pill" :class="onlyNew ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="onlyNew" @click="onlyNew = !onlyNew">${_('Only new')}</button>
+      %endif
+    %endif
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="${repo | h}/-/commits/${changes.get('branch') or branch | u}" target="_blank" rel="noopener">
+      <i class="fa fa-external-link-alt" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('All changes on GitLab')}</span>
+    </a>
+  </div>
+
+  %if changes['error']:
+  <div class="alert alert-warning mt-3">${_('Unable to get the list of changes from %(repo)s, try again later.') % {'repo': repo} | h}</div>
+  %else:
+    %if changes['known'] and changes['upcoming']:
+    <div class="llw-sec">
+      <h2><i class="fa fa-clock me-1" aria-hidden="true"></i>${_('Not installed yet')}</h2>
+      <span class="small text-body-secondary">${len(changes['upcoming'])}</span>
+    </div>
+      %if docker():
+      <p class="small text-body-secondary mb-0">${_('These will be included in the next container image update.')}</p>
+      %endif
+    ${changelist(changes['upcoming'], True)}
+    %endif
+    <div class="llw-sec">
+      %if changes['known']:
+      <h2><i class="fa fa-check me-1" aria-hidden="true"></i>${_('Installed')}</h2>
+      %else:
+      <h2>${_('Recent changes')}</h2>
+      %endif
+    </div>
+    %if not changes['known']:
+    <p class="small text-body-secondary mb-0">${_('The installed version is not known, so changes are not marked as installed.')}</p>
+    %endif
+    ${changelist(changes['installed'])}
+    <p class="text-center text-body-secondary py-4" x-show="empty" x-cloak>${_('No results')}</p>
+  %endif
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  Alpine.data('llWhatsNew', function () {
+    return {
+      q: '', onlyNew: false,
+      match: function (el) {
+        if (this.onlyNew && !el.dataset.new) { return false; }
+        var q = this.q.trim().toLowerCase();
+        return !q || el.dataset.text.indexOf(q) >= 0;
+      },
+      dayVisible: function (el) {
+        var self = this;
+        return Array.prototype.some.call(el.querySelectorAll('.llw-item'), function (i) { return self.match(i); });
+      },
+      get empty() {
+        var self = this;
+        return !Array.prototype.some.call(document.querySelectorAll('.llw-item'), function (i) { return self.match(i); });
+      }
+    };
+  });
+});
+</script>
+</%def>

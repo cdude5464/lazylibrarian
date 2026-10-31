@@ -131,6 +131,11 @@
   .llc .llc-ff > label { display: block; }
   .llc .llc-ff .input-group { margin: 0; flex-wrap: nowrap; }
   .llc .llc-ff .input-group > .input-group-text { flex: 0 0 auto; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
+  /* accent colour (Interface > Appearance): presets next to the picker */
+  .llc .accent-picker { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+  .llc .accent-picker input[type="color"] { width: 3rem; height: 2rem; padding: .15rem; flex: 0 0 auto; }
+  .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
+  .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
@@ -614,6 +619,25 @@
         if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
       });
       llcFieldGrids();
+      // accent colour: a preset fills the picker, the page shows the colour at once (saved with the page)
+      var acc = document.getElementById('modern_accent');
+      if (acc) {
+        var swatches = form.querySelectorAll('.accent-swatch');
+        var paint = function () {
+          var v = acc.value, root = document.documentElement;
+          var r = parseInt(v.substr(1, 2), 16), g = parseInt(v.substr(3, 2), 16), b = parseInt(v.substr(5, 2), 16);
+          var dark = root.getAttribute('data-bs-theme') === 'dark';
+          root.style.setProperty('--ll-accent', dark ? 'color-mix(in srgb, ' + v + ' 55%, #fff)' : v);
+          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#111' : '#fff'));
+          swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === v.toLowerCase()); });
+        };
+        swatches.forEach(function (s) {
+          s.style.background = s.dataset.color;
+          s.addEventListener('click', function () { acc.value = s.dataset.color; acc.dispatchEvent(new Event('input', {bubbles: true})); acc.dispatchEvent(new Event('change', {bubbles: true})); });
+        });
+        acc.addEventListener('input', paint);
+        swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === acc.value.toLowerCase()); });
+      }
       var active = ul && ul.querySelector('li.active');
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading

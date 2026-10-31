@@ -94,6 +94,20 @@
                         <input type="checkbox" name="use_bookstrap" id="bookstrap" value="1" ${checked} />
                         ${_('Use Bookstrap')}</label>
                     </div>
+                    %if CONFIG['HTTP_LOOK'] == 'modern':
+                    ## Bootswatch themes only style bookstrap: keep the value, offer the modern accent colour instead
+                    <input type="hidden" name="bookstrap_theme" value="${CONFIG['BOOKSTRAP_THEME'] | h}">
+                    <div class="form-group">
+                      <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
+                      <div class="accent-picker">
+                        <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
+                        %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
+                        <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
+                        %endfor
+                      </div>
+                      <span class="help-block">${_('Buttons, links and highlights of the modern interface. Dark mode uses a lighter shade of it.')}</span>
+                    </div>
+                    %else:
                     <fieldset id="bookstrap_options">
                       <div class="form-group">
                         <label for="bookstrap_theme" class="control-label">${_('Bootswatch Theme:')}</label>
@@ -105,6 +119,7 @@
                         </select>
                       </div>
                     </fieldset>
+                    %endif
                     <div class="form-group">
                       <label for="homepage">${_('Homepage:')}</label>
                       <select id="homepage" name="homepage" class="form-control">

@@ -801,6 +801,13 @@
           fs.appendChild(lg); fs.appendChild(body);
           ref.after(fs); ref = fs;
         });
+        // the first card would repeat the tab name; the primary source and multiple sources say what they are
+        var head = info.querySelector(':scope > legend');
+        if (head) {
+          head.remove();
+          var ib = info.querySelector(':scope > .section-body');
+          if (ib) { ib.style.display = ''; }
+        }
         llcFlow('importoptions', ['book_api', 'ol_options', 'dnb_options', 'audnexus', 'lt_devkey']);
       })();
       // Imports and Downloads (csv deletion, blacklists, search delay) act on downloads: it goes to that tab

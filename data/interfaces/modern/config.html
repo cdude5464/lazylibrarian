@@ -55,6 +55,8 @@
 
   /* Bootstrap 3 pieces of the bookstrap form, in Bootstrap 5 dress */
   .llc .hidden { display: none !important; }
+  /* the <br>s bookstrap puts between sections and blocks, the cards keep their own spacing */
+  .llc .tab-pane :is([class*="col-"], fieldset, .section-body, .configtable, .row) > br { display: none; }
   .llc .configtable > .row, .llc .tab-pane > .row { row-gap: 0; }
   .llc fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   .llc .tab-pane fieldset:has(> legend), .llc .tab-pane fieldset:has(> .section-body) {

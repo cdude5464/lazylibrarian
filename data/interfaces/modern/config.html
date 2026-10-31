@@ -124,6 +124,13 @@
       flex: 1 1 60%; min-width: 0; margin-left: -1px !important; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
     .llc .input-group > .form-control:has(+ .btn), .llc .input-group > .form-select:has(+ .btn) { border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important; }
   }
+  /* the input groups made into fields (llcFieldGrids): label above, side by side when there is room */
+  .llc .llc-fgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem .9rem; margin-bottom: .9rem; }
+  .llc .llc-fgrid.llc-fmulti { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); }
+  .llc .llc-ff { min-width: 0; }
+  .llc .llc-ff > label { display: block; }
+  .llc .llc-ff .input-group { margin: 0; flex-wrap: nowrap; }
+  .llc .llc-ff .input-group > .input-group-text { flex: 0 0 auto; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
@@ -385,7 +392,7 @@
     // search over all settings
     var q = document.getElementById('llc-q'), hits = document.getElementById('llc-hits'), timer = 0;
     // a row of two switches (.row.checkbox) holds two settings, its columns count separately
-    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"], .llc-pf';
+    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"], .llc-pf, .llc-ff';
     function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
     function search() {
       var t = norm(q.value.trim());
@@ -513,6 +520,54 @@
       });
     }
 
+    // "label | field | label | field | unit" input groups (Host/Port, Min/Max size, File/Directory permissions,
+    // log level and lines...) are one long bar on a wide screen and broken pieces on a phone. Each becomes a small
+    // grid: the label above its field, a unit (Mb, Days) stuck to the field, two or more fields side by side when
+    // there is room. Groups with buttons or switches in them (API keys, providers) stay as they are.
+    function llcFieldGrids() {
+      form.querySelectorAll('.tab-content .input-group').forEach(function (g) {
+        if (g.closest('.llc-pcard') || g.querySelector('button, input[type="checkbox"], input[type="button"], .btn')) { return; }
+        var kids = Array.prototype.slice.call(g.children);
+        var isText = function (c) { return c.matches('.input-group-text, .input-group-addon') && !c.querySelector('input, select'); };
+        if (!kids.length || !isText(kids[0])) { return; }
+        var fields = [], pending = '', extra = [];
+        kids.forEach(function (c) {
+          if (isText(c)) {
+            var t = c.textContent.replace(/ /g, ' ').trim();
+            var nx = c.nextElementSibling;
+            if (nx && nx.matches('input, select, textarea')) { pending = t; } else if (fields.length) { fields[fields.length - 1].unit = t; }
+          } else if (c.matches('input, select, textarea')) {
+            if (c.type === 'hidden') { extra.push(c); return; }
+            fields.push({el: c, label: pending, unit: ''}); pending = '';
+          } else if (!c.matches('label.sr-only')) { extra.push(c); }
+        });
+        if (!fields.length) { return; }
+        // one unit at the very end of a group of several fields (Min size | Max size | Mb) belongs to them all
+        var units = fields.filter(function (f) { return f.unit; });
+        if (fields.length > 1 && units.length === 1 && units[0] === fields[fields.length - 1]) { fields.forEach(function (f) { f.unit = units[0].unit; }); }
+        var grid = document.createElement('div');
+        grid.className = 'llc-fgrid' + (fields.length > 1 ? ' llc-fmulti' : '');
+        fields.forEach(function (f) {
+          var w = document.createElement('div'); w.className = 'llc-ff';
+          var lb = document.createElement('label'); lb.className = 'control-label';
+          lb.textContent = f.label.replace(/\s*:\s*$/, ''); if (f.el.id) { lb.htmlFor = f.el.id; }
+          if (f.label) { w.appendChild(lb); }
+          if (f.unit) {
+            var ig = document.createElement('div'); ig.className = 'input-group';
+            var u = document.createElement('span'); u.className = 'input-group-text'; u.textContent = f.unit;
+            ig.appendChild(f.el); ig.appendChild(u); w.appendChild(ig);
+          } else { w.appendChild(f.el); }
+          grid.appendChild(w);
+        });
+        // a column class on the group (Usenet Retention, Replace genre) stays with the grid
+        g.classList.forEach(function (k) { if (/^col-/.test(k)) { grid.classList.add(k); } });
+        g.parentNode.insertBefore(grid, g);
+        var ref = grid;
+        extra.forEach(function (x) { ref.after(x); ref = x; });
+        g.remove();
+      });
+    }
+
     window.llcAfterReady = function () {
       llcModernize(form);
       llcProviderCards();
@@ -558,6 +613,7 @@
         while (t && t.nodeType === 3 && !t.textContent.trim()) { t = t.previousSibling; }
         if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
       });
+      llcFieldGrids();
       var active = ul && ul.querySelector('li.active');
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading

@@ -687,6 +687,15 @@
         var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext'], true);
         var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin'], true);
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+        // Book Filters (future or unknown dates, no isbn, sets...) sit in Importing in bookstrap; they decide what
+        // is left out too, so they come here after the lists and limits
+        var nf = document.getElementById('no_future'), bf = nf && nf.closest('fieldset');
+        if (bf && !pane.contains(bf)) {
+          var wrap = document.createElement('div'); wrap.className = 'col-md-12';
+          wrap.appendChild(bf);
+          var after = sizes || words;
+          if (after) { after.after(wrap); } else { row.insertBefore(wrap, row.firstChild); }
+        }
       })();
       // Processing: bookstrap spreads its sections over three columns in no particular order; here they are one
       // list in the order the work happens, each section found by a setting it holds

@@ -36,6 +36,8 @@
       <input type="button" value="${_('Export Filters') | h}" id="savefilters" class="btn btn-default" />
       <input type="button" value="${_('Import Filters') | h}" id="loadfilters" class="btn btn-default" />
       <button class="button btn btn-sm btn-warning" type="button" value="showblocked" id="showblocked"> ${_('Blocked Providers')}</button>
+      <button type="button" id="collapse_all" class="btn btn-default">${_('Collapse all')}</button>
+      <button type="button" id="expand_all" class="btn btn-default">${_('Expand all')}</button>
       <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
     </div>
 </h1>
@@ -66,6 +68,8 @@
                 <div class="col-md-6">
                   <fieldset>
                     <legend>${_('Appearance')}</legend>
+                    <div class="row">
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="ui_language">${_('Interface language:')}</label>
                       <select id="ui_language" name="ui_language" class="form-control">
@@ -77,6 +81,8 @@
                         %endfor
                       </select>
                     </div>
+                    </div>
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="http_look">${_('Interface:')}</label>
                       <select id="http_look" name="http_look" class="form-control">
@@ -92,6 +98,10 @@
                         <input type="checkbox" name="use_bookstrap" id="bookstrap" value="1" ${checked} />
                         ${_('Use Bookstrap')}</label>
                     </div>
+                    </div>
+                    </div>
+                    <div class="row">
+                    <div class="col-sm-6">
                     <fieldset id="bookstrap_options">
                       <div class="form-group">
                         <label for="bookstrap_theme" class="control-label">${_('Bootswatch Theme:')}</label>
@@ -103,6 +113,8 @@
                         </select>
                       </div>
                     </fieldset>
+                    </div>
+                    <div class="col-sm-6">
                     <div class="form-group">
                       <label for="homepage">${_('Homepage:')}</label>
                       <select id="homepage" name="homepage" class="form-control">
@@ -117,35 +129,26 @@
                         %endfor
                       </select>
                     </div>
+                    </div>
+                    </div>
                     <%
                       appearance_groups = [
-                        (_('Show in the menu:'), [('ebook_tab', 'EBOOK_TAB', _('Show eBooks')),
-                                                  ('audio_tab', 'AUDIO_TAB', _('Show AudioBooks')),
-                                                  ('mag_tab', 'MAG_TAB', _('Show Magazines')),
-                                                  ('comic_tab', 'COMIC_TAB', _('Show Comics')),
-                                                  ('series_tab', 'SERIES_TAB', _('Show Series'))]),
-                        (_('Lists:'), [('ratestars', 'RATESTARS', _('Show rating as stars')),
-                                       ('toggles', 'TOGGLES', _('Show column toggles')),
-                                       ('show_genres', 'SHOW_GENRES', _('Show genres')),
-                                       ('show_reason', 'SHOW_REASON', _('Show reason author was added')),
-                                       ('sort_surname', 'SORT_SURNAME', _('Show author surname first')),
-                                       ('sort_definite', 'SORT_DEFINITE', _('Show titles ignoring article (The, A)')),
+                        (_('Show in the menu:'), [('ebook_tab', 'EBOOK_TAB', _('eBooks')),
+                                                  ('audio_tab', 'AUDIO_TAB', _('AudioBooks')),
+                                                  ('mag_tab', 'MAG_TAB', _('Magazines')),
+                                                  ('comic_tab', 'COMIC_TAB', _('Comics')),
+                                                  ('series_tab', 'SERIES_TAB', _('Series'))]),
+                        (_('Lists:'), [('ratestars', 'RATESTARS', _('Rating as stars')),
+                                       ('toggles', 'TOGGLES', _('Column toggles')),
+                                       ('show_genres', 'SHOW_GENRES', _('Genres')),
+                                       ('show_reason', 'SHOW_REASON', _('Reason author was added')),
+                                       ('sort_surname', 'SORT_SURNAME', _('Author surname first')),
+                                       ('sort_definite', 'SORT_DEFINITE', _('Titles ignoring article (The, A)')),
                                        ('ignore_paused', 'IGNORE_PAUSED', _('Ignore paused authors'))]),
                       ]
                     %>
                     %for group_label, boxes in appearance_groups:
-                    <div class="form-group">
-                      <label class="control-label">${group_label}</label>
-                      <div class="checkbox-grid">
-                        %for name, key, box_label in boxes:
-                        <div class="checkbox">
-                          <label for="${name}">
-                            <input type="checkbox" id="${name}" name="${name}" value="1"${' checked="checked"' if CONFIG[key] else ''} />
-                            ${box_label}</label>
-                        </div>
-                        %endfor
-                      </div>
-                    </div>
+                    ${enable_grid(boxes, group_label)}
                     %endfor
                   </fieldset>
                   <fieldset>
@@ -163,10 +166,10 @@
                       <label for="${name}" class="control-label">${label}</label>
                       <select id="${name}" name="${name}" class="form-control">
                         %if picker['other'] is not None:
-                        <option value="${picker['other']['format'] | h}" selected>${picker['other']['example'] | h} (${picker['other']['format'] | h})</option>
+                        <option value="${picker['other']['format'] | h}" selected>${picker['other']['example'] | h}</option>
                         %endif
                         %for fmt in picker['formats']:
-                        <option value="${fmt['format'] | h}"${' selected' if fmt['format'] == picker['selected'] else ''}>${fmt['example'] | h} (${fmt['format'] | h})</option>
+                        <option value="${fmt['format'] | h}"${' selected' if fmt['format'] == picker['selected'] else ''}>${fmt['example'] | h}</option>
                         %endfor
                       </select>
                       <span class="help-block">${help}</span>
@@ -254,28 +257,13 @@
                         <input type="number" id="logsize" name="logsize" value="${CONFIG['LOGSIZE']}" class="form-control" placeholder="${_('Log File Size') | h}">
                       </div>
 
-                      <div class="row checkbox">
-                        <div class="col-md-6">
-                          <% checked = 'checked="checked"' if CONFIG['LOGREDACT'] else '' %>
-                          <label for="logredact" class="control-label">
-                          <input type="checkbox" id="logredact" name="logredact" value="1" ${checked} />
-                          ${_('Redact on-screen log')}</label>
-                        </div>
-                        <div class="col-md-6">
-                          <% checked = 'checked="checked"' if CONFIG['HOSTREDACT'] else '' %>
-                          <label for="hostredact" class="control-label">
-                          <input type="checkbox" id="hostredact" name="hostredact" value="1" ${checked} />
-                          ${_('Also redact hostnames')}</label>
-                        </div>
-                      </div>
-                      <div class="row checkbox">
-                        <div class="col-md-6">
-                        <% checked = 'checked="checked"' if CONFIG['LOGFILEREDACT'] else '' %>
-                      <label for="logfileredact" class="control-label">
-                      <input type="checkbox" id="logfileredact" name="logfileredact" value="1" ${checked} />
-                          ${_('Redact logs saved to disc')}</label>
-                          </div>
-                      </div>
+                      <%
+                        redact_boxes = [('logredact', 'LOGREDACT', _('On-screen log')),
+                                        ('hostredact', 'HOSTREDACT', _('Hostnames')),
+                                        ('logfileredact', 'LOGFILEREDACT', _('Log files saved to disc'))]
+                      %>
+                      ## TRANSLATORS: label above the checkboxes that hide sensitive data (keys, passwords, hostnames) in the logs
+                      ${enable_grid(redact_boxes, _('Redact:'))}
                       <fieldset id=debug_options>
                       <legend>${_('Additional Debug Logging')}</legend>
                       <div class="row checkbox">
@@ -584,16 +572,22 @@
                     <fieldset id="api_options">
                       <div class="form-group">
                         <label for="api_key">${_('API Full Access key')}</label>
-                        <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
-                        <br>
+                        <div class="input-group">
+                          <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Full Access key:')} <strong>${CONFIG['API_KEY']}</strong></small>
                       </div>
                       <div class="form-group">
-                        <label for="api_key">${_('API Read-Only key')}</label>
-                        <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
-                        <br>
+                        <label for="api_ro_key">${_('API Read-Only key')}</label>
+                        <div class="input-group">
+                          <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Read-Only key:')} <strong>${CONFIG['API_RO_KEY']}</strong></small>
                       </div>
                     </fieldset>
@@ -3698,37 +3692,19 @@
                 %if CONFIG['EBOOK_TAB']:
                 <div class="col-md-6">
                 <legend>${_('eBook Size Limits')}</legend>
-                  <div class="input-group">
-                    <label for="reject_minsize" class="input-group-addon">${_('Min size')}</label>
-                    <input type="number" id="reject_minsize" name="reject_minsize" value="${CONFIG['REJECT_MINSIZE']}" class="form-control" placeholder="${_('Reject minimum size') | h}">
-                    <label for="reject_maxsize" class="input-group-addon">${_('Max size')}</label>
-                    <input type="number" id="reject_maxsize" name="reject_maxsize" value="${CONFIG['REJECT_MAXSIZE']}" class="form-control" placeholder="${_('Reject maximum size') | h}">
-                    <span class="input-group-addon">${_('Mb')}</span>
-                  </div>
+                ${size_limits('reject_minsize', 'REJECT_MINSIZE', 'reject_maxsize', 'REJECT_MAXSIZE')}
                 </div>
                 %endif
                 %if CONFIG['AUDIO_TAB']:
                 <div class="col-md-6">
                 <legend>${_('AudioBook Size Limits')}</legend>
-                 <div class="input-group">
-                    <label for="reject_minaudio" class="input-group-addon">${_('Min size')}</label>
-                    <input type="number" id="reject_minaudio" name="reject_minaudio" value="${CONFIG['REJECT_MINAUDIO']}" class="form-control" placeholder="${_('Reject minimum size') | h}">
-                    <label for="reject_maxaudio" class="input-group-addon">${_('Max size')}</label>
-                    <input type="number" id="reject_maxaudio" name="reject_maxaudio" value="${CONFIG['REJECT_MAXAUDIO']}" class="form-control" placeholder="${_('Reject maximum size') | h}">
-                    <span class="input-group-addon">${_('Mb')}</span>
-                  </div>
+                ${size_limits('reject_minaudio', 'REJECT_MINAUDIO', 'reject_maxaudio', 'REJECT_MAXAUDIO')}
                 </div>
                 %endif
                 %if CONFIG['COMIC_TAB']:
                 <div class="col-md-6">
                 <legend>${_('Comic Size Limits')}</legend>
-                 <div class="input-group">
-                    <label for="reject_mincomic" class="input-group-addon">${_('Min size')}</label>
-                    <input type="number" id="reject_mincomic" name="reject_mincomic" value="${CONFIG['REJECT_MINCOMIC']}" class="form-control" placeholder="${_('Reject minimum size') | h}">
-                    <label for="reject_maxcomic" class="input-group-addon">${_('Max size')}</label>
-                    <input type="number" id="reject_maxcomic" name="reject_maxcomic" value="${CONFIG['REJECT_MAXCOMIC']}" class="form-control" placeholder="${_('Reject maximum size') | h}">
-                    <span class="input-group-addon">${_('Mb')}</span>
-                  </div>
+                ${size_limits('reject_mincomic', 'REJECT_MINCOMIC', 'reject_maxcomic', 'REJECT_MAXCOMIC')}
                 </div>
                 <div class="col-md-12">
                 <br>
@@ -3746,22 +3722,14 @@
                 %endif
                 %if CONFIG['MAG_TAB']:
                 <div class="col-md-6">
-                <br>
                 <legend>${_('Magazine Size Limits')}</legend>
-                  <div class="input-group">
-                    <label for="reject_magmin" class="input-group-addon">${_('Min size')}</label>
-                    <input type="number" id="reject_magmin" name="reject_magmin" value="${CONFIG['REJECT_MAGMIN']}" class="form-control" placeholder="${_('Reject minimum size') | h}">
-                    <label for="reject_magsize" class="input-group-addon">${_('Max size')}</label>
-                    <input type="number" id="reject_magsize" name="reject_magsize" value="${CONFIG['REJECT_MAGSIZE']}" class="form-control" placeholder="${_('Reject maximum size') | h}">
-                    <span class="input-group-addon">${_('Mb')}</span>
-                  </div>
+                ${size_limits('reject_magmin', 'REJECT_MAGMIN', 'reject_magsize', 'REJECT_MAGSIZE')}
                 </div>
                 <div class="col-md-12">
-                <br>
                 <legend>${_('Magazine Options (per title)')}</legend>
                 </div>
                 %for mag in config['magazines_list']:
-                <div class="col-md-6">
+                <div class="col-md-6 addon-align">
                 <label>${mag['Title']}</label>
                   <div class="input-group">
                     <label for="reject_list[${mag['Title']}]" class="input-group-addon">${_('Reject')}&nbsp;</label>
@@ -3778,11 +3746,14 @@
                   <div class="input-group">
                     <label for="datetype[${mag['Title']}]" class="input-group-addon">${_('Date Style')}</label>
                     <input type="text" id="datetype[${mag['Title']}]" name="datetype[${mag['Title']}]" value="${mag['DateType']}" class="form-control" placeholder="auto">
+                  </div>
+                  <div class="input-group">
                     <label for="coverpage[${mag['Title']}]" class="input-group-addon">${_('Cover Page')}</label>
                     <input type="number" id="coverpage[${mag['Title']}]" name="coverpage[${mag['Title']}]" value="${mag['CoverPage']}" min=1 class="form-control" placeholder="1">
+                  </div>
+                  <div class="input-group">
                     <label for="language[${mag['Title']}]" class="input-group-addon">${_('Language')}</label>
-                    <input type="text" id="language[${mag['Title']}]" name="language[${mag['Title']}]" value="${mag['Language']}" class="form-control">
-                    <span class="help-block">${_('For opf/pdf')}<br/></span>
+                    <input type="text" id="language[${mag['Title']}]" name="language[${mag['Title']}]" value="${mag['Language']}" class="form-control" placeholder="${_('For opf/pdf') | h}" title="${_('For opf/pdf') | h}">
                   </div>
                 </div>
                 %endfor
@@ -4164,10 +4135,28 @@
 <!-- form -->
 </form>
 </%def>
-<%def name="enable_grid(boxes)">
+<%def name="size_limits(min_id, min_key, max_id, max_key)">
+  <div class="addon-align">
+  <div class="input-group">
+    <label for="${min_id}" class="input-group-addon">${_('Min size')}</label>
+    <input type="number" id="${min_id}" name="${min_id}" value="${CONFIG[min_key]}" class="form-control" placeholder="${_('Reject minimum size') | h}">
+    <span class="input-group-addon">${_('Mb')}</span>
+  </div>
+  <div class="input-group">
+    <label for="${max_id}" class="input-group-addon">${_('Max size')}</label>
+    <input type="number" id="${max_id}" name="${max_id}" value="${CONFIG[max_key]}" class="form-control" placeholder="${_('Reject maximum size') | h}">
+    <span class="input-group-addon">${_('Mb')}</span>
+  </div>
+  </div>
+</%def>
+<%def name="enable_grid(boxes, label=None)">
   <div class="form-group">
+    %if label is None:
     ## TRANSLATORS: label above the checkboxes that switch notification services or download clients on
     <label class="control-label">${_('Enable:')}</label>
+    %else:
+    <label class="control-label">${label}</label>
+    %endif
     <div class="checkbox-grid">
       %for name, key, box_label in boxes:
       <div class="checkbox">
@@ -4182,12 +4171,109 @@
 <%def name="javascriptIncludes()">
   <%include file="config_functions.js"/>
   <script type="text/javascript">
+    // Give the labels of stacked fields in an addon-align block the same width, the widest
+    // one, so the inputs line up. Measured when the tab is visible, so it fits any language.
+    function alignAddons($scope) {
+        $scope.find('.addon-align').each(function () {
+            var $labels = $(this).find('.input-group > .input-group-addon:first-child');
+            var widest = 0;
+            $labels.css('width', '');
+            $labels.each(function () {
+                widest = Math.max(widest, $(this).outerWidth());
+            });
+            if (widest > 0) {
+                $labels.css('width', widest + 'px');
+            }
+        });
+    }
+
     $(document).ready(function() {
         initThisPage();
+        alignAddons($('.tab-content .tab-pane.active'));
+        $('a[data-toggle="tab"]').on('shown.bs.tab', function (e) {
+            alignAddons($($(e.target).attr('href')));
+        });
+        // a section collapsed when its tab was shown had nothing to measure, so align it once it opens
+        $('.tab-content').on('click keydown', 'legend.section-toggle', function () {
+            var $pane = $(this).closest('.tab-pane');
+            setTimeout(function () { alignAddons($pane); }, 0);
+        });
+        $('#expand_all').on('click', function () {
+            setTimeout(function () { alignAddons($('.tab-content .tab-pane.active')); }, 0);
+        });
         initLanguagePicker();
         initMonthLanguagePicker();
         initSecretToggles();
+        initCollapsibleSections();
     });
+
+    // Section headings (legends) collapse or expand their section when clicked.
+    // Collapsed sections are remembered per browser, everything starts expanded.
+    // The section contents are only hidden, so they are still saved with the form.
+    function initCollapsibleSections() {
+        var storeKey = 'll_config_collapsed';
+        var collapsed = [];
+        try {
+            collapsed = JSON.parse(localStorage.getItem(storeKey) || '[]');
+            if (!$.isArray(collapsed)) { collapsed = []; }
+        } catch (e) {
+            collapsed = [];
+        }
+
+        function save() {
+            try {
+                localStorage.setItem(storeKey, JSON.stringify(collapsed));
+            } catch (e) {}
+        }
+
+        function setState(legend, collapse, animate) {
+            var body = legend.next('.section-body');
+            var key = legend.data('section-key');
+            var pos = $.inArray(key, collapsed);
+            legend.toggleClass('section-collapsed', collapse).attr('aria-expanded', collapse ? 'false' : 'true');
+            if (animate) {
+                body[collapse ? 'slideUp' : 'slideDown'](150);
+            } else {
+                body.toggle(!collapse);
+            }
+            if (collapse && pos < 0) { collapsed.push(key); }
+            if (!collapse && pos >= 0) { collapsed.splice(pos, 1); }
+        }
+
+        $('.tab-content .tab-pane').each(function () {
+            var pane = $(this);
+            // fieldset sections, and the provider columns on the Categories tab
+            pane.find('fieldset > legend, div.col-md-6 > legend').each(function (index) {
+                var legend = $(this);
+                if (!legend.nextAll().length) { return; }
+                legend.nextAll().wrapAll('<div class="section-body"></div>');
+                legend.data('section-key', pane.attr('id') + ':' + index);
+                legend.addClass('section-toggle').attr({'tabindex': '0', 'role': 'button', 'aria-expanded': 'true'});
+                legend.prepend('<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>');
+                if ($.inArray(legend.data('section-key'), collapsed) >= 0) {
+                    setState(legend, true, false);
+                }
+            });
+        });
+
+        $('.tab-content').on('click keydown', 'legend.section-toggle', function (e) {
+            // the help icon in a heading shows its popover, it doesn't collapse the section
+            if ($(e.target).closest('.help-icon').length) { return; }
+            if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) { return; }
+            e.preventDefault();
+            var legend = $(this);
+            setState(legend, !legend.hasClass('section-collapsed'), true);
+            save();
+        });
+
+        $('#collapse_all, #expand_all').click(function () {
+            var collapse = this.id === 'collapse_all';
+            $('.tab-content .tab-pane.active legend.section-toggle').each(function () {
+                setState($(this), collapse, false);
+            });
+            save();
+        });
+    }
 
     // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
     function initSecretToggles() {

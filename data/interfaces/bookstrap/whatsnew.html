@@ -14,7 +14,7 @@
             <span class="label label-success">${_('New')}</span>
           %endif
           <br><small class="text-muted">${item['author'] | h} &middot;
-            <a href="${repo}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></small>
+            <a href="${repo | h}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></small>
         </td>
       </tr>
     %endfor
@@ -41,5 +41,5 @@
     %endif
     ${changelist(changes['installed'])}
   %endif
-  <p><a href="${repo}/-/commits/${changes.get('branch') or branch | u}" target="_blank" rel="noopener">${_('All changes on GitLab')}</a></p>
+  <p><a href="${repo | h}/-/commits/${changes.get('branch') or branch | u}" target="_blank" rel="noopener">${_('All changes on GitLab')}</a></p>
 </%def>

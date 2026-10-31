@@ -34,6 +34,10 @@ copy, so changes made outside it lead to conflicts with its merge requests. If y
 prefer an offline tool (Poedit, Lokalize, ...), download the file from Weblate and
 upload it back there when you're done.
 
+The `translations-check` CI job fails merge requests that change `.po` files, except
+Weblate's own. If a maintainer has to resolve a Weblate conflict by hand, the label
+`weblate-sync` on the merge request lets it through.
+
 When translating, please keep:
 
 - `%(count)s` / `%(count)d` placeholders as they are, wherever they fit in your sentence

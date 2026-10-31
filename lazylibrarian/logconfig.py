@@ -238,14 +238,16 @@ class LogConfig:
     def clear_ui_log(self):
         self._memorybuffer.clear()
 
-    def get_ui_logrows(self, filterstr: str = '') -> (list, int):
-        """ Return log rows to show in the UI, filtered by lowercase(filter), as
-         well as the total number of items that could be displayed """
+    def get_ui_logrows(self, filterstr: str = '', minlevel: int = 0) -> (list, int):
+        """ Return log rows to show in the UI, filtered by lowercase(filter) and by
+         minimum log level, as well as the total number of items that could be displayed """
         filterstr = filterstr.lower() if filterstr else ''
 
         rows = []
         handler = self.get_ui_loghandler()
         for logrec in handler.buffer:
+            if logrec.levelno < minlevel:
+                continue
             if hasattr(logrec, 'message'):  # If not, it's a sign it was added to the log without a formatter
                 # Timestamp, level, thread, file, method, line, message
                 line = [logrec.asctime, logrec.levelname, logrec.threadName, logrec.filename, logrec.funcName,

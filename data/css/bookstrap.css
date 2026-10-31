@@ -121,66 +121,109 @@ textarea#telemetry_data {
 .searchlang-modes .btn {
     margin-right: 6px;
 }
+/* Config section headings: space above, to separate them from the section before,
+   and less below, so a heading sits with its own options. Padding, because Chrome
+   drops the top margin of a legend inside a fieldset. */
+.configtable legend {
+    padding-top: 15px;
+    margin-bottom: 10px;
+}
+.configtable .row > .col-md-6:first-child > fieldset:first-child > legend:first-child,
+.configtable .row > .col-md-6:first-child > legend:first-child {
+    padding-top: 0;
+}
+@media (min-width: 992px) {
+    .configtable .row > .col-md-6:nth-child(-n+2) > fieldset:first-child > legend:first-child,
+    .configtable .row > .col-md-6:nth-child(-n+2) > legend:first-child {
+        padding-top: 0;
+    }
+}
+/* Stacked fields whose labels alignAddons() in config.html gives the same width */
+.addon-align .input-group {
+    width: 100%;
+}
+.addon-align .input-group > .input-group-addon:first-child {
+    text-align: left;
+}
+.configtable legend + .checkbox,
+.configtable legend + .row.checkbox,
+.configtable legend + .section-body > .checkbox:first-child,
+.configtable legend + .section-body > .row.checkbox:first-child {
+    margin-top: 0;
+}
 .checkbox-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
     column-gap: 16px;
 }
 .checkbox-grid .checkbox {
     margin: 0 0 4px 0;
 }
+legend.section-toggle {
+    cursor: pointer;
+}
+legend.section-toggle .section-caret {
+    width: 1em;
+    margin-right: .3em;
+    font-size: 80%;
+    transition: transform .15s;
+}
+legend.section-collapsed .section-caret {
+    transform: rotate(-90deg);
+}
 
-/* Table view modes, picked per browser in the View dropdown next to the column toggles */
+/* Table view modes, picked per browser in the View dropdown next to the column toggles.
+   Only tables with a picture column get them (ll-view-table), other tables keep their layout */
 .ll-view-select {
     display: inline-block;
     width: auto;
     height: 26px;
     padding: 2px 6px;
 }
-.ll-view-compact .table > tbody > tr > td,
-.ll-view-list .table > tbody > tr > td {
+.ll-view-compact .ll-view-table > tbody > tr > td,
+.ll-view-list .ll-view-table > tbody > tr > td {
     padding: 2px 6px;
     vertical-align: middle;
 }
-.ll-view-compact .bookcover-sm,
-.ll-view-compact .author-thumb {
+.ll-view-compact .ll-view-table .bookcover-sm,
+.ll-view-compact .ll-view-table .author-thumb {
     width: 40px;
 }
-.ll-view-compact .bookcover-xs {
+.ll-view-compact .ll-view-table .bookcover-xs {
     width: 30px;
 }
-.ll-view-compact .table td img[src*="-stars.png"],
-.ll-view-list .table td img[src*="-stars.png"] {
+.ll-view-compact .ll-view-table td img[src*="-stars.png"],
+.ll-view-list .ll-view-table td img[src*="-stars.png"] {
     height: 12px;
 }
-.ll-view-compact .table td .btn-link,
-.ll-view-list .table td .btn-link {
+.ll-view-compact .ll-view-table td .btn-link,
+.ll-view-list .ll-view-table td .btn-link {
     padding: 0;
 }
-.ll-view-compact .table td p,
-.ll-view-list .table td p {
+.ll-view-compact .ll-view-table td p,
+.ll-view-list .ll-view-table td p {
     display: inline-block;
     margin: 0 2px 0 0;
 }
-.ll-view-compact .table td .btn-xs,
-.ll-view-list .table td .btn-xs {
+.ll-view-compact .ll-view-table td .btn-xs,
+.ll-view-list .ll-view-table td .btn-xs {
     padding: 0 4px;
 }
 /* list: one line per row, no pictures, nothing under the title, statuses side by side */
-.ll-view-list .table th.bookart,
-.ll-view-list .table th.authorimg,
-.ll-view-list .table td.ll-bookart,
-.ll-view-list .table td.ll-authorimg,
-.ll-view-list .table td .ll-title-extra,
-.ll-view-list .table td.ll-status br,
+.ll-view-list .ll-view-table th.bookart,
+.ll-view-list .ll-view-table th.authorimg,
+.ll-view-list .ll-view-table td.ll-bookart,
+.ll-view-list .ll-view-table td.ll-authorimg,
+.ll-view-list .ll-view-table td .ll-title-extra,
+.ll-view-list .ll-view-table td.ll-status br,
 .ll-view-list .toggles a.ll-toggle-bookart,
 .ll-view-list .toggles a.ll-toggle-authorimg {
     display: none;
 }
-.ll-view-list .table td.ll-status,
-.ll-view-list .table td.ll-date,
-.ll-view-list .table td.ll-authorname,
-.ll-view-list .table td.ll-bookname .btn-link {
+.ll-view-list .ll-view-table td.ll-status,
+.ll-view-list .ll-view-table td.ll-date,
+.ll-view-list .ll-view-table td.ll-authorname,
+.ll-view-list .ll-view-table td.ll-bookname .btn-link {
     white-space: nowrap;
 }
 /* the ebook and audiobook dates are on two lines, the line break is a span so list can make it a space */
@@ -192,7 +235,7 @@ textarea#telemetry_data {
     width: .5em;
 }
 /* grid: each row becomes a card with the picture, names and status */
-.ll-view-grid .toggles.ll-grid-toggles a.toggle-vis:not(.ll-toggle-bookart):not(.ll-toggle-authorimg):not(.ll-toggle-bookname):not(.ll-toggle-authorname):not(.ll-toggle-status) {
+.ll-view-grid .toggles.ll-grid-toggles a.toggle-vis:not(.ll-toggle-bookart):not(.ll-toggle-authorimg):not(.ll-toggle-bookname):not(.ll-toggle-authorname):not(.ll-toggle-status):not(.ll-toggle-issuedate):not(.ll-toggle-issue) {
     display: none;
 }
 .ll-view-grid table.ll-grid-table,
@@ -229,6 +272,8 @@ textarea#telemetry_data {
 .ll-view-grid table.ll-grid-table > tbody > tr > td.ll-bookname,
 .ll-view-grid table.ll-grid-table > tbody > tr > td.ll-authorname,
 .ll-view-grid table.ll-grid-table > tbody > tr > td.ll-status,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-issuedate,
+.ll-view-grid table.ll-grid-table > tbody > tr > td.ll-issue,
 .ll-view-grid table.ll-grid-table > tbody > tr > td.dataTables_empty {
     display: block;
 }
@@ -247,6 +292,9 @@ textarea#telemetry_data {
 .ll-view-grid td.ll-bookname { order: 2; font-weight: bold; }
 .ll-view-grid td.ll-authorname { order: 3; font-size: 90%; }
 .ll-view-grid td.ll-status { order: 4; margin-top: auto; }
+/* magazine and comic issues: the issue date is the card title, the Open and Send buttons go at the bottom */
+.ll-view-grid td.ll-issuedate { order: 2; font-weight: bold; }
+.ll-view-grid td.ll-issue { order: 4; margin-top: auto; }
 /* on the authors page the author is the card title and the latest book the subtitle */
 .ll-view-grid td.ll-authorimg ~ td.ll-authorname { order: 2; font-weight: bold; font-size: 100%; }
 .ll-view-grid td.ll-authorimg ~ td.ll-bookname { order: 3; font-weight: normal; font-size: 90%; }
@@ -257,7 +305,8 @@ textarea#telemetry_data {
     margin: 0 auto;
 }
 .ll-view-grid td.ll-bookname .btn-link,
-.ll-view-grid td.ll-authorname .btn-link {
+.ll-view-grid td.ll-authorname .btn-link,
+.ll-view-grid td.ll-issuedate .btn-link {
     padding: 0;
     white-space: normal;
     text-align: center;
@@ -270,6 +319,7 @@ textarea#telemetry_data {
     display: inline-block;
     margin: 0 2px 2px 0;
 }
-.ll-view-grid td.ll-status .btn-xs {
+.ll-view-grid td.ll-status .btn-xs,
+.ll-view-grid td.ll-issue .btn-xs {
     padding: 0 4px;
 }

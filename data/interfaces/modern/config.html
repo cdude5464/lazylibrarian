@@ -7,6 +7,7 @@
 </%doc>
 <%namespace name="bs" file="/bookstrap/config.html" />
 <%!
+    from lazylibrarian.config2 import CONFIG
     page_id = 'config'
 %>
 <%def name="headIncludes()">
@@ -213,6 +214,19 @@
         <div class="llc-tools mb-0" id="llc-tools"></div>
       </div>
       ${bs.body()}
+      ## the accent colour takes the place of the Bootswatch theme (which only styles bookstrap) in Appearance
+      <template id="llc-accent-tpl">
+        <div class="form-group">
+          <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
+          <div class="accent-picker">
+            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
+            %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
+            <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
+            %endfor
+          </div>
+          <span class="help-block">${_('Buttons, links and highlights of the modern interface. Dark mode uses a lighter shade of it.')}</span>
+        </div>
+      </template>
       <div class="llc-save" id="llc-save">
         <span class="msg"><span class="dot" aria-hidden="true"></span><span id="llc-save-msg">${_('All changes saved')}</span></span>
         <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" id="llc-undo" hidden>${_('Discard')}</button>
@@ -619,6 +633,10 @@
         if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
       });
       llcFieldGrids();
+      // the accent picker goes where the Bootswatch theme was; the theme select stays in the form, hidden, so its
+      // value is saved unchanged
+      var bso = document.getElementById('bookstrap_options'), tpl = document.getElementById('llc-accent-tpl');
+      if (bso && tpl) { bso.after(tpl.content.cloneNode(true)); bso.hidden = true; bso.classList.add('d-none'); }
       // accent colour: a preset fills the picker, the page shows the colour at once (saved with the page)
       var acc = document.getElementById('modern_accent');
       if (acc) {

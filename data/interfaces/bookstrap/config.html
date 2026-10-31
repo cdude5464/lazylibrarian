@@ -94,20 +94,6 @@
                         <input type="checkbox" name="use_bookstrap" id="bookstrap" value="1" ${checked} />
                         ${_('Use Bookstrap')}</label>
                     </div>
-                    %if CONFIG['HTTP_LOOK'] == 'modern':
-                    ## Bootswatch themes only style bookstrap: keep the value, offer the modern accent colour instead
-                    <input type="hidden" name="bookstrap_theme" value="${CONFIG['BOOKSTRAP_THEME'] | h}">
-                    <div class="form-group">
-                      <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
-                      <div class="accent-picker">
-                        <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
-                        %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
-                        <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
-                        %endfor
-                      </div>
-                      <span class="help-block">${_('Buttons, links and highlights of the modern interface. Dark mode uses a lighter shade of it.')}</span>
-                    </div>
-                    %else:
                     <fieldset id="bookstrap_options">
                       <div class="form-group">
                         <label for="bookstrap_theme" class="control-label">${_('Bootswatch Theme:')}</label>
@@ -119,7 +105,6 @@
                         </select>
                       </div>
                     </fieldset>
-                    %endif
                     <div class="form-group">
                       <label for="homepage">${_('Homepage:')}</label>
                       <select id="homepage" name="homepage" class="form-control">
@@ -144,9 +129,9 @@
                         (_('Lists:'), [('ratestars', 'RATESTARS', _('Rating as stars')),
                                        ('toggles', 'TOGGLES', _('Column toggles')),
                                        ('show_genres', 'SHOW_GENRES', _('Genres')),
-                                       ('show_reason', 'SHOW_REASON', _('Why the author was added')),
+                                       ('show_reason', 'SHOW_REASON', _('Reason author was added')),
                                        ('sort_surname', 'SORT_SURNAME', _('Author surname first')),
-                                       ('sort_definite', 'SORT_DEFINITE', _('Titles without the leading article (The, A)')),
+                                       ('sort_definite', 'SORT_DEFINITE', _('Titles ignoring article (The, A)')),
                                        ('ignore_paused', 'IGNORE_PAUSED', _('Ignore paused authors'))]),
                       ]
                     %>
@@ -610,9 +595,9 @@
                       <div class="form-group">
                         <label for="api_key">${_('API Full Access key')}</label>
                         <div class="input-group">
-                          <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" size="36" class="form-control">
+                          <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" class="form-control">
                           <span class="input-group-btn">
-                            <input class="button btn btn-default" type="button" value="${_('Generate') | h}" id="generate_api">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
                           </span>
                         </div>
                         <small>${_('Current API Full Access key:')} <strong>${CONFIG['API_KEY']}</strong></small>
@@ -620,9 +605,9 @@
                       <div class="form-group">
                         <label for="api_ro_key">${_('API Read-Only key')}</label>
                         <div class="input-group">
-                          <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" size="36" class="form-control">
+                          <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" class="form-control">
                           <span class="input-group-btn">
-                            <input class="button btn btn-default" type="button" value="${_('Generate') | h}" id="generate_ro_api">
+                            <input class="btn btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
                           </span>
                         </div>
                         <small>${_('Current API Read-Only key:')} <strong>${CONFIG['API_RO_KEY']}</strong></small>

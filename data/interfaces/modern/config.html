@@ -598,6 +598,11 @@
 
     window.llcAfterReady = function () {
       llcModernize(form);
+      // a <p> bookstrap opens between two rows (Genres) is closed by the browser at once; holding only whitespace
+      // it escapes :empty, and its margin would add to the card spacing
+      form.querySelectorAll('.tab-pane .configtable > p').forEach(function (p) {
+        if (!p.children.length && !p.textContent.trim()) { p.remove(); }
+      });
       llcProviderCards();
       // provider type headings (Newznab, Torznab, rss...) carry their own show switch, so bookstrap leaves them
       // unfoldable; here the switch keeps working and a click anywhere else on the heading folds the section

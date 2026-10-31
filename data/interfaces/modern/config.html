@@ -668,6 +668,10 @@
               lb.className = 'control-label'; lb.textContent = lg.textContent.trim();
               if (input && input.id) { lb.htmlFor = input.id; }
               lg.replaceWith(lb);
+              // bookstrap made the heading a fold and wrapped the field in its body, hidden if once collapsed;
+              // without the heading nothing could open it again, so the field comes out of it
+              var body = c.querySelector(':scope > .section-body');
+              if (body) { while (body.firstChild) { body.parentNode.insertBefore(body.firstChild, body); } body.remove(); }
             });
           }
           var outer = document.createElement('div'); outer.className = 'col-md-12';

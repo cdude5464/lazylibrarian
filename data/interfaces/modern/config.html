@@ -395,7 +395,15 @@
       ul.querySelectorAll('li[role="presentation"]').forEach(function (x) { x.classList.toggle('active', x === li); x.setAttribute('aria-selected', x === li); });
       form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === li.getAttribute('aria-controls')); });
       document.getElementById('llc-pane-title').textContent = li.textContent.trim();
+      // remembered for this browser tab, so a reload comes back to the same section
+      try { sessionStorage.setItem('llc-tab', li.getAttribute('aria-controls')); } catch (e) {}
     }
+    // the info source switches and API keys are saved at once and the page reloads (the list of primary sources
+    // depends on them); they are no unsaved change, and the reload keeps the place on the page
+    var IMMEDIATE = ['ol_api', 'dnb_api', 'bn_api', 'dbk_api', 'ran_api', 'hc_api', 'gr_api', 'gb_api', 'book_api'];
+    window.addEventListener('pagehide', function () {
+      try { sessionStorage.setItem('llc-scroll', JSON.stringify({y: window.scrollY, t: Date.now()})); } catch (e) {}
+    });
 
     llcModernize(form);
     llcModernize(document.querySelector('.llc-sys'));
@@ -407,8 +415,8 @@
       document.getElementById('llc-save-msg').textContent = d ? T.dirty : T.saved;
       document.getElementById('llc-undo').hidden = !d;
     }
-    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q') { setDirty(true); } });
-    form.addEventListener('change', function (e) { if (e.target.name) { setDirty(true); } });
+    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q' && IMMEDIATE.indexOf(e.target.id) < 0) { setDirty(true); } });
+    form.addEventListener('change', function (e) { if (e.target.name && IMMEDIATE.indexOf(e.target.id) < 0) { setDirty(true); } });
     document.getElementById('llc-submit').addEventListener('click', function () {
       dirty = false;
       if (form.requestSubmit) { form.requestSubmit(document.getElementById('add') || undefined); } else { form.submit(); }
@@ -786,8 +794,12 @@
         acc.addEventListener('input', paint);
         swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === acc.value.toLowerCase()); });
       }
-      var active = ul && ul.querySelector('li.active');
+      var stored = null, back = null;
+      try { stored = sessionStorage.getItem('llc-tab'); back = JSON.parse(sessionStorage.getItem('llc-scroll') || 'null'); sessionStorage.removeItem('llc-scroll'); } catch (e) {}
+      var active = ul && ((stored && ul.querySelector('li[aria-controls="' + stored + '"]')) || ul.querySelector('li.active'));
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
+      // a reload a moment ago (an info source switch) returns to where the page was
+      if (back && Date.now() - back.t < 15000) { requestAnimationFrame(function () { window.scrollTo(0, back.y); }); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading
       form.querySelectorAll('.help-block:not(.help-keep)').forEach(function (help) {
         var anchor = null, prev = help.previousElementSibling;

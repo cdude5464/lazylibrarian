@@ -8,8 +8,8 @@
     if current == 'books' and context.get('library') == 'AudioBook':
         current = 'audio'
     nav = []
-    if CONFIG['HOMEPAGE'] != 'Authors':
-        nav.append(('authors', 'authors', 'fa-users', _('Authors')))
+    # the LazyLibrarian name opens the menu rather than the home page, so every page is listed, the home page too
+    nav.append(('authors', 'authors', 'fa-users', _('Authors')))
     if CONFIG['EBOOK_TAB'] and perm & lazylibrarian.perm_ebook:
         nav.append(('books', 'books', 'fa-book', _('eBooks')))
     if CONFIG['SERIES_TAB'] and perm & lazylibrarian.perm_series:
@@ -147,7 +147,11 @@
     .ll-nav .ll-ni { opacity: .75; }
     .ll-nav .nav-link.active .ll-ni { opacity: 1; }
     /* below extra wide screens the main menu shows icons only, with the name as a tooltip */
-    @media (min-width: 992px) and (max-width: 1399.98px) { .ll-nav .ll-ni { margin-right: 0; } .ll-nav .ll-nl { display: none; } }
+    @media (min-width: 992px) and (max-width: 1499.98px) { .ll-nav .ll-ni { margin-right: 0; } .ll-nav .ll-nl { display: none; } }
+    /* names next to the icons need the whole width of a big screen */
+    @media (min-width: 1500px) { .ll-nav > .container-xl { max-width: 1640px; } }
+    /* Config and Help are icons with a tooltip on wide screens, named in the phone menu */
+    @media (min-width: 992px) { .ll-nav .ll-sec > .fa { margin-right: 0; } .ll-nav .ll-sec .ll-nl { display: none; } }
     @media (min-width: 992px) { .ll-nav .ll-theme-btn > .fa, .ll-nav .ll-only-icon > .fa { margin-right: 0; } }
     .ll-main { padding-top: 1rem; padding-bottom: 6rem; }
     .btn-ll { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
@@ -190,6 +194,15 @@
                        box-shadow: 0 6px 18px -8px rgba(0,0,0,.4); }
     @media (prefers-reduced-motion: reduce) { .ll-notice, .ll-notice.ll-out { animation: none; } }
     .ll-theme-btn { background: none; border: 0; }
+    /* the name opens the menu on narrow screens; on wide ones the menu is always there */
+    .ll-brand { background: none; border: 0; padding-left: 0; color: inherit; }
+    .ll-brand-caret { font-size: .62rem; opacity: .6; transition: transform .2s ease; }
+    .ll-brand[aria-expanded="true"] .ll-brand-caret { transform: rotate(180deg); }
+    @media (min-width: 992px) { .ll-brand { cursor: default; } .ll-brand-caret { display: none; } }
+    .ll-quick .nav-link { width: 36px; height: 36px; padding: 0 !important; justify-content: center; position: relative; }
+    .ll-quick .nav-link > .fa { margin: 0 !important; width: auto; }
+    .ll-quick .nav-link.active { background: var(--bs-secondary-bg); }
+    .ll-quick .badge { position: absolute; top: 1px; right: -2px; font-size: .58rem; padding: 2px 5px; }
     .ll-theme-btn .ll-t { display: none; }
     [data-ll-theme="auto"] .ll-theme-btn .ll-t-auto, [data-ll-theme="light"] .ll-theme-btn .ll-t-light,
     [data-ll-theme="dark"] .ll-theme-btn .ll-t-dark { display: inline; }
@@ -218,17 +231,31 @@
 <body>
   <nav class="navbar navbar-expand-lg sticky-top ll-nav">
     <div class="container-xl">
-      <a class="navbar-brand d-flex align-items-center gap-2" href="${root}/home">
+      <button class="navbar-brand ll-brand d-flex align-items-center gap-2" type="button" data-bs-toggle="collapse" data-bs-target="#ll-mainnav"
+              aria-controls="ll-mainnav" aria-expanded="false" aria-label="${_('Toggle navigation') | h}">
         <img src="images/ll.png" alt="" width="26" height="26">
         LazyLibrarian
+        <i class="fa fa-chevron-down ll-brand-caret" aria-hidden="true"></i>
         <span class="spinner-border spinner-border-sm text-secondary" id="ll-spinner" role="status"
               title="${'\n'.join(show_running()) | h}" ${'' if show_running() else 'hidden'}></span>
-      </a>
-      <button class="navbar-toggler border-0" type="button" data-bs-toggle="collapse" data-bs-target="#ll-mainnav"
-              aria-controls="ll-mainnav" aria-expanded="false" aria-label="${_('Toggle navigation') | h}">
-        <span class="navbar-toggler-icon"></span>
       </button>
-      <div class="collapse navbar-collapse" id="ll-mainnav">
+      <%doc>theme and what's new stay next to the name on every screen size, on wide screens they move to the right end</%doc>
+      <div class="ll-quick d-flex align-items-center gap-1 me-auto me-lg-0 order-lg-3 ms-lg-2">
+        <button type="button" class="nav-link ll-theme-btn" onclick="llCycleTheme()" aria-label="${_('Switch theme') | h}" title="${_('Switch theme') | h}">
+          <i class="fa fa-adjust ll-t ll-t-auto" aria-hidden="true"></i>
+          <i class="fa fa-sun ll-t ll-t-light" aria-hidden="true"></i>
+          <i class="fa fa-moon ll-t ll-t-dark" aria-hidden="true"></i>
+        </button>
+        %if perm & lazylibrarian.perm_config:
+        <a class="nav-link ll-bell${' active' if current == 'whatsnew' else ''}" href="whats_new" title="${_("What's new") | h}" aria-label="${_("What's new") | h}">
+          <i class="fa fa-bell" aria-hidden="true"></i>
+          %if lazylibrarian.WHATS_NEW:
+          <span class="badge rounded-pill text-bg-danger">${len(lazylibrarian.WHATS_NEW)}</span>
+          %endif
+        </a>
+        %endif
+      </div>
+      <div class="collapse navbar-collapse order-lg-2" id="ll-mainnav">
         <ul class="navbar-nav me-auto gap-1">
           %for pid, href, icon, label in nav:
           <li class="nav-item"><a class="nav-link${' active' if pid == current else ''}" href="${href}" title="${label | h}"
@@ -236,28 +263,16 @@
           %endfor
         </ul>
         <ul class="navbar-nav gap-1">
-          <li class="nav-item">
-            <button type="button" class="nav-link ll-theme-btn" onclick="llCycleTheme()" aria-label="${_('Switch theme') | h}" title="${_('Switch theme') | h}">
-              <i class="fa fa-adjust ll-t ll-t-auto" aria-hidden="true"></i><span class="ll-t ll-t-auto d-lg-none">${_('Theme: automatic')}</span>
-              <i class="fa fa-sun ll-t ll-t-light" aria-hidden="true"></i><span class="ll-t ll-t-light d-lg-none">${_('Theme: light')}</span>
-              <i class="fa fa-moon ll-t ll-t-dark" aria-hidden="true"></i><span class="ll-t ll-t-dark d-lg-none">${_('Theme: dark')}</span>
-            </button>
-          </li>
           %if perm & lazylibrarian.perm_config:
-          <li class="nav-item"><a class="nav-link ll-only-icon${' active' if current == 'whatsnew' else ''}" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
-            %if lazylibrarian.WHATS_NEW:
-            <span class="badge rounded-pill text-bg-danger">${len(lazylibrarian.WHATS_NEW)}</span>
-            %endif
-            <span class="d-lg-none">${_("What's new")}</span></a></li>
-          <li class="nav-item"><a class="nav-link" href="config"><i class="fa fa-cog" aria-hidden="true"></i>${_('Config')}</a></li>
+          <li class="nav-item"><a class="nav-link ll-sec${' active' if current == 'config' else ''}" href="config" title="${_('Config') | h}"><i class="fa fa-cog" aria-hidden="true"></i><span class="ll-nl">${_('Config')}</span></a></li>
           %endif
-          <li class="nav-item"><a class="nav-link" href="help" target="_blank" rel="noopener"><i class="fa fa-question-circle" aria-hidden="true"></i>${_('Help')}</a></li>
+          <li class="nav-item"><a class="nav-link ll-sec" href="help" target="_blank" rel="noopener" title="${_('Help') | h}"><i class="fa fa-question-circle" aria-hidden="true"></i><span class="ll-nl">${_('Help')}</span></a></li>
           %if perm > 0 and CONFIG['USER_ACCOUNTS']:
             %if perm & lazylibrarian.perm_config == 0:
-            <li class="nav-item"><a class="nav-link" href="profile"><i class="fa fa-user" aria-hidden="true"></i>${_('User')}</a></li>
+            <li class="nav-item"><a class="nav-link ll-sec" href="profile" title="${_('User') | h}"><i class="fa fa-user" aria-hidden="true"></i><span class="ll-nl">${_('User')}</span></a></li>
             %endif
             %if lazylibrarian.SHOWLOGOUT == 1:
-            <li class="nav-item"><a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#ll-logout"><i class="fa fa-sign-out-alt" aria-hidden="true"></i>${_('Logout')}</a></li>
+            <li class="nav-item"><a class="nav-link ll-sec" href="#" data-bs-toggle="modal" data-bs-target="#ll-logout" title="${_('Logout') | h}"><i class="fa fa-sign-out-alt" aria-hidden="true"></i><span class="ll-nl">${_('Logout')}</span></a></li>
             %endif
           %endif
         </ul>

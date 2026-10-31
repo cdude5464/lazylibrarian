@@ -140,6 +140,9 @@
   .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
   .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  /* Filters: the name of each list or limit over its fields, the field labels under it quieter */
+  .llc .llc-flat > label.llc-flat-name { display: block; font-size: .9rem; font-weight: 650; color: var(--bs-body-color); margin-bottom: .4rem; }
+  .llc .llc-flat .llc-ff > label { font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
   /* Processing: the sections in one list that flows over columns where there is room */
   .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
   .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
@@ -665,7 +668,8 @@
               var lg = c.querySelector(':scope > legend');
               if (!lg) { return; }
               var input = c.querySelector('input, select, textarea'), lb = document.createElement('label');
-              lb.className = 'control-label'; lb.textContent = lg.textContent.trim();
+              lb.className = 'control-label llc-flat-name'; lb.textContent = lg.textContent.trim();
+              c.classList.add('llc-flat');
               if (input && input.id) { lb.htmlFor = input.id; }
               lg.replaceWith(lb);
               // bookstrap made the heading a fold and wrapped the field in its body, hidden if once collapsed;

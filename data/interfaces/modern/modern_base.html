@@ -95,6 +95,27 @@
                             text=invite_text, percent=invite_percent, lang=invite_name,
                             actions=[('primary', _('Help translate'), 'link', invite_url + '|ll_translate_prompt|' + invite_lang + '|30'),
                                      ('secondary', _('No thanks'), 'cookie', 'll_translate_prompt|' + invite_lang + '|365')]))
+
+    # the interface and the UI language can be switched from the navbar, with user accounts it is each user's
+    # own choice, without them the interface is global, so only someone allowed to change the config may switch it
+    can_switch = bool(perm > 0 and (CONFIG['USER_ACCOUNTS'] or perm & lazylibrarian.perm_config))
+    try:
+        import cherrypy
+        from lazylibrarian import i18n
+        cur_lang = cherrypy.request.cookie.get('ll_uilang')
+        cur_lang = cur_lang.value if cur_lang else ''
+        lang_opts = [('', _('Default')), (i18n.AUTO, _('Automatic (browser language)'))] + \
+            [(code, i18n.language_name(code)) for code in i18n.available_languages()]
+    except Exception:
+        cur_lang, lang_opts = '', []
+    if can_switch:
+        # first visit: say where the classic interface is, and offer to go back
+        notices.insert(0, dict(id='modern', icon='fa-magic', title=_('Welcome to the new interface'),
+            cookie='ll_modern_welcome',
+            text=_('This is the new LazyLibrarian interface, still in beta. Pages it does not have yet '
+                   'open in the classic one. You can go back to the classic interface at any time from the menu.'),
+            actions=[('primary', _('Got it'), 'cookie', 'll_modern_welcome|1|365'),
+                     ('secondary', _('Back to classic'), 'classic', '')]))
 %>
 <!doctype html>
 <html lang="${ui_lang}" data-bs-theme="light">
@@ -193,7 +214,7 @@
     .ll-notices-more { align-self: flex-end; order: 99; font-size: .76rem; padding: .2rem .8rem; background: var(--bs-body-bg);
                        box-shadow: 0 6px 18px -8px rgba(0,0,0,.4); }
     @media (prefers-reduced-motion: reduce) { .ll-notice, .ll-notice.ll-out { animation: none; } }
-    .ll-theme-btn { background: none; border: 0; }
+    .ll-theme-btn, .ll-lang-btn { background: none; border: 0; }
     /* the name opens the menu on narrow screens; on wide ones the menu is always there */
     .ll-brand { background: none; border: 0; padding-left: 0; color: inherit; }
     .ll-brand-caret { font-size: .62rem; opacity: .6; transition: transform .2s ease; }
@@ -246,6 +267,21 @@
           <i class="fa fa-sun ll-t ll-t-light" aria-hidden="true"></i>
           <i class="fa fa-moon ll-t ll-t-dark" aria-hidden="true"></i>
         </button>
+        %if can_switch and len(lang_opts) > 3:
+        <div class="dropdown">
+          <button type="button" class="nav-link ll-lang-btn" data-bs-toggle="dropdown" aria-expanded="false"
+                  aria-label="${_('Interface language') | h}" title="${_('Interface language') | h}">
+            <i class="fa fa-globe" aria-hidden="true"></i>
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end">
+            <li><h6 class="dropdown-header">${_('Interface language')}</h6></li>
+            %for code, name in lang_opts:
+            <li><button type="button" class="dropdown-item${' active' if code == cur_lang else ''}" data-ll-lang="${code | h}"
+                        ${'aria-current="true"' if code == cur_lang else ''}>${name | h}</button></li>
+            %endfor
+          </ul>
+        </div>
+        %endif
         %if perm & lazylibrarian.perm_config:
         <a class="nav-link ll-bell${' active' if current == 'whatsnew' else ''}" href="whats_new" title="${_("What's new") | h}" aria-label="${_("What's new") | h}">
           <i class="fa fa-bell" aria-hidden="true"></i>
@@ -265,6 +301,9 @@
         <ul class="navbar-nav gap-1">
           %if perm & lazylibrarian.perm_config:
           <li class="nav-item"><a class="nav-link ll-sec${' active' if current == 'config' else ''}" href="config" title="${_('Config') | h}"><i class="fa fa-cog" aria-hidden="true"></i><span class="ll-nl">${_('Config')}</span></a></li>
+          %endif
+          %if can_switch:
+          <li class="nav-item"><a class="nav-link ll-sec" href="#" data-ll-look="bookstrap" title="${_('Classic interface') | h}"><i class="fa fa-undo" aria-hidden="true"></i><span class="ll-nl">${_('Classic interface')}</span></a></li>
           %endif
           <li class="nav-item"><a class="nav-link ll-sec" href="help" target="_blank" rel="noopener" title="${_('Help') | h}"><i class="fa fa-question-circle" aria-hidden="true"></i><span class="ll-nl">${_('Help')}</span></a></li>
           %if perm > 0 and CONFIG['USER_ACCOUNTS']:
@@ -344,6 +383,23 @@
   ${next.javascriptIncludes()}
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
           integrity="sha384-l8f0VcPi/M1iHPv8egOnY/15TDwqgbOR1anMIJWvU6nLRgZVLTLSaNqi/TOoT5Fh" crossorigin="anonymous"></script>
+  %if can_switch:
+  <script>
+    // the language menu, the classic interface link and the welcome notice, see switch_interface in webServe.py
+    function llSwitchInterface(data) {
+      fetch('switch_interface', {method: 'POST', body: new URLSearchParams(data), credentials: 'same-origin'})
+        .then(function (r) { if (!r.ok) { throw new Error(r.status); } window.location.reload(); })
+        .catch(function () { alert(${_js('Something went wrong, try again')}); });
+    }
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-ll-lang], [data-ll-look], .ll-notice [data-act="classic"]');
+      if (!b) { return; }
+      e.preventDefault();
+      if (b.hasAttribute('data-ll-lang')) { llSwitchInterface({lang: b.getAttribute('data-ll-lang')}); }
+      else { llSwitchInterface({look: b.getAttribute('data-ll-look') || 'bookstrap'}); }
+    });
+  </script>
+  %endif
   %if notices:
   <script>
     (function () {

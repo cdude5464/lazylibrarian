@@ -687,7 +687,9 @@ def serve_template(templatename, **kwargs):
 
         # keep template name for help context
         cherrypy.response.cookie['ll_template'] = templatename
-        return template.render(perm=perm, pref=userprefs, style=style, **kwargs)
+        # the interface this user sees, pages modern doesn't have yet are still rendered by bookstrap
+        ui_look = usertheme.split('_', 1)[0] or CONFIG['HTTP_LOOK']
+        return template.render(perm=perm, pref=userprefs, style=style, ui_look=ui_look, **kwargs)
 
     except Exception:
         return exceptions.html_error_template().render()
@@ -1163,6 +1165,57 @@ class WebInterface:
         return serve_template(templatename="register.html", title=i18n.gettext("User Registration / Contact form"))
 
     @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @require_auth()
+    def switch_interface(self, look='', lang=None):
+        """ Switch the interface (bookstrap or modern) and/or the UI language, for the language menu
+            and the new interface notice of both interfaces.
+            With user accounts this is the user's own setting (Theme, UI_Lang). Without them the interface
+            is the global HTTP_LOOK, which needs config permission, and the language is kept in the browser """
+        logger = logging.getLogger(__name__)
+        if look and look not in ('bookstrap', 'modern'):
+            raise cherrypy.HTTPError(400, 'Invalid interface')
+        if lang is not None and not valid_ui_lang(lang):
+            raise cherrypy.HTTPError(400, 'Invalid language')
+        cookie = cherrypy.request.cookie
+        userid = cookie['ll_uid'].value if cookie and 'll_uid' in list(cookie.keys()) else ''
+        accounts = CONFIG.get_bool('USER_ACCOUNTS') and userid
+        if accounts:
+            db = database.DBConnection()
+            try:
+                user = db.match('SELECT Theme from users where UserID=?', (userid,))
+                if not user:
+                    raise cherrypy.HTTPError(403, 'Unknown user')
+                if look:
+                    if look == CONFIG['HTTP_LOOK']:
+                        theme = ''  # the global interface
+                    elif look == 'modern':
+                        theme = 'modern'
+                    else:
+                        # back to bookstrap with the user's own bootswatch style, if they had one
+                        parts = (user['Theme'] or '').split('_', 1)
+                        style = parts[1] if len(parts) == 2 and parts[0] == 'bookstrap' else CONFIG['BOOKSTRAP_THEME']
+                        theme = f'bookstrap_{style}' if style else 'bookstrap'
+                    db.action('UPDATE users SET Theme=? WHERE UserID=?', (theme, userid))
+                    clear_mako_cache(userid)
+                if lang is not None:
+                    db.action('UPDATE users SET UI_Lang=? WHERE UserID=?', (lang, userid))
+            finally:
+                db.close()
+        elif look and look != CONFIG['HTTP_LOOK']:
+            self.check_permitted(lazylibrarian.perm_config)
+            CONFIG.set_str('HTTP_LOOK', look)
+            CONFIG.save_config_and_backup_old()
+            clear_mako_cache()
+        if lang is not None:
+            # set it for the next page too, which reads the language before it looks at the user
+            cherrypy.response.cookie['ll_uilang'] = lang
+            if not accounts:
+                cherrypy.response.cookie['ll_uilang']['max-age'] = 365 * 24 * 3600
+        logger.debug(f"Switched interface [{look}] language [{lang}] for [{userid}]")
+        return 'OK'
+
+    @cherrypy.expose
     @require_auth()
     def user_update(self, **kwargs):
         if ('password' in kwargs and 'password2' in kwargs and kwargs['password'] and
@@ -1211,7 +1264,7 @@ class WebInterface:
                         theme = ''
                     if not theme:
                         valid = True
-                    if theme == 'legacy':
+                    if theme in ('legacy', 'modern'):
                         valid = True
                     else:
                         parts = theme.split('_', 1)

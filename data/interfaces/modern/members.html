@@ -38,13 +38,15 @@ ${bk.headIncludes()}
 </%def>
 <%def name="body()">
 <%
-    ser = series or {}
+    # series_members passes a database row (sqlite3.Row has no .get), members are already dicts
+    ser = dict(series) if series else {}
     show_ignored = str(ignored) == 'True'
     is_multi = str(multi) == 'True'
     audio_on = CONFIG.get_int('AUDIO_TAB') > 0
     ebook_on = CONFIG.get_int('EBOOK_TAB') > 0
     rows = []
     for m in (members or []):
+        m = dict(m)
         name = m.get('BookName') or ''
         sub = ''
         if '<br>' in name:

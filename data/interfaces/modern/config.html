@@ -143,6 +143,13 @@
   /* Filters: the name of each list or limit over its fields, the field labels under it quieter */
   .llc .llc-flat > label.llc-flat-name { display: block; font-size: .9rem; font-weight: 650; color: var(--bs-body-color); margin-bottom: .4rem; }
   .llc .llc-flat .llc-ff > label { font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
+  /* rss server: bookstrap shows and hides it with user accounts (inline styles, slide animation); here it stays,
+     locked and dimmed while user accounts are off */
+  .llc .tab-pane fieldset#rss_options { display: block !important; height: auto !important; overflow: visible !important;
+                                         padding: 1rem 1.1rem .4rem !important; margin: 0 0 1rem !important; }
+  .llc #rss_options.llc-locked > :not(legend):not(.llc-needs) { opacity: .5; }
+  .llc .llc-needs { font-size: .8rem; color: var(--bs-secondary-color); margin: 0 0 .6rem; }
+  .llc .llc-needs .fa { margin-right: .3rem; }
   /* Processing: the sections in one list that flows over columns where there is room */
   .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
   .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
@@ -743,6 +750,26 @@
       // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
       llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
         'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'logdir']);
+      // rss feeds belong to a user: without user accounts the section stays in sight, locked, with a note why. inert
+      // (not disabled) keeps its fields in the form, so saving does not change them
+      (function () {
+        var rss = document.getElementById('rss_options'), ua = document.getElementById('user_accounts');
+        if (!rss || !ua) { return; }
+        var note = document.createElement('p');
+        note.className = 'llc-needs';
+        note.innerHTML = '<i class="fa fa-lock" aria-hidden="true"></i>';
+        note.appendChild(document.createTextNode(${_js('Needs user accounts, switch them on under Access Control')}));
+        var lg = rss.querySelector(':scope > legend');
+        if (lg) { lg.after(note); } else { rss.insertBefore(note, rss.firstChild); }
+        var state = function () {
+          var off = !ua.checked;
+          rss.classList.toggle('llc-locked', off);
+          note.hidden = !off;
+          Array.prototype.forEach.call(rss.children, function (c) { if (c !== lg && c !== note) { c.inert = off; } });
+        };
+        ua.addEventListener('change', state);
+        state();
+      })();
       // Genres: the sections in the order genres are processed: replace (before the reject lists), reject, reject
       // parts, then how many are kept per book
       (function () {

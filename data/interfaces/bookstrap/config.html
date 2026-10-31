@@ -3770,9 +3770,9 @@
                   </div>
                 </div>
                 <div class="col-md-12">
-                <br>
+                <fieldset>
                 <legend>${_('Comic Options (per title)')}</legend>
-                </div>
+                <div class="row">
                 %for mag in config['comics_list']:
                 <div class="col-md-6">
                 <label>${mag['Title']}</label>
@@ -3782,10 +3782,12 @@
                   </div>
                 </div>
                 %endfor
+                </div>
+                </fieldset>
+                </div>
                 %endif
                 %if CONFIG['MAG_TAB']:
                 <div class="col-md-6">
-                <br>
                 <legend>${_('Magazine Size Limits')}</legend>
                   <div class="input-group">
                     <label for="reject_magmin" class="input-group-addon">${_('Min size')}</label>
@@ -3796,9 +3798,9 @@
                   </div>
                 </div>
                 <div class="col-md-12">
-                <br>
+                <fieldset>
                 <legend>${_('Magazine Options (per title)')}</legend>
-                </div>
+                <div class="row">
                 %for mag in config['magazines_list']:
                 <div class="col-md-6">
                 <label>${mag['Title']}</label>
@@ -3825,6 +3827,9 @@
                   </div>
                 </div>
                 %endfor
+                </div>
+                </fieldset>
+                </div>
                 %endif
             </div>
             <br>

@@ -128,6 +128,9 @@
         %if book.get('BookSub'):
         <div class="lld-sub">${book['BookSub'] | h}</div>
         %endif
+        %if is_audio:
+        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis mb-2"><i class="fa fa-headphones me-1" aria-hidden="true"></i>${_('AudioBook')}</span>
+        %endif
         <div class="lld-by">${_('by')} <a href="author_page?authorid=${book['AuthorID'] | u}">${book['AuthorName'] | h}</a></div>
         %if series_list or book.get('SeriesDisplay'):
         <div class="lld-series mt-1"><i class="fa fa-clone me-1" aria-hidden="true"></i>${series_links()}</div>
@@ -139,23 +142,21 @@
         <span class="lld-rating"><i class="fa fa-star" aria-hidden="true"></i> ${rating}</span>
         %endif
         %for g in genres:
-        <a class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis text-decoration-none fw-medium" href="books?book_filter=${g | u}">${g | h}</a>
+        <a class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis text-decoration-none fw-medium" href="${list_page}?book_filter=${g | u}">${g | h}</a>
         %endfor
       </div>
       %endif
 
       <div class="lld-actions">
-        %if book.get('Status') == 'Open':
-        <a class="btn btn-ll rounded-pill" href="open_book?bookid=${book['BookID'] | u}&library=eBook"><i class="fa fa-book-open" aria-hidden="true"></i> ${_('Open eBook')}</a>
-        %endif
-        %if audio_on and book.get('AudioStatus') == 'Open':
-        <a class="btn btn-ll rounded-pill" href="open_book?bookid=${book['BookID'] | u}&library=AudioBook"><i class="fa fa-headphones" aria-hidden="true"></i> ${_('Open AudioBook')}</a>
-        %endif
-        %if perm&lazylibrarian.perm_status:
-        <button type="button" class="btn btn-outline-secondary rounded-pill" @click="search('eBook')"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search eBook')}</button>
-          %if audio_on:
-          <button type="button" class="btn btn-outline-secondary rounded-pill" @click="search('AudioBook')"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search AudioBook')}</button>
+        %for kind in kinds:
+          %if book.get(kstat[kind]) == 'Open':
+        <a class="btn btn-ll rounded-pill" href="open_book?bookid=${book['BookID'] | u}&library=${kind}"><i class="fa ${kicon[kind]}" aria-hidden="true"></i> ${kopen[kind]}</a>
           %endif
+        %endfor
+        %if perm&lazylibrarian.perm_status:
+          %for kind in kinds:
+        <button type="button" class="btn btn-outline-secondary rounded-pill" @click="search('${kind}')"><i class="fa fa-search" aria-hidden="true"></i> ${ksearch[kind]}</button>
+          %endfor
         %endif
         %if perm&lazylibrarian.perm_edit or perm&lazylibrarian.perm_force:
         <div class="dropdown">
@@ -175,36 +176,24 @@
       </div>
 
       <div class="lld-status">
+        %for kind in kinds:
+          %if kind == 'eBook' or book.get('AudioStatus') or is_audio:
         <div>
-          <div class="lbl">${_('eBook')}</div>
+          <div class="lbl"><i class="fa ${kicon[kind]} me-1" aria-hidden="true"></i>${klabel[kind]}</div>
           %if perm&lazylibrarian.perm_status:
-          <select class="form-select form-select-sm rounded-pill" aria-label="${_('eBook status:') | h}" @change="mark('eBook', $event.target.value)">
+          <select class="form-select form-select-sm rounded-pill" aria-label="${karia[kind] | h}" @change="mark('${kind}', $event.target.value)">
             %for st in ['Wanted', 'Have', 'Open', 'Snatched', 'Skipped', 'Ignored']:
-              %if st in ('Wanted', 'Have', 'Skipped', 'Ignored') or st == book.get('Status'):
-            <option value="${st}" ${'selected' if st == book.get('Status') else ''} ${'disabled' if st in ('Open', 'Snatched') else ''}>${status_label(st)}</option>
+              %if st in ('Wanted', 'Have', 'Skipped', 'Ignored') or st == book.get(kstat[kind]):
+            <option value="${st}" ${'selected' if st == book.get(kstat[kind]) else ''} ${'disabled' if st in ('Open', 'Snatched') else ''}>${status_label(st)}</option>
               %endif
             %endfor
           </select>
           %else:
-          <span class="badge rounded-pill ${pill.get(book.get('Status'), 'bg-secondary-subtle text-secondary-emphasis')}">${status_label(book.get('Status') or '')}</span>
+          <span class="badge rounded-pill ${pill.get(book.get(kstat[kind]), 'bg-secondary-subtle text-secondary-emphasis')}">${status_label(book.get(kstat[kind]) or '')}</span>
           %endif
         </div>
-        %if audio_on and book.get('AudioStatus'):
-        <div>
-          <div class="lbl">${_('AudioBook')}</div>
-          %if perm&lazylibrarian.perm_status:
-          <select class="form-select form-select-sm rounded-pill" aria-label="${_('AudioBook status:') | h}" @change="mark('AudioBook', $event.target.value)">
-            %for st in ['Wanted', 'Have', 'Open', 'Snatched', 'Skipped', 'Ignored']:
-              %if st in ('Wanted', 'Have', 'Skipped', 'Ignored') or st == book.get('AudioStatus'):
-            <option value="${st}" ${'selected' if st == book.get('AudioStatus') else ''} ${'disabled' if st in ('Open', 'Snatched') else ''}>${status_label(st)}</option>
-              %endif
-            %endfor
-          </select>
-          %else:
-          <span class="badge rounded-pill ${pill.get(book.get('AudioStatus'), 'bg-secondary-subtle text-secondary-emphasis')}">${status_label(book.get('AudioStatus') or '')}</span>
           %endif
-        </div>
-        %endif
+        %endfor
       </div>
 
       %if facts:

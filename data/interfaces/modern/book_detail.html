@@ -82,15 +82,18 @@
         facts.append((_('Publisher'), book['BookPub']))
     if book.get('BookIsbn'):
         facts.append((_('ISBN'), book['BookIsbn']))
-    if book.get('Narrator'):
+    if not is_audio and book.get('Narrator'):
         facts.append((_('Narrator'), book['Narrator']))
+    added = book.get('AudioLibrary' if is_audio else 'BookLibrary')
+    if added:
+        facts.append((_('Added'), str(added)[:10]))
     # series links come from the book_detail handler; older servers only give the display text
     series_list = context.get('book_series') or []
     pill = {'Open': 'text-bg-success', 'Have': 'bg-success-subtle text-success-emphasis', 'Wanted': 'text-bg-warning',
             'Snatched': 'text-bg-info', 'Matched': 'text-bg-info'}
 %>
 <div x-data="llBookDetail" class="pt-2">
-  <a href="books" class="btn btn-sm btn-link text-body-secondary px-0 mb-2" onclick="if (document.referrer.indexOf(location.host) >= 0) { history.back(); return false; }">
+  <a href="${list_page}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2" onclick="if (document.referrer.indexOf(location.host) >= 0) { history.back(); return false; }">
     <i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}
   </a>
 

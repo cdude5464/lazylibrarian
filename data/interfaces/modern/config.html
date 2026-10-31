@@ -734,6 +734,23 @@
         });
         row.insertBefore(flow, row.firstChild);
       })();
+      // Genres: the sections in the order genres are processed: replace (before the reject lists), reject, reject
+      // parts, then how many are kept per book
+      (function () {
+        var cfg = document.querySelector('#genres > .configtable');
+        if (!cfg) { return; }
+        var row = document.createElement('div'), col = document.createElement('div'), n = 0;
+        row.className = 'row'; col.className = 'col-md-12'; row.appendChild(col);
+        ['genreold', 'genreexclude', 'genreexcludeparts', 'genrelimit'].forEach(function (id) {
+          var el = document.getElementById(id), fs = el && el.closest('fieldset');
+          if (fs && cfg.contains(fs)) { col.appendChild(fs); n++; }
+        });
+        if (!n) { return; }
+        Array.prototype.slice.call(cfg.children).forEach(function (c) {
+          if (!c.querySelector('input, select, textarea, legend')) { c.remove(); }
+        });
+        cfg.insertBefore(row, cfg.firstChild);
+      })();
       // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
       (function () {
         var TOK = /\$\$|\$[A-Za-z]+/g, insertTip = ${_js('Insert at the cursor')};

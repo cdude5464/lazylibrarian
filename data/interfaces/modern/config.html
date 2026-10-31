@@ -768,6 +768,41 @@
         Array.prototype.slice.call(src.childNodes).forEach(function (n) { if (n !== lg) { body.insertBefore(n, before); } });
         cvfs.remove();
       })();
+      // Info Sources: one long section in bookstrap; here the primary source stays on top and the sources are grouped
+      // by kind in cards of their own. The blocks are moved, the page scripts keep their handlers
+      (function () {
+        var api = document.getElementById('book_api'), info = api && api.closest('fieldset');
+        if (!info) { return; }
+        var box = function (id, sel) { var el = document.getElementById(id); return el ? (sel ? el.closest(sel) : el) : null; };
+        // a switch with its source name in a label just before it (HardCover API:, Audnexus:, ComicVine:)
+        var named = function (el) {
+          if (!el) { return []; }
+          var p = el.previousElementSibling;
+          return (p && p.matches('label.control-label') && !p.querySelector('input')) ? [p, el] : [el];
+        };
+        var groups = [
+          [${_js('Book Databases')}, [box('ol_options'), box('ol_use_dump', '.checkbox'), box('ol_dump_options')]
+            .concat(named(box('hc_api', '.checkbox')), [box('hc_options'), box('hcsync_options'), box('gb_options'), box('gr_options')])],
+          [${_js('National Libraries')}, [box('dnb_options'), box('bn_options'), box('dbk_options')]],
+          [${_js('Audiobooks, Comics and Light Novels')}, named(box('audnexus', '.checkbox'))
+            .concat(named(box('cv_apikey', '.form-group')), [box('cv_websearch', '.checkbox'), box('ran_options')])],
+          [${_js('Covers')}, [box('lt_devkey', '.form-group')]]
+        ];
+        var ref = info;
+        groups.forEach(function (g) {
+          var items = g[1].filter(function (n) { return n && info.contains(n); });
+          if (!items.length) { return; }
+          var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div');
+          lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+          lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+          lg.appendChild(document.createTextNode(g[0]));
+          body.className = 'section-body';
+          items.forEach(function (n) { body.appendChild(n); });
+          fs.appendChild(lg); fs.appendChild(body);
+          ref.after(fs); ref = fs;
+        });
+        llcFlow('importoptions', ['book_api', 'ol_options', 'dnb_options', 'audnexus', 'lt_devkey']);
+      })();
       // Imports and Downloads (csv deletion, blacklists, search delay) act on downloads: it goes to that tab
       (function () {
         var el = document.getElementById('blacklist_failed'), fs = el && el.closest('fieldset');

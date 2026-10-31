@@ -72,7 +72,9 @@
         facts.append((_('Published'), book['BookDate']))
     if book.get('OriginalPubDate') and book['OriginalPubDate'] != book.get('BookDate'):
         facts.append((_('Original publication'), book['OriginalPubDate']))
-    if book.get('BookPages') and str(book['BookPages']) != '0':
+    if is_audio and book.get('Narrator'):
+        facts.append((_('Narrator'), book['Narrator']))
+    if not is_audio and book.get('BookPages') and str(book['BookPages']) != '0':
         facts.append((_('Pages'), book['BookPages']))
     if book.get('BookLang'):
         facts.append((_('Language'), book['BookLang']))

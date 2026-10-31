@@ -101,9 +101,13 @@
   .llc .form-control, .llc .form-select { font-size: .9rem; }
   .llc .input-group { margin-bottom: .9rem; }
   .llc .input-group > .input-group-text { font-size: .82rem; margin-bottom: 0; }
+  /* on a phone a "label | field | label | field" group takes a line for each pair */
   @media (max-width: 575.98px) {
-    .llc .input-group { flex-wrap: wrap; }
-    .llc .input-group > .form-control, .llc .input-group > .form-select { min-width: 55%; }
+    .llc .input-group { flex-wrap: wrap; row-gap: .4rem; }
+    .llc .input-group > .input-group-text { flex: 0 0 34%; white-space: normal; border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important; }
+    .llc .input-group > .input-group-text ~ .form-control, .llc .input-group > .input-group-text ~ .form-select {
+      flex: 1 1 60%; min-width: 0; margin-left: -1px !important; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
+    .llc .input-group > .form-control:has(+ .btn), .llc .input-group > .form-select:has(+ .btn) { border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important; }
   }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
@@ -478,6 +482,12 @@
     window.llcAfterReady = function () {
       llcModernize(form);
       llcProviderCards();
+      // section headings read as headings, without the colon some bookstrap ones carry ("WebServer Options:")
+      form.querySelectorAll('legend').forEach(function (lg) {
+        var t = lg.lastChild;
+        while (t && t.nodeType === 3 && !t.textContent.trim()) { t = t.previousSibling; }
+        if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
+      });
       var active = ul && ul.querySelector('li.active');
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading

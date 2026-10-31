@@ -500,8 +500,6 @@
                       ${_('Single user bypass login')}</label>
                     </div>
                     </div>
-                  </fieldset>
-                  <fieldset>
                     <fieldset id="admin_options">
                       <div class="form-group">
                         <label for="admin_email" class="control-label">${_('Admin Email:')}</label>
@@ -545,16 +543,15 @@
                         </div>
                       </fieldset>
                     <fieldset id="webserver_options">
-                    ${_('WebServer Options:')}
+                    <legend>${_('WebServer Options:')}</legend>
                     <div class="input-group">
                       <label for="http_user" class="input-group-addon">${_('User')}</label>
                       <input type="text" id="http_user" name="http_user" value="${CONFIG['HTTP_USER']}" class="form-control" placeholder="${_('Username') | h}">
                       <label for="http_pass" class="input-group-addon">${_('Pass')}</label>
                       <input type="password" id="http_pass" name="http_pass" value="${CONFIG['HTTP_PASS']}" class="form-control" placeholder="${_('Password') | h}">
                     </div>
-                    <legend>${_('Authentication')}</legend>
-                    <div class="input-group col-md-6">
-                      <label for="auth_type" class="input-group-addon">${_('Auth:')}</label>
+                    <div class="form-group">
+                      <label for="auth_type" class="control-label">${_('Authentication')}</label>
                       <select id="auth_type" name="auth_type" class="form-control">
                         <% selected = 'selected="selected"' if CONFIG['AUTH_TYPE'] == 'BASIC' else '' %>
                         <option value="BASIC" ${selected}>${_('Basic (Browser Popup)')}</option>
@@ -574,28 +571,35 @@
                       <input type="checkbox" id="launch_browser" name="launch_browser" value="1" ${checked} />
                       ${_('Launch browser')}</label>
                     </div>
-                    <div class="col-md-6">
+                    </div>
+                  </fieldset>
+                  <fieldset>
+                    <legend>${_('API')}</legend>
+                    <div class="checkbox">
                       <% checked = 'checked="checked"' if CONFIG['API_ENABLED'] else '' %>
                       <label for="api_enabled" title="${_('Allow remote applications to interface with LazyLibrarian') | h}">
                       <input type="checkbox" id="api_enabled" name="api_enabled" value="1" ${checked} />
                       ${_('Enable API')}</label>
                     </div>
-                    </div>
-                  </fieldset>
-                  <fieldset>
                     <fieldset id="api_options">
                       <div class="form-group">
                         <label for="api_key">${_('API Full Access key')}</label>
-                        <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_api">
-                        <br>
+                        <div class="input-group">
+                          <input type="text" name="api_key" id="api_key" value="${CONFIG['API_KEY']}" size="36" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="button btn btn-default" type="button" value="${_('Generate') | h}" id="generate_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Full Access key:')} <strong>${CONFIG['API_KEY']}</strong></small>
                       </div>
                       <div class="form-group">
-                        <label for="api_key">${_('API Read-Only key')}</label>
-                        <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" size="36">
-                        <input class="button btn btn-sm btn-primary" type="button" value="${_('Generate') | h}" id="generate_ro_api">
-                        <br>
+                        <label for="api_ro_key">${_('API Read-Only key')}</label>
+                        <div class="input-group">
+                          <input type="text" name="api_ro_key" id="api_ro_key" value="${CONFIG['API_RO_KEY']}" size="36" class="form-control">
+                          <span class="input-group-btn">
+                            <input class="button btn btn-default" type="button" value="${_('Generate') | h}" id="generate_ro_api">
+                          </span>
+                        </div>
                         <small>${_('Current API Read-Only key:')} <strong>${CONFIG['API_RO_KEY']}</strong></small>
                       </div>
                     </fieldset>

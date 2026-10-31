@@ -14,7 +14,12 @@
     .llb-pill { font-size: .66rem !important; padding: 2px 7px !important; } .llb-act { font-size: .7rem !important; }
     .llb-check { width: 22px !important; height: 22px !important; top: 5px !important; right: 5px !important; }
   }
-  .llb-search { flex: 0 1 260px; min-width: 0; }
+  .llb-search { flex: 0 1 300px; min-width: 0; }
+  .llb-search .llb-scope { border: var(--bs-border-width) solid var(--bs-border-color); background: transparent; color: inherit;
+                           display: flex; align-items: center; gap: .35rem; padding-left: .8rem; }
+  .llb-search .llb-scope:hover, .llb-search .llb-scope.show { background: var(--bs-tertiary-bg); }
+  .llb-search .llb-scope::after { margin-left: .1rem; }
+  .llb-search .dropdown-item.active { background: var(--ll-accent); color: var(--ll-accent-contrast); }
   @media (max-width: 640px) { .llb-search { flex: 1 1 100%; order: 5; } }
   .llb-card { cursor: pointer; min-width: 0; }
   .llb-card:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 3px; border-radius: 10px; }
@@ -90,9 +95,18 @@
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm llb-search">
-      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-search" aria-hidden="true"></i></span>
+      <button type="button" class="btn llb-scope dropdown-toggle rounded-start-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              :title="T.searchIn + ' ' + scopeObj.label" :aria-label="T.searchIn + ' ' + scopeObj.label">
+        <i class="fa fa-search" aria-hidden="true"></i><span class="small" x-show="scope !== 'all'" x-text="scopeObj.label" x-cloak></span>
+      </button>
+      <ul class="dropdown-menu">
+        <template x-for="o in scopes" :key="o.id">
+          <li><button type="button" class="dropdown-item" :class="scope === o.id && 'active'" :aria-pressed="scope === o.id"
+                      @click="scope = o.id; $nextTick(function () { document.getElementById('llb-q').focus(); })" x-text="o.label"></button></li>
+        </template>
+      </ul>
       <input type="search" id="llb-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
-             placeholder="${_('Title, author, series') | h}" autocomplete="off" aria-label="${_('Search') | h}">
+             :placeholder="scopeObj.placeholder" autocomplete="off" aria-label="${_('Search') | h}">
     </div>
     <div class="btn-group btn-group-sm llb-views" role="group" aria-label="${_('View') | h}">
       <template x-for="v in views" :key="v.id">
@@ -213,6 +227,10 @@ document.addEventListener('alpine:init', function () {
     pickFirst: ${_js('Select at least one book first')}, searching: ${_js('Searching...')},
     failed: ${_js('Something went wrong, try again')}, all: ${_js('All')},
     grid: ${_js('Covers')}, compact: ${_js('Compact')}, list: ${_js('List')},
+    searchIn: ${_js('Search in:')}, everything: ${_js('Title, author and series')},
+    title: ${_js('Title')}, author: ${_js('Author')}, series: ${_js('Series')},
+    phAll: ${_js('Title, author, series')}, phTitle: ${_js('Search titles')},
+    phAuthor: ${_js('Search authors')}, phSeries: ${_js('Search series')},
     selected: ${_jsn('%(count)s selected', '%(count)s selected')},
     books: ${_jsn('%(count)s book', '%(count)s books')}
   };
@@ -237,6 +255,10 @@ document.addEventListener('alpine:init', function () {
     return {
       T: T, books: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
       q: '', f: '', sort: '2:asc', selecting: false, sel: {}, toastText: '', view: 'grid',
+      scope: 'all', broad: false,
+      scopes: [{id: 'all', label: T.everything, placeholder: T.phAll}, {id: 'title', label: T.title, placeholder: T.phTitle},
+               {id: 'author', label: T.author, placeholder: T.phAuthor}, {id: 'series', label: T.series, placeholder: T.phSeries}],
+      get scopeObj() { var s = this.scope; return this.scopes.filter(function (o) { return o.id === s; })[0] || this.scopes[0]; },
       views: [{id: 'grid', icon: 'fa-th-large', label: T.grid}, {id: 'compact', icon: 'fa-th', label: T.compact},
               {id: 'list', icon: 'fa-list', label: T.list}],
       chips: [{f: '', label: T.all}].concat(['Open', 'Wanted', 'Snatched', 'Have', 'Skipped'].map(function (s) {
@@ -250,11 +272,16 @@ document.addEventListener('alpine:init', function () {
         try { var v = localStorage.getItem('llb-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('llb-books') || 'null');
-          if (saved) { this.q = saved.q || ''; this.f = saved.f || ''; this.sort = saved.sort || this.sort; }
+          if (saved) {
+            this.q = saved.q || ''; this.f = saved.f || ''; this.sort = saved.sort || this.sort;
+            if (['all', 'title', 'author', 'series'].indexOf(saved.scope) >= 0) { this.scope = saved.scope; }
+          }
         } catch (e) {}
         var bf = getUrlVars()['book_filter'];
-        if (bf) { this.q = decodeURIComponent(bf); }
-        ['q', 'f', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        // a genre link from another page searches every field, like the bookstrap table
+        if (bf) { this.q = decodeURIComponent(bf); this.broad = true; }
+        ['q', 'f', 'sort'].forEach(function (k) { self.$watch(k, function () { if (k === 'q') { self.broad = false; } self.reset(); }); });
+        this.$watch('scope', function () { self.broad = false; if (self.q) { self.reset(); } else { self.save(); } });
         new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'})
           .observe(this.$refs.sentinel);
         this.load();
@@ -265,7 +292,7 @@ document.addEventListener('alpine:init', function () {
         var src = this.f ? 'source=Manage&whichStatus=' + encodeURIComponent(this.f) : 'source=Books';
         return 'get_books?' + src + '&library=eBook&booklang=' + encodeURIComponent(booklang) +
           '&iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] + '&sSortDir_0=' + p[1] +
-          '&sSearch=' + encodeURIComponent(this.q) + '&_=' + Date.now();
+          '&sSearch=' + encodeURIComponent(this.q) + (this.broad ? '' : '&searchfield=' + this.scope) + '&_=' + Date.now();
       },
 
       load: function () {
@@ -292,8 +319,12 @@ document.addEventListener('alpine:init', function () {
 
       reset: function () {
         this.gen++; this.start_ = 0; this.total = 0; this.books = []; this.done = false; this.loading = false;
-        try { sessionStorage.setItem('llb-books', JSON.stringify({q: this.q, f: this.f, sort: this.sort})); } catch (e) {}
+        this.save();
         this.load();
+      },
+
+      save: function () {
+        try { sessionStorage.setItem('llb-books', JSON.stringify({q: this.q, f: this.f, sort: this.sort, scope: this.scope})); } catch (e) {}
       },
 
       pillClass: function (s) {

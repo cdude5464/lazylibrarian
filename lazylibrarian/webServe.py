@@ -3735,6 +3735,12 @@ class WebInterface:
                                          'ScanResult']
                         if library == 'AudioBook':
                             search_fields[3] = 'AudioStatus'
+                        # the modern interface can search just the title, author or series
+                        field_sets = {'title': ['BookName', 'BookSub'], 'author': ['AuthorName'],
+                                      'series': ['series', 'SeriesDisplay']}
+                        field_sets['all'] = field_sets['title'] + field_sets['author'] + field_sets['series']
+                        if kwargs.get('searchfield') in field_sets:
+                            search_fields = field_sets[kwargs['searchfield']]
 
                         filtered = []
                         for row in rowlist:

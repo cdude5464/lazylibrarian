@@ -3695,14 +3695,12 @@ class WebInterface:
                 serversidelogger.debug(f"User booklist length {len(mybooks)}")
                 cmd += " and books.bookID in (" + ", ".join(f"'{w}'" for w in mybooks) + ")"
 
-            if kwargs['source'] in ["Author", "Books", "Audio"] and lazylibrarian.PRIMARY_AUTHORS:
+            if kwargs['source'] in ["Author", "Books", "Audio", "Manage"] and lazylibrarian.PRIMARY_AUTHORS:
                 # only show book for primary author
                 cmd += " and books.bookid in (SELECT bookid FROM bookauthors where bookauthors.authorid=authors.authorid "
                 cmd += f"and books.bookid=bookauthors.bookid and role={ROLE['PRIMARY']})"
 
-            cmd += (" GROUP BY bookimg, authorname, bookname, bookrate, bookdate, books.status, books.bookid, "
-                    "booklang, booksub, booklink, workpage, bookauthors.authorid, booklibrary, audiostatus, "
-                    "audiolibrary, bookgenre, bookadded, scanresult, lt_workid")
+            cmd += (" GROUP BY books.bookid")
 
             serversidelogger.debug(f"get_books {cmd}: {str(args)}")
             rowlist = db.select(cmd, tuple(args))

@@ -164,7 +164,8 @@ ${bk.headIncludes()}
         <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
           <span class="badge rounded-pill llb-pill" :class="pillClass(cur(b))" x-text="llStatus(cur(b))"></span>
           <template x-if="cur(b) === 'Open'">
-            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib">${_('Open')}</a>
+            <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib"
+               title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa" :class="lib === 'AudioBook' ? 'fa-headphones' : 'fa-book-open'" aria-hidden="true"></i></a>
           </template>
           %if perm&lazylibrarian.perm_status:
           <template x-if="['Open', 'Wanted', 'Snatched', 'Matched', 'Have'].indexOf(cur(b)) < 0">

@@ -28,6 +28,8 @@
   .llm-tags a { font-size: .66rem; text-decoration: none; }
   .llm-pill { font-size: .66rem; font-weight: 600; padding: 3px 8px; }
   .llm-act { font-size: .75rem; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  .llm-open { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none; border: 0;
+              background: var(--ll-accent); color: var(--ll-accent-contrast); font-size: .68rem; }
   .llm-check { position: absolute; top: 6px; right: 6px; z-index: 2; width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.95);
                border: 2px solid #fff; display: flex; align-items: center; justify-content: center; color: var(--ll-accent); }
   .llm-card.llm-sel .llm-cover { outline: 3px solid var(--ll-accent); outline-offset: 2px; }
@@ -145,7 +147,7 @@
           <template x-if="m.status === 'Wanted'"><button type="button" class="btn btn-link llm-act" data-do="search">${_('Search')}</button></template>
           %endif
           %if perm&lazylibrarian.perm_download:
-          <template x-if="m.status === 'Open' && m.issues"><button type="button" class="btn btn-link llm-act" data-do="read">${_('Open')}</button></template>
+          <template x-if="m.status === 'Open' && m.issues"><button type="button" class="llm-open" data-do="read" title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa fa-book-open" aria-hidden="true"></i></button></template>
           %endif
         </div>
       </article>

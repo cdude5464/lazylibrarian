@@ -275,7 +275,8 @@ ${bk.headIncludes()}
           <span class="badge rounded-pill llb-pill lau-st" :class="pillClass(b.audio)" :title="T.audio"><i class="fa fa-headphones" aria-hidden="true"></i><span x-text="llStatus(b.audio)"></span></span>
           %endif
           <template x-if="cur(b) === 'Open'">
-            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + LIB">${_('Open')}</a>
+            <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + LIB"
+               title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa" :class="LIB === 'AudioBook' ? 'fa-headphones' : 'fa-book-open'" aria-hidden="true"></i></a>
           </template>
           %if perm&lazylibrarian.perm_force:
           <template x-if="cur(b) === 'Wanted'">
@@ -396,11 +397,17 @@ document.addEventListener('alpine:init', function () {
               });
             });
             self.about = tmp.innerHTML;
-            self.$nextTick(function () {
+            // long bios start folded to a few lines. The box is only measured once it is shown
+            // (measured while hidden it is 0 high and the whole bio came out unfolded)
+            self.aboutLong = (tmp.textContent || '').length > 300;
+            self.aboutClamp = true;
+            var tries = 0;
+            (function measure() {
               var d = self.$refs.about;
-              self.aboutLong = d && d.scrollHeight > d.clientHeight + 8;
+              if (!d || !d.offsetHeight) { if (++tries < 20) { setTimeout(measure, 50); } return; }
+              self.aboutLong = d.scrollHeight > d.clientHeight + 8;
               if (!self.aboutLong) { self.aboutClamp = false; }
-            });
+            })();
           }).catch(function () {});
       },
       url: function () {

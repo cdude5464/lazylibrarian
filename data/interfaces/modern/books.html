@@ -36,6 +36,11 @@
   .llb-sub a { color: inherit; }
   .llb-pill { font-size: .72rem; font-weight: 600; padding: 3px 9px; }
   .llb-act { font-size: .78rem; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  /* open the file: an icon, so it doesn't read like a second "Open" next to the status */
+  .llb-open { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none;
+              background: var(--ll-accent); color: var(--ll-accent-contrast); font-size: .68rem; text-decoration: none; }
+  .llb-open:hover { color: var(--ll-accent-contrast); filter: brightness(1.1); }
+  .llb-v-list .llb-open { width: 20px; height: 20px; font-size: .58rem; }
   .llb-check { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,.92);
                border: 2px solid #fff; display: flex; align-items: center; justify-content: center; color: var(--ll-accent); }
   .llb-card.llb-sel .llb-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
@@ -180,7 +185,8 @@
         <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
           <span class="badge rounded-pill llb-pill" :class="pillClass(b.status)" x-text="llStatus(b.status)"></span>
           <template x-if="b.status === 'Open'">
-            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Open')}</a>
+            <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'"
+               title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa ${'fa-headphones' if audio else 'fa-book-open'}" aria-hidden="true"></i></a>
           </template>
           <template x-if="b.status === 'Wanted'">
             %if perm&lazylibrarian.perm_force:

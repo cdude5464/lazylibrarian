@@ -84,7 +84,7 @@
                       <select id="http_look" name="http_look" class="form-control">
                         %for http_look in config['http_look_list']:
                         <% selected = 'selected="selected"' if http_look == CONFIG['HTTP_LOOK'] else '' %>
-                        <option value="${http_look}" ${selected}>${http_look}</option>
+                        <option value="${http_look}" ${selected}>${_('modern (beta)') if http_look == 'modern' else http_look}</option>
                         %endfor
                       </select>
                     </div>

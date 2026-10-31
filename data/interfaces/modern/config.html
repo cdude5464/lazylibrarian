@@ -752,6 +752,22 @@
       // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
       llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
         'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'logdir']);
+      // ComicVine has a section of its own in bookstrap only because it comes with the comics; here it joins the
+      // other info sources under its name, like Databáze knih or HardCover
+      (function () {
+        var cv = document.getElementById('cv_apikey'), cvfs = cv && cv.closest('fieldset');
+        var api = document.getElementById('book_api'), info = api && api.closest('fieldset');
+        if (!cvfs || !info || cvfs === info) { return; }
+        var body = info.querySelector(':scope > .section-body') || info;
+        var lt = document.getElementById('lt_devkey'), before = lt && lt.closest('.form-group');
+        if (!before || !body.contains(before)) { before = null; }
+        var lg = cvfs.querySelector(':scope > legend'), lb = document.createElement('label');
+        lb.className = 'control-label'; lb.textContent = (lg ? lg.textContent.trim() : 'ComicVine') + ':';
+        body.insertBefore(lb, before);
+        var src = cvfs.querySelector(':scope > .section-body') || cvfs;
+        Array.prototype.slice.call(src.childNodes).forEach(function (n) { if (n !== lg) { body.insertBefore(n, before); } });
+        cvfs.remove();
+      })();
       // Imports and Downloads (csv deletion, blacklists, search delay) act on downloads: it goes to that tab
       (function () {
         var el = document.getElementById('blacklist_failed'), fs = el && el.closest('fieldset');

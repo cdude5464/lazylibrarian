@@ -72,6 +72,8 @@
         facts.append((_('ISBN'), book['BookIsbn']))
     if book.get('Narrator'):
         facts.append((_('Narrator'), book['Narrator']))
+    # series links come from the book_detail handler; older servers only give the display text
+    series_list = context.get('book_series') or []
     pill = {'Open': 'text-bg-success', 'Have': 'bg-success-subtle text-success-emphasis', 'Wanted': 'text-bg-warning',
             'Snatched': 'text-bg-info', 'Matched': 'text-bg-info'}
 %>
@@ -99,8 +101,8 @@
         <div class="lld-sub small mb-1">${book['BookSub'] | h}</div>
         %endif
         <div class="lld-by"><a href="author_page?authorid=${book['AuthorID'] | u}">${book['AuthorName'] | h}</a></div>
-        %if book.get('SeriesDisplay'):
-        <div class="lld-series">${book['SeriesDisplay'] | h}</div>
+        %if series_list or book.get('SeriesDisplay'):
+        <div class="lld-series">${series_links()}</div>
         %endif
       </div>
     </div>
@@ -112,8 +114,8 @@
         <div class="lld-sub">${book['BookSub'] | h}</div>
         %endif
         <div class="lld-by">${_('by')} <a href="author_page?authorid=${book['AuthorID'] | u}">${book['AuthorName'] | h}</a></div>
-        %if book.get('SeriesDisplay'):
-        <div class="lld-series mt-1"><i class="fa fa-clone me-1" aria-hidden="true"></i>${book['SeriesDisplay'] | h}</div>
+        %if series_list or book.get('SeriesDisplay'):
+        <div class="lld-series mt-1"><i class="fa fa-clone me-1" aria-hidden="true"></i>${series_links()}</div>
         %endif
       </div>
       %if rating or genres:
@@ -238,6 +240,17 @@
     </div>
   </div>
 </div>
+</%def>
+<%def name="series_links()"><%
+    series_list = context.get('book_series') or []
+%>\
+%if series_list:
+%for i, sr in enumerate(series_list):
+${', ' if i else ''}<a href="series_members?seriesid=${str(sr['SeriesID']) | u}">${sr['SeriesName'] | h}${(' #' + str(sr['SeriesNum'])) if sr.get('SeriesNum') else ''}</a>\
+%endfor
+%else:
+${book['SeriesDisplay'] | h}\
+%endif
 </%def>
 <%def name="javascriptIncludes()">
 <script>

@@ -59,6 +59,8 @@
   /* the <br>s bookstrap puts between sections and blocks, the cards keep their own spacing */
   .llc .tab-pane :is([class*="col-"], fieldset, .section-body, .configtable, .row) > br { display: none; }
   .llc .configtable > .row, .llc .tab-pane > .row { row-gap: 0; }
+  /* an empty <p> between two rows (Genres) would add its margin to the card spacing */
+  .llc .tab-pane .configtable > p:empty { display: none; }
   .llc fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
   .llc .tab-pane fieldset:has(> legend), .llc .tab-pane fieldset:has(> .section-body) {
     background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1rem 1.1rem .4rem; margin-bottom: 1rem;

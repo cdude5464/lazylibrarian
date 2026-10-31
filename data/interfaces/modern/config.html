@@ -631,7 +631,7 @@
         var pane = document.getElementById('filters');
         var row = pane && pane.querySelector('.configtable > .row');
         if (!row) { return; }
-        var group = function (title, ids) {
+        var group = function (title, ids, flat) {
           var cols = [];
           ids.forEach(function (id) {
             var el = document.getElementById(id), col = el && el.closest('[class*="col-"]');
@@ -639,6 +639,17 @@
             if (col && cols.indexOf(col) < 0) { cols.push(col); }
           });
           if (!cols.length) { return null; }
+          // flat: the heading of each column becomes the label of its field, so the section has no sub-sections
+          if (flat) {
+            cols.forEach(function (c) {
+              var lg = c.querySelector(':scope > legend');
+              if (!lg) { return; }
+              var input = c.querySelector('input, select, textarea'), lb = document.createElement('label');
+              lb.className = 'control-label'; lb.textContent = lg.textContent.trim();
+              if (input && input.id) { lb.htmlFor = input.id; }
+              lg.replaceWith(lb);
+            });
+          }
           var outer = document.createElement('div'); outer.className = 'col-md-12';
           var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div'), inner = document.createElement('div');
           lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
@@ -649,7 +660,7 @@
           body.appendChild(inner); fs.appendChild(lg); fs.appendChild(body); outer.appendChild(fs);
           return outer;
         };
-        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext']);
+        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext'], true);
         var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin']);
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
       })();

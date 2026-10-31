@@ -71,6 +71,7 @@
   .llc legend + * { clear: left; }
   /* Categories: an unused provider slot keeps only a hidden heading, it must not leave a hole in the grid */
   .llc .tab-pane [class*="col-"]:has(> legend[hidden]) { display: none; }
+  .llc #filters fieldset .row > [class*="col-"] > label:first-child { font-weight: 600; margin-bottom: .35rem; }
   .llc #capabilities .configtable > div:first-child:not(.row) { margin-bottom: 1rem; color: var(--bs-secondary-color); }
   .llc legend.section-collapsed { margin-bottom: .6rem; }
   .llc legend.section-collapsed .section-caret { transform: rotate(-90deg); }

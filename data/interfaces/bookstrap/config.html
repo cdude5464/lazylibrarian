@@ -2926,8 +2926,9 @@
         </div>
         <div role="tabpanel" class="tab-pane" id="notifications">
           <div class="configtable">
+          <div id="notifieroptions">
           <fieldset>
-            <legend>${_('Notifiers')}</legend>
+            <legend>${_('Options')}</legend>
             <div class="row">
               <div class="col-md-6">
                 <div class="form-group">
@@ -2943,6 +2944,24 @@
                 </div>
               </div>
             </div>
+            <div class="row checkbox">
+              <div class="col-md-6">
+                <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_TITLE'] else '' %>
+                <label for="notify_with_title" class="control-label">
+                  <input type="checkbox" id="notify_with_title" name="notify_with_title" value="1" ${checked} />
+                  ${_('Show title in download notification')}</label>
+              </div>
+              <div class="col-md-6">
+                <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_URL'] else '' %>
+                <label for="notify_with_url" class="control-label">
+                  <input type="checkbox" id="notify_with_url" name="notify_with_url" value="1" ${checked} />
+                  ${_('Show url in download notification')}<br><small>${_('(WARNING may contain api key)')}</small></label>
+              </div>
+            </div>
+          </fieldset>
+          </div>
+          <fieldset>
+            <legend>${_('Notifiers')}</legend>
             <%
               notifier_boxes = [('use_twitter', 'USE_TWITTER', 'Twitter'), 
                                      ('use_boxcar', 'USE_BOXCAR', 'Boxcar'),
@@ -2961,7 +2980,6 @@
                 ${enable_grid(notifier_boxes)}
               </div>
             </div>
-          </fieldset>
             <div class="row">
               <div class="col-md-6">
                 <div id="twitteroptions">
@@ -3402,6 +3420,9 @@
                   </fieldset>
                 </div>
               </div>
+            </div>
+          </fieldset>
+            <div class="row">
               %if APPRISE_VER and APPRISE_VER[0].isdigit():
                 <div id="apprise" class="col-md-12">
                   <fieldset>
@@ -3445,27 +3466,6 @@
                   </fieldset>
                 </div>
               %endif
-              <div id="notifieroptions">
-                <div class="col-md-12">
-                  <fieldset>
-                  <legend>${_('Options')}</legend>
-                    <div class="row checkbox">
-                      <div class="col-md-6">
-                        <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_TITLE'] else '' %>
-                        <label for="notify_with_title" class="control-label">
-                          <input type="checkbox" id="notify_with_title" name="notify_with_title" value="1" ${checked} />
-                          ${_('Show title in download notification')}</label>
-                      </div>
-                      <div class="col-md-6">
-                         <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_URL'] else '' %>
-                        <label for="notify_with_url" class="control-label">
-                          <input type="checkbox" id="notify_with_url" name="notify_with_url" value="1" ${checked} />
-                          ${_('Show url in download notification')}<br><small>${_('(WARNING may contain api key)')}</small></label>
-                      </div>
-                    </div>
-                  </fieldset>
-                  </div>
-                </div>
               </div>
           </div>
         </div>

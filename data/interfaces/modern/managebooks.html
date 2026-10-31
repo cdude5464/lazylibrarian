@@ -1,0 +1,344 @@
+<%inherit file="modern_base.html" />
+<%namespace name="bk" file="books.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'manage'
+%>
+<%def name="headIncludes()">
+${bk.headIncludes()}
+<style>
+  .llmg-row .llb-dates { grid-area: dates; font-size: .72rem; color: var(--bs-secondary-color); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .llb-v-list .llmg-row { grid-template-columns: 28px minmax(0, max-content) minmax(0, 1fr) auto !important;
+                          grid-template-areas: "cover title title dates" "cover author series dates" !important; }
+  @media (max-width: 480px) {
+    .llb-v-list .llmg-row { grid-template-columns: 28px minmax(0, 1fr) auto !important;
+                            grid-template-areas: "cover title dates" "cover author dates" !important; }
+    .llb-v-list .llmg-row .llb-series { display: none; }
+  }
+  .llmg-chips { overflow-x: auto; scrollbar-width: none; }
+  .llmg-delay { color: var(--bs-warning-text-emphasis); }
+  .llmg-out { max-height: 55vh; overflow: auto; white-space: pre-wrap; font-size: .8rem; background: var(--bs-tertiary-bg); border-radius: 8px; padding: .75rem; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    ebook_on = CONFIG.get_int('EBOOK_TAB') > 0
+    audio_on = CONFIG.get_int('AUDIO_TAB') > 0
+    status_now = whichStatus or 'Wanted'
+    chips = [(s, status_label(s)) for s in ['All', 'Wanted', 'Snatched', 'Open', 'Have', 'Skipped', 'Ignored']]
+    if CONFIG['USER_ACCOUNTS']:
+        chips += [('ToRead', _('To Read')), ('Reading', _('Reading')), ('Read', _('Read')), ('Abandoned', _('Abandoned'))]
+    actions = []
+    if status_now != 'Wanted':
+        if ebook_on:
+            actions.append(('WantEbook', _('eBook Wanted')))
+        if audio_on:
+            actions.append(('WantAudio', _('Audio Wanted')))
+    if status_now not in ('Wanted', 'Snatched') and ebook_on and audio_on:
+        actions.append(('WantBoth', _('both Wanted')))
+    if status_now != 'Snatched':
+        for s in ['Skipped', 'Have', 'Ignored']:
+            actions.append((s, status_label(s)))
+    if CONFIG['USER_ACCOUNTS']:
+        actions += [('Unread', _('Unread')), ('Read', _('Read')), ('ToRead', _('To Read')), ('Reading', _('Reading')), ('Abandoned', _('Abandoned'))]
+    if CONFIG['DELAYSEARCH']:
+        actions.append(('NoDelay', _('No Delay')))
+    show_delay = bool(CONFIG['DELAYSEARCH']) and status_now == 'Wanted'
+%>
+<div x-data="llManage" x-init="start()">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llb-search">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" id="llmg-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             placeholder="${_('Filter books') | h}" autocomplete="off" aria-label="${_('Filter books') | h}">
+    </div>
+    <select id="llmg-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="2:asc">${_('Author')}</option>
+      <option value="3:asc">${_('Title')}</option>
+      <option value="6:desc">${_('Released')}</option>
+      <option value="7:desc">${_('Listed')}</option>
+    </select>
+    %if len(types) > 1 and perm&lazylibrarian.perm_audio:
+    <select class="form-select form-select-sm w-auto rounded-pill" aria-label="${_('Library') | h}"
+            onchange="window.location = 'manage?whichStatus=${status_now | u}&library=' + this.value">
+      %for t in types:
+      <option value="${t}" ${'selected' if t == library else ''}>${status_label(t)}</option>
+      %endfor
+    </select>
+    %endif
+    %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" x-show="selecting" x-cloak @click="selectAll()">${_('Select all')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
+            x-text="selecting ? T.done : T.select"></button>
+    %endif
+    %if perm&lazylibrarian.perm_force:
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false">
+        <i class="fa fa-cogs" aria-hidden="true"></i> ${_('Tools')}
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if library != 'AudioBook':
+        <li><a class="dropdown-item" href="import_alternate"><i class="fa fa-book fa-fw me-2" aria-hidden="true"></i>${_('Import eBooks')}</a></li>
+        <li><a class="dropdown-item" href="include_alternate"><i class="fa fa-book fa-fw me-2" aria-hidden="true"></i>${_('Include eBooks')}</a></li>
+        %else:
+        <li><a class="dropdown-item" href="import_alternate?library=AudioBook"><i class="fa fa-headphones fa-fw me-2" aria-hidden="true"></i>${_('Import AudioBooks')}</a></li>
+        <li><a class="dropdown-item" href="include_alternate?library=AudioBook"><i class="fa fa-headphones fa-fw me-2" aria-hidden="true"></i>${_('Include AudioBooks')}</a></li>
+        %endif
+        <li><a class="dropdown-item" href="force_wish?source=books"><i class="fa fa-search fa-fw me-2" aria-hidden="true"></i>${_('WishLists')}</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><button type="button" class="dropdown-item" @click="tool('import_csv?library=' + encodeURIComponent(LIB), T.csvImport)"><i class="fa fa-download fa-fw me-2" aria-hidden="true"></i>${_('Import CSV')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="tool('export_csv?library=' + encodeURIComponent(LIB), T.csvExport)"><i class="fa fa-upload fa-fw me-2" aria-hidden="true"></i>${_('Export CSV')}</button></li>
+        %if CONFIG['GR_SYNC'] or CONFIG['HC_SYNC'] or (CONFIG['USER_ACCOUNTS'] and CONFIG['IMP_CALIBREDB'] and library != 'AudioBook'):
+        <li><hr class="dropdown-divider"></li>
+        %endif
+        %if CONFIG['GR_SYNC']:
+        <li><button type="button" class="dropdown-item" @click="tool('sync_to_goodreads', T.grSync)"><i class="fa fa-link fa-fw me-2" aria-hidden="true"></i>${_('Goodreads Sync')}</button></li>
+        %endif
+        %if CONFIG['HC_SYNC']:
+        <li><button type="button" class="dropdown-item" @click="hardcover()"><i class="fa fa-link fa-fw me-2" aria-hidden="true"></i>${_('HardCover Sync')}</button></li>
+        %endif
+        %if CONFIG['USER_ACCOUNTS'] and CONFIG['IMP_CALIBREDB'] and library != 'AudioBook':
+        <li><button type="button" class="dropdown-item" @click="tool('sync_to_calibre', T.calibreSync)"><i class="fa fa-link fa-fw me-2" aria-hidden="true"></i>${_('Calibre Sync')}</button></li>
+        %endif
+      </ul>
+    </div>
+    %endif
+  </div>
+
+  <div class="d-flex gap-2 llmg-chips pb-1 mb-3" role="group" aria-label="${_('Status') | h}">
+    %for st, label in chips:
+    <a class="btn btn-sm rounded-pill text-nowrap ${'btn-secondary' if st == status_now else 'btn-outline-secondary'}"
+       href="manage?whichStatus=${st | u}&library=${library | u}" ${'aria-current="true"' if st == status_now else ''}>${label}</a>
+    %endfor
+  </div>
+
+  <div class="llb-grid llb-v-list">
+    <template x-for="b in books" :key="b.id">
+      <article class="llb-card llmg-row" :class="sel[b.id] && 'llb-sel'" tabindex="0"
+               @click="open(b, $event)" @keydown.enter.prevent="open(b, $event)" @keydown.space.prevent="open(b, $event)">
+        <div class="llb-cover">
+          <template x-if="b.cover"><img loading="lazy" :src="b.cover" alt=""></template>
+          <template x-if="!b.cover"><div class="llb-gen" :style="'background:hsl(' + b.hue + ' 38% 32%)'"><span></span></div></template>
+          <span class="llb-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        </div>
+        <span class="llb-title" :title="b.title" x-text="b.title"></span>
+        <span class="llb-sub llb-author text-body-secondary">
+          %if perm&lazylibrarian.perm_authorbooks:
+          <a :href="'author_page?authorid=' + encodeURIComponent(b.authorId) + '&library=${library}'" x-text="b.author"></a>
+          %else:
+          <span x-text="b.author"></span>
+          %endif
+        </span>
+        <template x-if="b.series">
+          <span class="llb-sub llb-series text-body-secondary"><a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span>
+        </template>
+        <div class="llb-dates">
+          <div x-text="b.date"></div>
+          <div x-show="b.listed" :title="T.listed" x-text="b.listed"></div>
+          %if show_delay:
+          <div class="llmg-delay" x-show="b.delay && b.delay !== '0'" :title="T.lastSearch + ' ' + b.lastSearch"><i class="fa fa-clock me-1" aria-hidden="true"></i><span x-text="b.delay"></span></div>
+          %endif
+        </div>
+      </article>
+    </template>
+    <template x-for="n in (loading ? (books.length ? 6 : 12) : 0)" :key="'s' + n">
+      <div class="llb-card llb-skel"><div class="llb-cover"></div></div>
+    </template>
+    <div class="text-center text-body-secondary py-5" style="grid-column: 1 / -1" x-show="!loading && done && !books.length" x-cloak>${_('No books found')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && books.length ? T.allShown : ''"></div>
+
+  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+  <div class="llb-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llb-bar-hidden'" role="region" aria-label="${_('Selected books') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    %for code, label in actions:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('${code}')">${label}</button>
+    %endfor
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+  %endif
+
+  <div class="modal fade" id="llmg-result" tabindex="-1" aria-labelledby="llmg-result-title" aria-hidden="true" x-ref="resultModal">
+    <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header">
+        <h2 class="modal-title h5" id="llmg-result-title" x-text="resultTitle"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}" x-show="!resultBusy"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex align-items-center gap-2" x-show="resultBusy"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span>${_('Processing...')}</div>
+        <div class="llmg-out" x-show="!resultBusy" x-text="resultText"></div>
+      </div>
+      <div class="modal-footer" x-show="!resultBusy">
+        <template x-for="btn in resultButtons" :key="btn.label">
+          <button type="button" class="btn rounded-pill" :class="btn.cls" @click="btn.run()" x-text="btn.label"></button>
+        </template>
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">${_('Close')}</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 40;
+  var LIB = ${js(library or 'eBook')};
+  window.LIB = LIB;
+  var QUERY = 'source=Manage&whichStatus=' + encodeURIComponent(${js(whichStatus or 'Wanted')}) + '&library=' + encodeURIComponent(LIB);
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')}, listed: ${_js('Listed')}, lastSearch: ${_js('Last Search')},
+    pickFirst: ${_js('Select at least one book first')}, failed: ${_js('Something went wrong, try again')},
+    hcTitle: ${_js('HardCover Sync Result')}, hcConfirm: ${_js('HardCover Sync Confirmation Required')},
+    proceed: ${_js('Proceed')}, ignoreUpdates: ${_js('Ignore Updates')},
+    csvImport: ${_js('CSV Import Info')}, csvExport: ${_js('CSV Export Result')},
+    grSync: ${_js('Goodreads Sync Result')}, calibreSync: ${_js('Calibre Sync Result')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')},
+    books: ${_jsn('%(count)s book', '%(count)s books')}
+  };
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
+
+  // get_books (source=Manage) row: 1 cover, 2 author, 3 title html, 6 released, 8 authorid, 9 bookid,
+  // 10 listed, 12 series, 14 delay "count/interval", 15 last search
+  function toBook(r) {
+    var title = String(r[3] || '').split('<')[0].trim();
+    var series = null;
+    if (r[12]) { var s = String(r[12]).split('^')[0].split('~'); if (s.length > 1) { series = {id: s[0], name: s[1]}; } }
+    var img = r[1] || '';
+    var listed = r[10] && r[10] !== 'null' ? r[10] : '';
+    return {
+      id: String(r[9]), title: title, author: r[2] || '', authorId: r[8], date: r[6] || '', listed: listed, series: series,
+      delay: r[14] || '', lastSearch: r[15] || '', cover: (img && !/nocover|no_cover|nophoto/i.test(img)) ? img : '', hue: hue(title)
+    };
+  }
+  function textOf(html) { var t = document.createElement('div'); t.innerHTML = html || ''; return t.textContent; }
+
+  Alpine.data('llManage', function () {
+    return {
+      T: T, books: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
+      q: '', sort: '2:asc', selecting: false, sel: {}, toastText: '',
+      resultTitle: '', resultText: '', resultBusy: false, resultButtons: [],
+      get countText() { return this.total || this.done ? llNgettext(T.books, this.total) : ''; },
+      get selCount() { return Object.keys(this.sel).length; },
+      start: function () {
+        var self = this;
+        try {
+          var saved = JSON.parse(sessionStorage.getItem('llmg-manage') || 'null');
+          if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
+        } catch (e) {}
+        ['q', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'}).observe(this.$refs.sentinel);
+        this.load();
+      },
+      url: function () {
+        var p = this.sort.split(':');
+        return 'get_books?' + QUERY + '&iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] +
+          '&sSortDir_0=' + p[1] + '&sSearch=' + encodeURIComponent(this.q) + '&_=' + Date.now();
+      },
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.books = self.books.concat(rows.map(toBook));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.books = []; this.done = false; this.loading = false;
+        try { sessionStorage.setItem('llmg-manage', JSON.stringify({q: this.q, sort: this.sort})); } catch (e) {}
+        this.load();
+      },
+      open: function (b, e) {
+        if (this.selecting) {
+          e.preventDefault();
+          if (this.sel[b.id]) { delete this.sel[b.id]; } else { this.sel[b.id] = true; }
+          this.sel = Object.assign({}, this.sel);
+          return;
+        }
+        if (e.target.closest('a')) { return; }
+        bookinfo(b.id);
+      },
+      selectAll: function () {
+        var all = {};
+        this.books.forEach(function (b) { all[b.id] = true; });
+        this.sel = all;
+      },
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+      bulk: function (action) {
+        var ids = Object.keys(this.sel);
+        if (!ids.length) { this.toast(T.pickFirst); return; }
+        var self = this;
+        var body = new URLSearchParams({action: action, redirect: 'manage', library: LIB});
+        ids.forEach(function (id) { body.append(id, 'on'); });
+        this.stopSelect();
+        fetch('mark_books_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (d) { self.toast(textOf(d.summary) || action); self.reset(); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      showResult: function (title, busy, text, buttons) {
+        this.resultTitle = title; this.resultBusy = busy; this.resultText = text || ''; this.resultButtons = buttons || [];
+        bootstrap.Modal.getOrCreateInstance(this.$refs.resultModal).show();
+      },
+      tool: function (endpoint, title) {
+        var self = this;
+        this.showResult(title, true);
+        fetch(endpoint, {credentials: 'same-origin'})
+          .then(function (r) { return r.text(); })
+          .then(function (t) { self.showResult(title, false, textOf(t)); })
+          .catch(function () { self.showResult(title, false, T.failed); });
+      },
+      hardcover: function (extra) {
+        // same flow as bookstrap: the server may ask to confirm before it changes anything on HardCover
+        var self = this;
+        this.showResult(T.hcTitle, true);
+        fetch('sync_to_hardcover' + (extra || ''), {credentials: 'same-origin'})
+          .then(function (r) { return r.text(); })
+          .then(function (t) {
+            var d;
+            try { d = JSON.parse(t); } catch (e) { self.showResult(T.hcTitle, false, textOf(t)); return; }
+            if (d.confirmation_required) {
+              self.showResult(T.hcConfirm, false, d.message, [
+                {label: T.ignoreUpdates, cls: 'btn-outline-secondary', run: function () { self.hardcover('?ignore=true'); }},
+                {label: T.proceed, cls: 'btn-warning', run: function () { self.hardcover('?confirmed=true'); }}
+              ]);
+              return;
+            }
+            var out = (d.debug_notice ? d.debug_notice + '\n\n' : '') + (d.results || []).map(function (r) {
+              return (r.userid ? r.userid + ': ' : '') + String(r.status || '').toUpperCase() + '\n' + (r.message || '');
+            }).join('\n\n');
+            self.showResult(T.hcTitle, false, out || textOf(t));
+          })
+          .catch(function () { self.showResult(T.hcTitle, false, T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

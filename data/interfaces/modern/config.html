@@ -69,6 +69,9 @@
   .llc legend label.fa { font: inherit; letter-spacing: inherit; margin: 0; cursor: pointer; }
   .llc legend .section-caret { transition: transform .15s ease; font-size: .9em; }
   .llc legend + * { clear: left; }
+  /* Categories: an unused provider slot keeps only a hidden heading, it must not leave a hole in the grid */
+  .llc .tab-pane [class*="col-"]:has(> legend[hidden]) { display: none; }
+  .llc #capabilities .configtable > div:first-child:not(.row) { margin-bottom: 1rem; color: var(--bs-secondary-color); }
   .llc legend.section-collapsed { margin-bottom: .6rem; }
   .llc legend.section-collapsed .section-caret { transform: rotate(-90deg); }
   /* provider blocks (col-md-4) sit straight in a fieldset, Bootstrap 3 floated them into columns */
@@ -492,6 +495,15 @@
     window.llcAfterReady = function () {
       llcModernize(form);
       llcProviderCards();
+      // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
+      // fieldset sections elsewhere; the fold keeps working, its click handler is delegated
+      form.querySelectorAll('.tab-pane [class*="col-"] > legend.section-toggle').forEach(function (lg) {
+        if (lg.hidden || !lg.nextElementSibling || !lg.nextElementSibling.classList.contains('section-body')) { return; }
+        var body = lg.nextElementSibling, fs = document.createElement('fieldset');
+        lg.parentNode.insertBefore(fs, lg);
+        fs.appendChild(lg);
+        fs.appendChild(body);
+      });
       // section headings read as headings, without the colon some bookstrap ones carry ("WebServer Options:")
       form.querySelectorAll('legend').forEach(function (lg) {
         var t = lg.lastChild;

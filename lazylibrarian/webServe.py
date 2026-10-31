@@ -4863,6 +4863,11 @@ class WebInterface:
         db = database.DBConnection()
         book = db.match("SELECT books.*, AuthorName from books,authors WHERE "
                         "books.AuthorID=authors.AuthorID AND BookID=?", (bookid,))
+        book_series = []
+        if book:
+            book_series = [dict(s) for s in db.select(
+                "SELECT series.SeriesID, SeriesName, SeriesNum FROM member, series "
+                "WHERE member.SeriesID=series.SeriesID AND member.BookID=?", (bookid,))]
         db.close()
         if not book:
             raise cherrypy.HTTPRedirect("books")
@@ -4891,7 +4896,7 @@ class WebInterface:
         amazon_link = f'https://www.amazon.com/dp/{book["ASIN"]}' if book.get('ASIN') else ''
 
         return serve_template(templatename="book_detail.html", title=book['BookName'], book=book,
-                              book_links=book_links, amazon_link=amazon_link)
+                              book_links=book_links, amazon_link=amazon_link, book_series=book_series)
 
     @cherrypy.expose
     @require_auth()

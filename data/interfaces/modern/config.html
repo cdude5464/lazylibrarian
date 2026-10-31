@@ -79,6 +79,22 @@
   }
   .llc fieldset:has(> [class*="col-"]) > [class*="col-"] > .input-group:last-child { margin-bottom: 1.4rem; }
   .llc .form-group { margin-bottom: .9rem; }
+  /* provider cards: the rows of "label | field | label | field | button" made into a small form */
+  .llc .llc-pcard > .llc-pbox { border: 1px solid var(--bs-border-color-translucent); border-radius: 12px; background: var(--bs-tertiary-bg); padding: .7rem .8rem .2rem; height: 100%; }
+  .llc .llc-pcard.llc-off > .llc-pbox { opacity: .7; }
+  .llc .llc-ph { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; min-height: 32px; }
+  .llc .llc-ptitle { font-weight: 650; font-size: .95rem; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .llc .llc-ptitle:empty::before { content: attr(data-empty); color: var(--bs-secondary-color); font-weight: 500; }
+  .llc .llc-ph .btn { font-size: .75rem; padding: .15rem .65rem; }
+  .llc .llc-pon { display: inline-flex; align-items: center; gap: .4rem; margin: 0; font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); cursor: pointer; }
+  .llc .llc-pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .6rem; }
+  .llc .llc-pf { min-width: 0; margin-bottom: .55rem; }
+  .llc .llc-pf.llc-wide { grid-column: 1 / -1; }
+  .llc .llc-pf > label { display: block; font-size: .72rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
+  .llc .llc-pf .form-control, .llc .llc-pf .form-select { font-size: .88rem; padding: .3rem .6rem; }
+  .llc .llc-pf .form-control[readonly] { background: transparent; border-color: transparent; padding-left: 0; }
+  .llc .llc-pf .input-group { margin: 0; flex-wrap: nowrap; }
+  .llc .llc-pf .input-group > .btn { padding: .2rem .55rem; }
   .llc label, .llc .control-label { font-size: .85rem; font-weight: 500; margin-bottom: .3rem; }
   .llc .form-control, .llc .form-select { font-size: .9rem; }
   .llc .input-group { margin-bottom: .9rem; }
@@ -338,7 +354,7 @@
     // search over all settings
     var q = document.getElementById('llc-q'), hits = document.getElementById('llc-hits'), timer = 0;
     // a row of two switches (.row.checkbox) holds two settings, its columns count separately
-    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"]';
+    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"], .llc-pf';
     function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
     function search() {
       var t = norm(q.value.trim());
@@ -372,8 +388,94 @@
     q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(search, 150); });
     q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } if (e.key === 'Escape') { q.value = ''; search(); } });
 
+    // Provider blocks (Newznab, Torznab, RSS, torrent and direct sites) are rows of "label | field | label | field |
+    // button" input groups that fall into many broken lines on a phone. Each block becomes a card: name, enable
+    // switch and Test in a header, then the same fields with their label above them. The inputs are moved, not
+    // copied, so names, ids and the page scripts' handlers stay as they are.
+    var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}};
+    function llcProviderCards() {
+      form.querySelectorAll('fieldset > .col-md-4.form-group, fieldset > .col-md-6.form-group').forEach(function (block) {
+        var groups = block.querySelectorAll(':scope > .input-group');
+        if (!groups.length || block.classList.contains('llc-pcard')) { return; }
+        var box = document.createElement('div'), head = document.createElement('div'), grid = document.createElement('div');
+        box.className = 'llc-pbox'; head.className = 'llc-ph'; grid.className = 'llc-pgrid';
+        var title = document.createElement('span');
+        title.className = 'llc-ptitle'; title.setAttribute('data-empty', TP.provider);
+        head.appendChild(title);
+        var enable = null, tests = {}, fields = [];
+        function labelFor(input, pending) {
+          if (pending) { return pending; }
+          var l = input.id && block.querySelector('label[for="' + input.id + '"]');
+          if (l && l.textContent.trim()) { return l.textContent.trim(); }
+          return (input.placeholder || input.name || '').replace(/\s*#\s*\d+\s*$/, '');
+        }
+        groups.forEach(function (g) {
+          var pending = '';
+          Array.prototype.slice.call(g.children).forEach(function (c) {
+            if (c.matches('.input-group-text, .input-group-addon')) {
+              var cb = c.querySelector('input[type="checkbox"]'), btn = c.querySelector('button');
+              if (cb) { enable = cb; } else if (btn) { if (!tests[btn.value]) { tests[btn.value] = btn; } } else { pending = c.textContent.trim(); }
+              var tip = window.bootstrap && bootstrap.Tooltip.getInstance(c); if (tip) { tip.dispose(); }
+              return;
+            }
+            if (c.matches('input[type="checkbox"]')) { enable = enable || c; return; }
+            if (c.matches('button')) { if (c.getAttribute('role') === 'testprov') { if (!tests[c.value]) { tests[c.value] = c; } return; } }
+            if (c.matches('input, select, textarea')) {
+              var extra = [];
+              // a show/hide button the page put right after a secret field stays with it
+              var next = c.nextElementSibling;
+              while (next && next.matches('button.secret-toggle, .btn')) { if (next.getAttribute('role') === 'testprov') { break; } extra.push(next); next = next.nextElementSibling; }
+              fields.push({el: c, label: labelFor(c, pending), extra: extra});
+              pending = '';
+            }
+          });
+          g.remove();
+        });
+        if (!fields.length) { return; }
+        fields.forEach(function (f, i) {
+          var wrap = document.createElement('div');
+          // numbers, counters and the short download types share a line, names, urls and keys get a whole one
+          var narrow = f.el.type === 'number' || f.el.readOnly || /_dltypes$/.test(f.el.id);
+          wrap.className = 'llc-pf' + (narrow ? '' : ' llc-wide');
+          var lb = document.createElement('label');
+          lb.textContent = f.label; if (f.el.id) { lb.htmlFor = f.el.id; }
+          wrap.appendChild(lb);
+          if (f.extra.length) {
+            var ig = document.createElement('div'); ig.className = 'input-group input-group-sm';
+            ig.appendChild(f.el); f.extra.forEach(function (x) { ig.appendChild(x); });
+            wrap.appendChild(ig);
+          } else { wrap.appendChild(f.el); }
+          grid.appendChild(wrap);
+        });
+        // the card title: the display name as it is typed, else the first field's label (KAT Host -> KAT)
+        var name = fields.filter(function (f) { return /_dispname$/.test(f.el.id); })[0];
+        if (name) {
+          var upd = function () { title.textContent = name.el.value.trim(); };
+          name.el.addEventListener('input', upd); upd();
+        } else { title.textContent = fields[0].label.replace(/\s+(host|url)$/i, ''); }
+        Object.keys(tests).forEach(function (k) { tests[k].className = 'btn btn-sm btn-outline-secondary rounded-pill'; head.appendChild(tests[k]); });
+        if (enable) {
+          // the switch goes before the name, its text is for screen readers and the tooltip
+          var on = document.createElement('label');
+          on.className = 'llc-pon llc-pf'; on.title = TP.enabled; if (enable.id) { on.htmlFor = enable.id; }
+          var txt = document.createElement('span'); txt.className = 'visually-hidden'; txt.textContent = TP.enabled;
+          on.appendChild(enable); on.appendChild(txt);
+          head.insertBefore(on, title);
+          var state = function () { block.classList.toggle('llc-off', !enable.checked); };
+          enable.addEventListener('change', state); state();
+        }
+        // whatever else the block holds (hidden labels, help) goes below the fields
+        var rest = Array.prototype.slice.call(block.childNodes);
+        box.appendChild(head); box.appendChild(grid);
+        rest.forEach(function (n) { if (n.nodeType === 1 && !n.matches('label.sr-only')) { box.appendChild(n); } else if (n.nodeType === 1) { n.remove(); } });
+        block.appendChild(box);
+        block.classList.add('llc-pcard');
+      });
+    }
+
     window.llcAfterReady = function () {
       llcModernize(form);
+      llcProviderCards();
       var active = ul && ul.querySelector('li.active');
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading

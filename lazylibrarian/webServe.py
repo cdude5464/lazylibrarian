@@ -1953,6 +1953,20 @@ class WebInterface:
                 else:
                     rows = filtered[displaystart:(displaystart + displaylength)]
 
+            if kwargs.get('covers') and rows:
+                # the modern interface shows the first covers of each series as a small stack
+                db = database.DBConnection()
+                try:
+                    for row in rows:
+                        res = db.select("SELECT BookImg FROM member,books WHERE member.BookID=books.BookID "
+                                        "AND member.SeriesID=? AND BookImg IS NOT NULL AND BookImg != '' "
+                                        "AND BookImg NOT LIKE '%nocover%' "
+                                        "ORDER BY SeriesNum IS NULL OR SeriesNum = '', CAST(SeriesNum AS REAL) LIMIT 3",
+                                        (row[0],))
+                        row.append([r['BookImg'] for r in res])
+                finally:
+                    db.close()
+
             serversidelogger.debug(f"get_series returning {displaystart} to {displaystart + displaylength}")
             serversidelogger.debug(f"get_series filtered {len(filtered)} from {len(rowlist)}:{len(rows)}")
             mydict = {'iTotalDisplayRecords': len(filtered),
@@ -3883,7 +3897,7 @@ class WebInterface:
                     else:
                         flag = ''
 
-                    if status_type == 'audiostatus' and kwargs['source'] == 'Audio':
+                    if status_type == 'audiostatus' and kwargs['source'] in ('Audio', 'Manage'):
                         row[5] = row[14]
                         row[13] = row[15]
 

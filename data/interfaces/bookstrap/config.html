@@ -2187,11 +2187,18 @@
                       <input type="number" id="versioncheck_interval" name="versioncheck_interval" value="${CONFIG['VERSIONCHECK_INTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}" >
                       <span class="input-group-addon">${_('Hours')}</span>
                     </div>
+                    %if docker():
+                    ## a container is updated by rebuilding its image, keep the saved value
+                    %if CONFIG['AUTO_UPDATE']:
+                    <input type="hidden" name="auto_update" value="1">
+                    %endif
+                    %else:
                     <% checked = 'checked="checked"' if CONFIG['AUTO_UPDATE'] else '' %>
                     <label for="auto_update" class="control-label">
                       <input type="checkbox" id="auto_update" name="auto_update" value="1" ${checked} />
                       ${_('Auto Update when new version found')}</label>
                     <span class="help-block">${_('This will auto update if the task finds a new version. Does not apply to manual version checks')}</span>
+                    %endif
                   </div>
                   <div class="help-block">${_('Setting a scan interval to zero disables the task')}</div>
                 </fieldset>
@@ -2353,11 +2360,15 @@
                     <span class="help-block">${_('If you need to force a particular output type')}</span>
                     <input type="button" value="${_('Test ffmpeg') | h}" id="test_ffmpeg" class="btn btn-default" />
                   </div>
+                  %if docker():
+                  <input type="hidden" name="git_program" value="${CONFIG['GIT_PROGRAM'] | h}">
+                  %else:
                   <div class="form-group">
                     <label for="git_program">${_('git program:')}</label>
                     <input type="text" placeholder="${_('git program') | h}" id="git_program" name="git_program" value="${CONFIG['GIT_PROGRAM']}" class="form-control">
                     <span class="help-block">${_('Git program unless already in your path. Usually leave this blank')}</span>
                   </div>
+                  %endif
                   <div class="form-group">
                     <label for="create_link">${_('Link creation program:')}</label>
                     <input type="text" placeholder="${_('link program') | h}" id="create_link" name="create_link" value="${CONFIG['CREATE_LINK']}" class="form-control">

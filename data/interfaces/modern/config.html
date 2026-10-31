@@ -1,0 +1,737 @@
+<%inherit file="modern_base.html" />
+<%doc>
+  The settings form itself is bookstrap's (data/interfaces/bookstrap/config.html and config_functions.js),
+  so a new setting is only ever added in one place. This page gives it the modern frame: a section menu,
+  cards, switches, a search over all settings, a save bar and Bootstrap 5 dialogs. The bookstrap markup is
+  Bootstrap 3, the modernize() script below maps the few classes that differ.
+</%doc>
+<%namespace name="bs" file="/bookstrap/config.html" />
+<%!
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'config'
+%>
+<%def name="headIncludes()">
+<style>
+  .llc-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .llc-head h1 { font-size: 1.75rem; font-weight: 650; letter-spacing: -.015em; margin: 0 .5rem 0 0; }
+  /* bookstrap's system buttons (restart, info, jobs...) as a row of small pills */
+  .llc-sys { min-width: 0; max-width: 100%; }
+  .llc-sys #subhead_menu { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .llc-sys .btn { border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; --bs-btn-bg: transparent; --bs-btn-color: var(--bs-body-color);
+                  --bs-btn-border-color: var(--bs-border-color); --bs-btn-hover-bg: var(--bs-tertiary-bg); --bs-btn-hover-color: var(--bs-body-color);
+                  --bs-btn-hover-border-color: var(--bs-border-color); }
+  .llc-sys .btn-danger { --bs-btn-color: var(--bs-danger-text-emphasis); }
+  .llc-sys .btn .fa { margin-right: .3rem; opacity: .75; }
+  .llc-sys #myAlert { border: 0; background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
+  @media (max-width: 767.98px) { .llc-sys { flex: 1 1 100%; } .llc-sys #subhead_menu { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } .llc-sys .btn { white-space: nowrap; } }
+
+  .llc-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 2rem; align-items: start; }
+  @media (max-width: 991.98px) { .llc-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; } }
+  .llc-side { position: sticky; top: 76px; display: flex; flex-direction: column; gap: .75rem; }
+  @media (max-width: 991.98px) { .llc-side { position: sticky; top: 56px; z-index: 5; background: var(--bs-body-bg); padding: .5rem 0; margin: -.5rem 0 0; } }
+  .llc-search { position: relative; }
+  .llc-search .fa { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); opacity: .5; font-size: .8rem; }
+  .llc-search input { padding-left: 2.1rem; border-radius: 999px; }
+  .llc-hits { font-size: .75rem; color: var(--bs-secondary-color); padding-left: .8rem; }
+
+  /* the bookstrap tab list becomes the section menu */
+  .llc #configtabs { display: flex; flex-direction: column; gap: 2px; border: 0; margin: 0; padding: 0; list-style: none; }
+  .llc #configtabs > li > a { display: flex; align-items: center; gap: .6rem; padding: .45rem .8rem; border-radius: 10px; color: var(--bs-body-color);
+                              text-decoration: none; font-size: .92rem; border: 0; }
+  .llc #configtabs > li > a .fa { width: 1.1em; text-align: center; opacity: .6; }
+  .llc #configtabs > li > a:hover { background: var(--bs-tertiary-bg); }
+  .llc #configtabs > li.active > a { background: var(--bs-secondary-bg); font-weight: 600; }
+  .llc #configtabs > li.active > a .fa { opacity: 1; color: var(--ll-accent); }
+  @media (max-width: 991.98px) {
+    .llc #configtabs { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .35rem; padding-bottom: 2px; }
+    .llc #configtabs > li > a { white-space: nowrap; border: 1px solid var(--bs-border-color); border-radius: 999px; padding: .3rem .8rem; font-size: .85rem; }
+    .llc #configtabs > li.active > a { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+    .llc #configtabs > li.active > a .fa { color: inherit; }
+  }
+  .llc-searching #configtabs { opacity: .45; pointer-events: none; }
+
+  .llc-tools { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; margin-bottom: .75rem; }
+  .llc-tools .btn { border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
+  .llc-pane-title { font-size: 1.25rem; font-weight: 650; margin: 0; }
+
+  /* Bootstrap 3 pieces of the bookstrap form, in Bootstrap 5 dress */
+  .llc .hidden { display: none !important; }
+  /* the <br>s bookstrap puts between sections and blocks, the cards keep their own spacing */
+  .llc .tab-pane :is([class*="col-"], fieldset, .section-body, .configtable, .row) > br { display: none; }
+  .llc .configtable > .row, .llc .tab-pane > .row { row-gap: 0; }
+  /* an empty <p> between two rows (Genres) would add its margin to the card spacing */
+  .llc .tab-pane .configtable > p:empty { display: none; }
+  .llc fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+  .llc .tab-pane fieldset:has(> legend), .llc .tab-pane fieldset:has(> .section-body) {
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1rem 1.1rem .4rem; margin-bottom: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .llc .tab-pane fieldset fieldset:has(> legend) { border-radius: 10px; background: var(--bs-tertiary-bg); box-shadow: none; }
+  .llc legend { float: left; width: 100%; font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--bs-secondary-color);
+                margin: 0 0 .75rem; padding: 0; border: 0; display: flex; align-items: center; gap: .35rem; }
+  .llc legend.section-toggle { cursor: pointer; user-select: none; }
+  .llc legend label.fa { font: inherit; letter-spacing: inherit; margin: 0; cursor: pointer; }
+  .llc legend .section-caret { transition: transform .15s ease; font-size: .9em; }
+  .llc legend + * { clear: left; }
+  /* Categories: an unused provider slot keeps only a hidden heading, it must not leave a hole in the grid */
+  .llc .tab-pane [class*="col-"]:has(> legend[hidden]) { display: none; }
+  .llc #filters fieldset .row > [class*="col-"] > label:first-child { font-weight: 600; margin-bottom: .35rem; }
+  .llc #capabilities .configtable > div:first-child:not(.row) { margin-bottom: 1rem; color: var(--bs-secondary-color); }
+  .llc legend.section-collapsed { margin-bottom: .6rem; }
+  .llc legend.section-collapsed .section-caret { transform: rotate(-90deg); }
+  /* provider blocks (col-md-4) sit straight in a fieldset, Bootstrap 3 floated them into columns */
+  .llc fieldset:has(> [class*="col-"]) { display: flex; flex-wrap: wrap; margin-inline: -.5rem; }
+  .llc fieldset:has(> [class*="col-"]) > * { flex: 0 0 100%; padding-inline: .5rem; }
+  .llc fieldset:has(> [class*="col-"]) > legend { margin-inline: .5rem; width: calc(100% - 1rem); }
+  @media (min-width: 768px) {
+    .llc fieldset:has(> [class*="col-"]) > .col-md-3 { flex-basis: 25%; } .llc fieldset:has(> [class*="col-"]) > .col-md-4 { flex-basis: 33.333%; }
+    .llc fieldset:has(> [class*="col-"]) > .col-md-6 { flex-basis: 50%; } .llc fieldset:has(> [class*="col-"]) > .col-md-8 { flex-basis: 66.666%; }
+  }
+  .llc fieldset:has(> [class*="col-"]) > [class*="col-"] > .input-group:last-child { margin-bottom: 1.4rem; }
+  .llc .form-group { margin-bottom: .9rem; }
+  /* provider cards: the rows of "label | field | label | field | button" made into a small form */
+  .llc .llc-pcard > .llc-pbox { border: 1px solid var(--bs-border-color-translucent); border-radius: 12px; background: var(--bs-tertiary-bg); padding: .7rem .8rem .2rem; height: 100%; }
+  .llc .llc-pcard.llc-off > .llc-pbox { opacity: .7; }
+  .llc .llc-ph { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; min-height: 32px; }
+  .llc .llc-ptitle { font-weight: 650; font-size: .95rem; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .llc .llc-ptitle:empty::before { content: attr(data-empty); color: var(--bs-secondary-color); font-weight: 500; }
+  .llc .llc-ph .btn { font-size: .75rem; padding: .15rem .65rem; }
+  .llc .llc-pon { display: inline-flex; align-items: center; gap: .4rem; margin: 0; font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); cursor: pointer; }
+  /* folding: a provider card down to its header, a provider type section down to its heading; search shows all */
+  .llc .llc-pcaret { border: 0; background: none; padding: 0 .1rem; color: var(--bs-secondary-color); line-height: 1; }
+  .llc .llc-pcaret i { transition: transform .15s ease; }
+  .llc .llc-pcard.llc-pfold .llc-pcaret i { transform: rotate(-90deg); }
+  .llc .llc-ptitle { cursor: pointer; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold > .llc-pbox > :not(.llc-ph) { display: none !important; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold .llc-ph { margin-bottom: .5rem; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold { align-self: flex-start; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold > .llc-pbox { height: auto; }
+  .llc legend.llc-lfold { cursor: pointer; user-select: none; }
+  .llc:not(.llc-searching) fieldset.llc-sfold > :not(legend) { display: none !important; }
+  .llc .llc-pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .6rem; }
+  .llc .llc-pf { min-width: 0; margin-bottom: .55rem; }
+  .llc .llc-pf.llc-wide { grid-column: 1 / -1; }
+  .llc .llc-pf > label { display: block; font-size: .72rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
+  .llc .llc-pf .form-control, .llc .llc-pf .form-select { font-size: .88rem; padding: .3rem .6rem; }
+  .llc .llc-pf .form-control[readonly] { background: transparent; border-color: transparent; padding-left: 0; }
+  .llc .llc-pf .input-group { margin: 0; flex-wrap: nowrap; }
+  .llc .llc-pf .input-group > .btn { padding: .2rem .55rem; }
+  .llc label, .llc .control-label { font-size: .85rem; font-weight: 500; margin-bottom: .3rem; }
+  .llc .form-control, .llc .form-select { font-size: .9rem; }
+  .llc .input-group { margin-bottom: .9rem; }
+  .llc .input-group > .input-group-text { font-size: .82rem; margin-bottom: 0; }
+  /* on a phone a "label | field | label | field" group takes a line for each pair */
+  @media (max-width: 575.98px) {
+    .llc .input-group { flex-wrap: wrap; row-gap: .4rem; }
+    .llc .input-group > .input-group-text { flex: 0 0 34%; white-space: normal; border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important; }
+    .llc .input-group > .input-group-text ~ .form-control, .llc .input-group > .input-group-text ~ .form-select {
+      flex: 1 1 60%; min-width: 0; margin-left: -1px !important; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
+    .llc .input-group > .form-control:has(+ .btn), .llc .input-group > .form-select:has(+ .btn) { border-radius: var(--bs-border-radius) 0 0 var(--bs-border-radius) !important; }
+  }
+  /* the input groups made into fields (llcFieldGrids): label above, side by side when there is room */
+  .llc .llc-fgrid { display: grid; grid-template-columns: minmax(0, 1fr); gap: .6rem .9rem; margin-bottom: .9rem; }
+  .llc .llc-fgrid.llc-fmulti { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9.5rem), 1fr)); }
+  .llc .llc-ff { min-width: 0; }
+  .llc .llc-ff > label { display: block; }
+  .llc .llc-ff .input-group { margin: 0; flex-wrap: nowrap; }
+  .llc .llc-ff .input-group > .input-group-text { flex: 0 0 auto; border-radius: 0 var(--bs-border-radius) var(--bs-border-radius) 0 !important; }
+  /* accent colour (Interface > Appearance): presets next to the picker */
+  .llc .accent-picker { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+  .llc .accent-picker input[type="color"] { width: 3rem; height: 2rem; padding: .15rem; flex: 0 0 auto; }
+  .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
+  .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
+  .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
+  .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
+  .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
+  /* language pickers: even gaps between chips in both directions (they were inline-blocks spaced by whitespace) */
+  .llc .langpicker { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .15rem 0 .1rem; }
+  .llc .langpicker .langchip { margin: 0; border-radius: 999px; padding: .2rem .8rem; font-size: .85rem; line-height: 1.4; }
+  .llc .langpicker-more { margin: .45rem 0 .1rem; font-size: .9rem; }
+  .llc .langpicker-more a, .llc .searchlang-change { text-decoration: none; }
+  .llc .langpicker-more i { margin-right: .25rem; }
+  .llc .searchlang-summary { margin: .1rem 0; }
+  .llc .searchlang-editor .langpicker { margin-top: .5rem; }
+  .llc .searchlang-modes { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+  .llc #lang_refresh_options .help-block, .llc #config_langrefreshstatus { display: block; margin: .4rem 0 0 !important; }
+  .llc .checkbox, .llc .radio { margin: 0 0 .55rem; }
+  .llc .row.checkbox { margin-bottom: .2rem; }
+  .llc .row.checkbox > [class*="col-"] { margin-bottom: .55rem; }
+  .llc .checkbox label, .llc .radio label { display: inline-flex; align-items: center; gap: .6rem; font-weight: 400; font-size: .9rem; cursor: pointer; margin: 0; }
+  /* checkboxes as switches */
+  .llc .tab-pane input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 2.1em; height: 1.2em; margin: 0; border-radius: 999px;
+    background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); position: relative; cursor: pointer; transition: background-color .15s ease; vertical-align: middle; }
+  .llc .tab-pane input[type="checkbox"]::after { content: ""; position: absolute; top: 50%; left: .14em; width: .86em; height: .86em; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transform: translateY(-50%); transition: left .15s ease; }
+  .llc .tab-pane input[type="checkbox"]:checked { background: var(--ll-accent); border-color: var(--ll-accent); }
+  .llc .tab-pane input[type="checkbox"]:checked::after { left: calc(100% - 1em); }
+  .llc .tab-pane input[type="checkbox"]:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 2px; }
+  .llc .tab-pane .btn { border-radius: 999px; font-size: .82rem; }
+  .llc .tab-pane .input-group > .btn { border-radius: 0; }
+  .llc .tab-pane .input-group > .btn:last-child { border-top-right-radius: var(--bs-border-radius); border-bottom-right-radius: var(--bs-border-radius); }
+  .llc .tab-pane .btn .fa { margin-right: .25rem; }
+  .llc .tab-pane .btn-primary { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
+    --bs-btn-hover-bg: var(--ll-accent); --bs-btn-hover-border-color: var(--ll-accent); --bs-btn-hover-color: var(--ll-accent-contrast); }
+  .llc .tab-pane table { font-size: .85rem; }
+  .llc .tab-pane textarea { font-size: .82rem; }
+  .llc pre { white-space: pre-wrap; }
+  .llc .tab-content > p:last-child, .llc [role="tab-table"] > p[style] { font-size: .75rem; }
+
+  /* searching shows every section, with only the settings that match */
+  .llc-searching .tab-content > .tab-pane:not(.llc-miss) { display: block !important; }
+  .llc-searching .tab-content > .tab-pane::before { content: attr(data-llc-title); display: block; font-size: 1.05rem; font-weight: 650; margin: .4rem 0 .6rem; }
+  .llc-searching .section-body { display: block !important; }
+  .llc .llc-miss { display: none !important; }
+  .llc-searching .llc-hit label, .llc-searching .llc-hit .input-group-text { background: color-mix(in srgb, var(--ll-accent) 16%, transparent); border-radius: 4px; }
+  .llc-searching .llc-tools, .llc-searching .llc-pane-title { display: none; }
+
+  /* save bar */
+  .llc-save { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: .6rem; margin: 1rem 0 0;
+              padding: .7rem 0 calc(.7rem + env(safe-area-inset-bottom, 0px)); background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color-translucent); }
+  .llc-save .msg { font-size: .85rem; color: var(--bs-secondary-color); margin-right: auto; display: flex; align-items: center; gap: .4rem; }
+  .llc-save.dirty .msg { color: var(--bs-warning-text-emphasis); font-weight: 600; }
+  .llc-save .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bs-secondary-color); }
+  .llc-save.dirty .dot { background: var(--bs-warning); }
+  .ll-main { padding-bottom: 1rem; }
+  .modal pre { white-space: pre-wrap; font-size: .8rem; max-height: 60vh; }
+</style>
+</%def>
+<%def name="body()">
+<div class="llc pt-1" id="llc">
+  <div class="llc-head">
+    <h1>${title}</h1>
+    <div class="llc-sys">${bs.headerIncludes()}</div>
+  </div>
+  <div class="llc-layout">
+    <aside class="llc-side">
+      <div class="llc-search">
+        <i class="fa fa-search" aria-hidden="true"></i>
+        <input type="search" class="form-control form-control-sm" id="llc-q" placeholder="${_('Search settings') | h}" aria-label="${_('Search settings') | h}" autocomplete="off">
+      </div>
+      <div class="llc-hits" id="llc-hits" hidden></div>
+      <nav id="llc-nav" aria-label="${_('Settings sections') | h}"></nav>
+    </aside>
+    <div class="llc-main">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+        <h2 class="llc-pane-title me-auto" id="llc-pane-title"></h2>
+        <div class="llc-tools mb-0" id="llc-tools"></div>
+      </div>
+      ${bs.body()}
+      ## the accent colour takes the place of the Bootswatch theme (which only styles bookstrap) in Appearance
+      <template id="llc-accent-tpl">
+        <div class="form-group">
+          <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
+          <div class="accent-picker">
+            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
+            %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
+            <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
+            %endfor
+          </div>
+          <span class="help-block">${_('Buttons, links and highlights of the modern interface. Dark mode uses a lighter shade of it.')}</span>
+        </div>
+      </template>
+      <div class="llc-save" id="llc-save">
+        <span class="msg"><span class="dot" aria-hidden="true"></span><span id="llc-save-msg">${_('All changes saved')}</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" id="llc-undo" hidden>${_('Discard')}</button>
+        <button type="button" class="btn btn-ll rounded-pill px-4" id="llc-submit"><i class="fa fa-check me-1" aria-hidden="true"></i>${_('Save changes')}</button>
+      </div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script src="js/jquery-3.4.1.min.js"></script>
+<script>
+  // what the bookstrap page scripts expect from bookstrap's base.html
+  var llTexts = {restartConfirm: ${_js('Are you sure you want to restart LazyLibrarian?')},
+                 shutdownConfirm: ${_js('Are you sure you want to shutdown LazyLibrarian?')}};
+  function createCookie(name, value, days) {
+    var expires = '';
+    if (days) { var d = new Date(); d.setTime(d.getTime() + days * 864e5); expires = '; expires=' + d.toUTCString(); }
+    document.cookie = name + '=' + value + expires + '; path=/';
+  }
+  function readCookie(name) {
+    var parts = document.cookie.split(';');
+    for (var i = 0; i < parts.length; i++) { var c = parts[i].trim(); if (c.indexOf(name + '=') === 0) { return c.substring(name.length + 1); } }
+    return null;
+  }
+  function eraseCookie(name) { createCookie(name, '', -1); }
+
+  // bootbox (dialog / alert / confirm / prompt) on Bootstrap 5 modals, as far as LazyLibrarian uses it
+  window.bootbox = (function () {
+    var T = {ok: ${_js('OK')}, cancel: ${_js('Cancel')}, close: ${_js('Close')}};
+    function btnClass(c) {
+      c = c || 'btn-primary';
+      return 'btn rounded-pill ' + c.replace('btn-default', 'btn-outline-secondary').replace('btn-primary', 'btn-ll').replace('btn-xs', 'btn-sm');
+    }
+    function dialog(o) {
+      var el = document.createElement('div');
+      el.className = 'modal fade'; el.tabIndex = -1;
+      el.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable' + (o.size === 'large' ? ' modal-lg' : '') + '"><div class="modal-content">' +
+        (o.title ? '<div class="modal-header border-0 pb-0"><h2 class="modal-title h5"></h2><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' : '') +
+        '<div class="modal-body"></div><div class="modal-footer border-0 pt-0"></div></div></div>';
+      if (o.title) { el.querySelector('.modal-title').innerHTML = o.title; }
+      var body = el.querySelector('.modal-body');
+      if (typeof o.message === 'string') { body.innerHTML = o.message; } else if (o.message) { $(body).append(o.message); }
+      var foot = el.querySelector('.modal-footer');
+      var modal;
+      Object.keys(o.buttons || {}).forEach(function (k) {
+        var b = o.buttons[k];
+        if (typeof b === 'function') { b = {callback: b}; }
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = btnClass(b.className); btn.innerHTML = b.label || k;
+        btn.addEventListener('click', function () {
+          var r = b.callback ? b.callback.call(el, k) : undefined;
+          if (r !== false) { modal.hide(); }
+        });
+        foot.appendChild(btn);
+      });
+      if (!foot.children.length) { foot.remove(); }
+      document.body.appendChild(el);
+      modal = new bootstrap.Modal(el, {backdrop: o.backdrop === undefined ? true : o.backdrop});
+      el.addEventListener('hidden.bs.modal', function () { if (o.onEscape && typeof o.onEscape === 'function' && !el.dataset.done) { o.onEscape(); } modal.dispose(); el.remove(); });
+      modal.show();
+      var $el = $(el); $el.modal = function (a) { if (a === 'hide') { modal.hide(); } return $el; };
+      return $el;
+    }
+    function args(a, b) { return typeof a === 'object' ? a : {message: a, callback: b}; }
+    return {
+      dialog: dialog,
+      setLocale: function () {}, addLocale: function () {},
+      hideAll: function () { document.querySelectorAll('.modal.show').forEach(function (m) { bootstrap.Modal.getInstance(m).hide(); }); },
+      alert: function (a, b) {
+        var o = args(a, b);
+        return dialog({title: o.title, message: o.message, buttons: {ok: {label: (o.buttons && o.buttons.ok && o.buttons.ok.label) || T.ok, className: 'btn-primary', callback: o.callback}}});
+      },
+      confirm: function (a, b) {
+        var o = args(a, b), bt = o.buttons || {}, done = false;
+        var cb = function (r) { if (!done) { done = true; if (o.callback) { return o.callback(r); } } };
+        var d = dialog({title: o.title, message: o.message, onEscape: function () { cb(false); }, buttons: {
+          cancel: {label: (bt.cancel && bt.cancel.label) || T.cancel, className: (bt.cancel && bt.cancel.className) || 'btn-default', callback: function () { return cb(false); }},
+          confirm: {label: (bt.confirm && bt.confirm.label) || T.ok, className: (bt.confirm && bt.confirm.className) || 'btn-primary', callback: function () { return cb(true); }}
+        }});
+        return d;
+      },
+      prompt: function (a, b) {
+        var o = args(a, b), done = false;
+        var input = $('<input class="form-control">').attr('type', o.inputType || 'text').val(o.value || '');
+        var cb = function (v) { if (!done) { done = true; if (o.callback) { return o.callback(v); } } };
+        var d = dialog({title: o.title, message: input, onEscape: function () { cb(null); }, buttons: {
+          cancel: {label: T.cancel, className: 'btn-default', callback: function () { return cb(null); }},
+          confirm: {label: T.ok, className: 'btn-primary', callback: function () { return cb(input.val()); }}
+        }});
+        setTimeout(function () { input.trigger('focus'); }, 300);
+        return d;
+      }
+    };
+  })();
+
+  // Bootstrap 3 classes of the bookstrap form that Bootstrap 5 names differently
+  function llcModernize(root) {
+    var $r = $(root);
+    $r.find('.input-group-addon').addClass('input-group-text');
+    $r.find('.input-group-btn').each(function () { $(this).children().insertBefore(this); $(this).remove(); });
+    $r.find('select.form-control').addClass('form-select');
+    $r.find('.btn-default').removeClass('btn-default').addClass('btn-outline-secondary');
+    $r.find('.btn-xs').removeClass('btn-xs').addClass('btn-sm');
+    $r.find('.pull-right').removeClass('pull-right').addClass('float-end');
+    $r.find('.pull-left').removeClass('pull-left').addClass('float-start');
+    $r.find('[class*="col-xs-"]').each(function () { this.className = this.className.replace(/\bcol-xs-(\d+)/g, 'col-$1'); });
+    $r.find('.label').each(function () {
+      var m = /\blabel-(\w+)/.exec(this.className);
+      if (m) { $(this).removeClass('label label-' + m[1]).addClass('badge text-bg-' + (m[1] === 'default' ? 'secondary' : m[1])); }
+    });
+    $r.find('[data-toggle="tooltip"]').each(function () {
+      if (this.title && !bootstrap.Tooltip.getInstance(this)) { new bootstrap.Tooltip(this, {placement: this.getAttribute('data-placement') || 'top'}); }
+    });
+  }
+
+  (function () {
+    var form = document.querySelector('#llc form[action="config_update"]');
+    if (!form) { return; }
+    form.id = 'llc-form';
+    var T = {saved: ${_js('All changes saved')}, dirty: ${_js('Unsaved changes')}, leave: ${_js('You have unsaved changes')},
+             hits: ${_jsn('%(count)s setting found', '%(count)s settings found')}, none: ${_js('No settings found')}};
+
+    // the bookstrap title row: its buttons go to the tools row, Save to the save bar
+    var h1 = form.querySelector(':scope > h1');
+    if (h1) {
+      var tools = document.getElementById('llc-tools');
+      h1.querySelectorAll('input[type="button"], button').forEach(function (b) { tools.appendChild(b); });
+      var add = h1.querySelector('#add');
+      if (add) { add.hidden = true; document.getElementById('llc-save').appendChild(add); add.setAttribute('form', 'llc-form'); }
+      h1.remove();
+    }
+
+    // the tab list becomes the section menu
+    var ul = form.querySelector('#configtabs');
+    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-book', downloadsettings: 'fa-download', providers: 'fa-globe',
+                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
+                 languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
+    if (ul) {
+      document.getElementById('llc-nav').appendChild(ul);
+      ul.querySelectorAll('li[role="presentation"]').forEach(function (li) {
+        var a = li.querySelector('a'), pane = document.getElementById(li.getAttribute('aria-controls'));
+        a.removeAttribute('data-toggle');
+        a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
+        if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
+      });
+      ul.addEventListener('click', function (e) {
+        var li = e.target.closest('li[role="presentation"]');
+        if (!li) { return; }
+        e.preventDefault();
+        show(li);
+        if (window.innerWidth < 992) { li.scrollIntoView({block: 'nearest', inline: 'center'}); }
+        window.scrollTo({top: 0});
+      });
+    }
+    function show(li) {
+      ul.querySelectorAll('li[role="presentation"]').forEach(function (x) { x.classList.toggle('active', x === li); x.setAttribute('aria-selected', x === li); });
+      form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === li.getAttribute('aria-controls')); });
+      document.getElementById('llc-pane-title').textContent = li.textContent.trim();
+    }
+
+    llcModernize(form);
+    llcModernize(document.querySelector('.llc-sys'));
+
+    // unsaved changes
+    var save = document.getElementById('llc-save'), dirty = false;
+    function setDirty(d) {
+      dirty = d; save.classList.toggle('dirty', d);
+      document.getElementById('llc-save-msg').textContent = d ? T.dirty : T.saved;
+      document.getElementById('llc-undo').hidden = !d;
+    }
+    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q') { setDirty(true); } });
+    form.addEventListener('change', function (e) { if (e.target.name) { setDirty(true); } });
+    document.getElementById('llc-submit').addEventListener('click', function () {
+      dirty = false;
+      if (form.requestSubmit) { form.requestSubmit(document.getElementById('add') || undefined); } else { form.submit(); }
+    });
+    form.addEventListener('submit', function () { dirty = false; });
+    document.getElementById('llc-undo').addEventListener('click', function () { dirty = false; window.location.reload(); });
+    window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = T.leave; return T.leave; } });
+
+    // search over all settings
+    var q = document.getElementById('llc-q'), hits = document.getElementById('llc-hits'), timer = 0;
+    // a row of two switches (.row.checkbox) holds two settings, its columns count separately
+    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"], .llc-pf, .llc-ff';
+    function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    function search() {
+      var t = norm(q.value.trim());
+      var all = form.querySelectorAll('.tab-content .llc-miss, .tab-content .llc-hit');
+      all.forEach(function (el) { el.classList.remove('llc-miss', 'llc-hit'); });
+      document.getElementById('llc').classList.toggle('llc-searching', !!t);
+      if (!t) { hits.hidden = true; return; }
+      var count = 0;
+      // the smallest pieces that hold one setting
+      var units = Array.prototype.filter.call(form.querySelectorAll('.tab-content ' + UNIT.split(', ').join(', .tab-content ')), function (el) {
+        return !el.querySelector(UNIT);
+      });
+      units.forEach(function (el) {
+        var text = el.textContent;
+        el.querySelectorAll('input, select, textarea').forEach(function (i) { text += ' ' + (i.placeholder || '') + ' ' + (i.name || ''); });
+        if (norm(text).indexOf(t) >= 0) { el.classList.add('llc-hit'); count++; } else { el.classList.add('llc-miss'); }
+      });
+      // containers left without a match go too, a matching section heading keeps its whole section
+      form.querySelectorAll('.tab-content fieldset, .tab-content .form-group, .tab-content .row, .tab-content [class*="col-"], .tab-content .help-block, .tab-content .tab-pane').forEach(function (box) {
+        if (box.classList.contains('llc-hit')) { return; }
+        var legend = box.querySelector(':scope > legend');
+        if (legend && norm(legend.textContent).indexOf(t) >= 0) {
+          box.querySelectorAll('.llc-miss').forEach(function (m) { m.classList.remove('llc-miss'); }); return;
+        }
+        if (box.matches('.help-block')) { box.classList.add('llc-miss'); return; }
+        if (!box.querySelector('.llc-hit')) { box.classList.add('llc-miss'); }
+      });
+      hits.hidden = false;
+      hits.textContent = count ? llNgettext(T.hits, count) : T.none;
+    }
+    q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(search, 150); });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } if (e.key === 'Escape') { q.value = ''; search(); } });
+
+    // Provider blocks (Newznab, Torznab, RSS, torrent and direct sites) are rows of "label | field | label | field |
+    // button" input groups that fall into many broken lines on a phone. Each block becomes a card: name, enable
+    // switch and Test in a header, then the same fields with their label above them. The inputs are moved, not
+    // copied, so names, ids and the page scripts' handlers stay as they are.
+    var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}, fold: ${_js('Show or hide details')}};
+    var TF = {words: ${_js('Word Lists')}, sizes: ${_js('Size Limits')}};
+    function llcProviderCards() {
+      form.querySelectorAll('fieldset > .col-md-4.form-group, fieldset > .col-md-6.form-group').forEach(function (block) {
+        var groups = block.querySelectorAll(':scope > .input-group');
+        if (!groups.length || block.classList.contains('llc-pcard')) { return; }
+        var box = document.createElement('div'), head = document.createElement('div'), grid = document.createElement('div');
+        box.className = 'llc-pbox'; head.className = 'llc-ph'; grid.className = 'llc-pgrid';
+        var title = document.createElement('span');
+        title.className = 'llc-ptitle'; title.setAttribute('data-empty', TP.provider);
+        head.appendChild(title);
+        var enable = null, tests = {}, fields = [];
+        function labelFor(input, pending) {
+          if (pending) { return pending; }
+          var l = input.id && block.querySelector('label[for="' + input.id + '"]');
+          if (l && l.textContent.trim()) { return l.textContent.trim(); }
+          return (input.placeholder || input.name || '').replace(/\s*#\s*\d+\s*$/, '');
+        }
+        groups.forEach(function (g) {
+          var pending = '';
+          Array.prototype.slice.call(g.children).forEach(function (c) {
+            if (c.matches('.input-group-text, .input-group-addon')) {
+              var cb = c.querySelector('input[type="checkbox"]'), btn = c.querySelector('button');
+              if (cb) { enable = cb; } else if (btn) { if (!tests[btn.value]) { tests[btn.value] = btn; } } else { pending = c.textContent.trim(); }
+              var tip = window.bootstrap && bootstrap.Tooltip.getInstance(c); if (tip) { tip.dispose(); }
+              return;
+            }
+            if (c.matches('input[type="checkbox"]')) { enable = enable || c; return; }
+            if (c.matches('button')) { if (c.getAttribute('role') === 'testprov') { if (!tests[c.value]) { tests[c.value] = c; } return; } }
+            if (c.matches('input, select, textarea')) {
+              var extra = [];
+              // a show/hide button the page put right after a secret field stays with it
+              var next = c.nextElementSibling;
+              while (next && next.matches('button.secret-toggle, .btn')) { if (next.getAttribute('role') === 'testprov') { break; } extra.push(next); next = next.nextElementSibling; }
+              fields.push({el: c, label: labelFor(c, pending), extra: extra});
+              pending = '';
+            }
+          });
+          g.remove();
+        });
+        if (!fields.length) { return; }
+        fields.forEach(function (f, i) {
+          var wrap = document.createElement('div');
+          // numbers, counters and the short download types share a line, names, urls and keys get a whole one
+          var narrow = f.el.type === 'number' || f.el.readOnly || /_dltypes$/.test(f.el.id);
+          wrap.className = 'llc-pf' + (narrow ? '' : ' llc-wide');
+          var lb = document.createElement('label');
+          lb.textContent = f.label; if (f.el.id) { lb.htmlFor = f.el.id; }
+          wrap.appendChild(lb);
+          if (f.extra.length) {
+            var ig = document.createElement('div'); ig.className = 'input-group input-group-sm';
+            ig.appendChild(f.el); f.extra.forEach(function (x) { ig.appendChild(x); });
+            wrap.appendChild(ig);
+          } else { wrap.appendChild(f.el); }
+          grid.appendChild(wrap);
+        });
+        // the card title: the display name as it is typed, else the first field's label (KAT Host -> KAT)
+        var name = fields.filter(function (f) { return /_dispname$/.test(f.el.id); })[0];
+        if (name) {
+          var upd = function () { title.textContent = name.el.value.trim(); };
+          name.el.addEventListener('input', upd); upd();
+        } else { title.textContent = fields[0].label.replace(/\s+(host|url)$/i, ''); }
+        Object.keys(tests).forEach(function (k) { tests[k].className = 'btn btn-sm btn-outline-secondary rounded-pill'; head.appendChild(tests[k]); });
+        if (enable) {
+          // the switch goes before the name, its text is for screen readers and the tooltip
+          var on = document.createElement('label');
+          on.className = 'llc-pon llc-pf'; on.title = TP.enabled; if (enable.id) { on.htmlFor = enable.id; }
+          var txt = document.createElement('span'); txt.className = 'visually-hidden'; txt.textContent = TP.enabled;
+          on.appendChild(enable); on.appendChild(txt);
+          head.insertBefore(on, title);
+          var state = function () { block.classList.toggle('llc-off', !enable.checked); };
+          enable.addEventListener('change', state); state();
+        }
+        // whatever else the block holds (hidden labels, help) goes below the fields
+        var rest = Array.prototype.slice.call(block.childNodes);
+        // fold to the header: the caret or the name; unused (switched off) providers start folded
+        var caret = document.createElement('button');
+        caret.type = 'button'; caret.className = 'llc-pcaret'; caret.innerHTML = '<i class="fa fa-caret-down" aria-hidden="true"></i>';
+        caret.setAttribute('aria-label', TP.fold);
+        head.insertBefore(caret, head.firstChild);
+        var fold = function (c) { block.classList.toggle('llc-pfold', c); caret.setAttribute('aria-expanded', c ? 'false' : 'true'); };
+        caret.addEventListener('click', function () { fold(!block.classList.contains('llc-pfold')); });
+        title.addEventListener('click', function () { fold(!block.classList.contains('llc-pfold')); });
+        fold(!!enable && !enable.checked);
+        box.appendChild(head); box.appendChild(grid);
+        rest.forEach(function (n) { if (n.nodeType === 1 && !n.matches('label.sr-only')) { box.appendChild(n); } else if (n.nodeType === 1) { n.remove(); } });
+        block.appendChild(box);
+        block.classList.add('llc-pcard');
+      });
+    }
+
+    // "label | field | label | field | unit" input groups (Host/Port, Min/Max size, File/Directory permissions,
+    // log level and lines...) are one long bar on a wide screen and broken pieces on a phone. Each becomes a small
+    // grid: the label above its field, a unit (Mb, Days) stuck to the field, two or more fields side by side when
+    // there is room. Groups with buttons or switches in them (API keys, providers) stay as they are.
+    function llcFieldGrids() {
+      form.querySelectorAll('.tab-content .input-group').forEach(function (g) {
+        if (g.closest('.llc-pcard') || g.querySelector('input[type="checkbox"], input[type="button"]')) { return; }
+        // a password's show/hide eye stays with its field; any other button keeps the group as it is
+        var isEye = function (c) { return c.matches('.secret-toggle') || (c.matches('.input-group-btn') && c.querySelector('.secret-toggle') && c.children.length === 1); };
+        if (Array.prototype.some.call(g.querySelectorAll('button, .btn'), function (b) { return !b.matches('.secret-toggle'); })) { return; }
+        var kids = Array.prototype.slice.call(g.children);
+        var isText = function (c) { return c.matches('.input-group-text, .input-group-addon') && !c.querySelector('input, select'); };
+        if (!kids.length || !isText(kids[0])) { return; }
+        var fields = [], pending = '', extra = [];
+        kids.forEach(function (c) {
+          if (isText(c)) {
+            var t = c.textContent.replace(/ /g, ' ').trim();
+            var nx = c.nextElementSibling;
+            if (nx && nx.matches('input, select, textarea')) { pending = t; } else if (fields.length) { fields[fields.length - 1].unit = t; }
+          } else if (c.matches('input, select, textarea')) {
+            if (c.type === 'hidden') { extra.push(c); return; }
+            fields.push({el: c, label: pending, unit: '', eye: null}); pending = '';
+          } else if (isEye(c) && fields.length) { fields[fields.length - 1].eye = c.matches('.secret-toggle') ? c : c.querySelector('.secret-toggle');
+          } else if (!c.matches('label.sr-only')) { extra.push(c); }
+        });
+        if (!fields.length) { return; }
+        // one unit at the very end of a group of several fields (Min size | Max size | Mb) belongs to them all
+        var units = fields.filter(function (f) { return f.unit; });
+        if (fields.length > 1 && units.length === 1 && units[0] === fields[fields.length - 1]) { fields.forEach(function (f) { f.unit = units[0].unit; }); }
+        var grid = document.createElement('div');
+        grid.className = 'llc-fgrid' + (fields.length > 1 ? ' llc-fmulti' : '');
+        fields.forEach(function (f) {
+          var w = document.createElement('div'); w.className = 'llc-ff';
+          var lb = document.createElement('label'); lb.className = 'control-label';
+          lb.textContent = f.label.replace(/\s*:\s*$/, ''); if (f.el.id) { lb.htmlFor = f.el.id; }
+          if (f.label) { w.appendChild(lb); }
+          if (f.unit || f.eye) {
+            var ig = document.createElement('div'); ig.className = 'input-group';
+            ig.appendChild(f.el);
+            if (f.unit) { var u = document.createElement('span'); u.className = 'input-group-text'; u.textContent = f.unit; ig.appendChild(u); }
+            if (f.eye) { ig.appendChild(f.eye); }
+            w.appendChild(ig);
+          } else { w.appendChild(f.el); }
+          grid.appendChild(w);
+        });
+        // a column class on the group (Usenet Retention, Replace genre) stays with the grid
+        g.classList.forEach(function (k) { if (/^col-/.test(k)) { grid.classList.add(k); } });
+        g.parentNode.insertBefore(grid, g);
+        var ref = grid;
+        extra.forEach(function (x) { ref.after(x); ref = x; });
+        g.remove();
+      });
+    }
+
+    window.llcAfterReady = function () {
+      llcModernize(form);
+      llcProviderCards();
+      // provider type headings (Newznab, Torznab, rss...) carry their own show switch, so bookstrap leaves them
+      // unfoldable; here the switch keeps working and a click anywhere else on the heading folds the section
+      form.querySelectorAll('#providers fieldset > legend').forEach(function (lg) {
+        var cb = lg.querySelector('input[type="checkbox"]');
+        if (!cb || lg.classList.contains('section-toggle')) { return; }
+        var fs = lg.parentNode, lab = lg.querySelector('label[for="' + cb.id + '"]');
+        if (lab) { cb.setAttribute('aria-label', lab.textContent.trim()); lab.removeAttribute('for'); }
+        lg.insertAdjacentHTML('afterbegin', '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>');
+        lg.classList.add('llc-lfold'); lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+        var flip = function (e) {
+          if (e.target === cb) { return; }
+          if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') { return; }
+          e.preventDefault();
+          var c = !fs.classList.contains('llc-sfold');
+          fs.classList.toggle('llc-sfold', c); lg.classList.toggle('section-collapsed', c); lg.setAttribute('aria-expanded', c ? 'false' : 'true');
+        };
+        lg.addEventListener('click', flip); lg.addEventListener('keydown', flip);
+      });
+      // Collapse all / Expand all reach these folds too
+      [['collapse_all', true], ['expand_all', false]].forEach(function (b) {
+        var btn = document.getElementById(b[0]);
+        if (!btn) { return; }
+        btn.addEventListener('click', function () {
+          form.querySelectorAll('.llc-pcard').forEach(function (c) { var k = c.querySelector('.llc-pcaret'); if (c.classList.contains('llc-pfold') !== b[1] && k) { k.click(); } });
+          form.querySelectorAll('legend.llc-lfold').forEach(function (lg) { if (lg.parentNode.classList.contains('llc-sfold') !== b[1]) { lg.click(); } });
+        });
+      });
+      // Filters: the word lists and the size limits each go into one section, the per-title options stay as they are
+      (function () {
+        var pane = document.getElementById('filters');
+        var row = pane && pane.querySelector('.configtable > .row');
+        if (!row) { return; }
+        var group = function (title, ids) {
+          var cols = [];
+          ids.forEach(function (id) {
+            var el = document.getElementById(id), col = el && el.closest('[class*="col-"]');
+            while (col && col.parentNode !== row) { col = col.parentNode.closest('[class*="col-"]'); }
+            if (col && cols.indexOf(col) < 0) { cols.push(col); }
+          });
+          if (!cols.length) { return null; }
+          var outer = document.createElement('div'); outer.className = 'col-md-12';
+          var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div'), inner = document.createElement('div');
+          lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+          lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+          lg.appendChild(document.createTextNode(title));
+          body.className = 'section-body'; inner.className = 'row';
+          cols.forEach(function (c) { inner.appendChild(c); });
+          body.appendChild(inner); fs.appendChild(lg); fs.appendChild(body); outer.appendChild(fs);
+          return outer;
+        };
+        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext']);
+        var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin']);
+        [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+      })();
+      // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
+      // fieldset sections elsewhere; the fold keeps working, its click handler is delegated
+      form.querySelectorAll('.tab-pane [class*="col-"] > legend.section-toggle').forEach(function (lg) {
+        if (lg.hidden || !lg.nextElementSibling || !lg.nextElementSibling.classList.contains('section-body')) { return; }
+        var body = lg.nextElementSibling, fs = document.createElement('fieldset');
+        lg.parentNode.insertBefore(fs, lg);
+        fs.appendChild(lg);
+        fs.appendChild(body);
+      });
+      // section headings read as headings, without the colon some bookstrap ones carry ("WebServer Options:")
+      form.querySelectorAll('legend').forEach(function (lg) {
+        var t = lg.lastChild;
+        while (t && t.nodeType === 3 && !t.textContent.trim()) { t = t.previousSibling; }
+        if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
+      });
+      llcFieldGrids();
+      // the accent picker goes where the Bootswatch theme was; the theme select stays in the form, hidden, so its
+      // value is saved unchanged
+      var bso = document.getElementById('bookstrap_options'), tpl = document.getElementById('llc-accent-tpl');
+      if (bso && tpl) { bso.after(tpl.content.cloneNode(true)); bso.hidden = true; bso.classList.add('d-none'); }
+      // accent colour: a preset fills the picker, the page shows the colour at once (saved with the page)
+      var acc = document.getElementById('modern_accent');
+      if (acc) {
+        var swatches = form.querySelectorAll('.accent-swatch');
+        var paint = function () {
+          var v = acc.value, root = document.documentElement;
+          var r = parseInt(v.substr(1, 2), 16), g = parseInt(v.substr(3, 2), 16), b = parseInt(v.substr(5, 2), 16);
+          var dark = root.getAttribute('data-bs-theme') === 'dark';
+          root.style.setProperty('--ll-accent', dark ? 'color-mix(in srgb, ' + v + ' 55%, #fff)' : v);
+          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#111' : '#fff'));
+          swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === v.toLowerCase()); });
+        };
+        swatches.forEach(function (s) {
+          s.style.background = s.dataset.color;
+          s.addEventListener('click', function () { acc.value = s.dataset.color; acc.dispatchEvent(new Event('input', {bubbles: true})); acc.dispatchEvent(new Event('change', {bubbles: true})); });
+        });
+        acc.addEventListener('input', paint);
+        swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === acc.value.toLowerCase()); });
+      }
+      var active = ul && ul.querySelector('li.active');
+      if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
+      // help texts become (i) icons with a popover, next to their label or button, else next to the section heading
+      form.querySelectorAll('.help-block:not(.help-keep)').forEach(function (help) {
+        var anchor = null, prev = help.previousElementSibling;
+        while (prev && !anchor) { if (prev.matches('label, button, .control-label') && !prev.matches('.input-group-text')) { anchor = prev; } prev = prev.previousElementSibling; }
+        if (!anchor) {
+          var p = help.parentElement;
+          while (p && p !== form && !anchor) { var lg = p.querySelector(':scope > legend'); if (lg) { anchor = lg; } p = p.parentElement; }
+        }
+        if (!anchor) { return; }
+        var icon = anchor.querySelector(':scope > .help-icon');
+        if (!icon) {
+          icon = document.createElement('a');
+          icon.tabIndex = 0; icon.setAttribute('role', 'button'); icon.className = 'help-icon';
+          icon.innerHTML = '<i class="fa fa-info-circle" aria-hidden="true"></i>';
+          icon.setAttribute('aria-label', help.textContent.trim().slice(0, 120));
+          icon.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });
+          anchor.appendChild(icon);
+          icon._llcHelp = [];
+        }
+        icon._llcHelp.push(help.innerHTML);
+        help.hidden = true;
+      });
+      form.querySelectorAll('.help-icon').forEach(function (icon) {
+        if (!icon._llcHelp || bootstrap.Popover.getInstance(icon)) { return; }
+        new bootstrap.Popover(icon, {content: icon._llcHelp.join('<br><br>'), html: true, trigger: 'focus', placement: 'auto',
+                                     customClass: 'shadow-sm', container: 'body'});
+      });
+      // rows the page scripts add later (new providers, secret toggles...) get the same treatment
+      new MutationObserver(function (list) {
+        list.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1 && n.closest('#llc')) { llcModernize(n.parentElement || n); } }); });
+      }).observe(form, {childList: true, subtree: true});
+    };
+  })();
+</script>
+<script src="js/lazylibrarian-bs.js"></script>
+${bs.javascriptIncludes()}
+<script>
+  // after the bookstrap page scripts have set the page up
+  $(function () { if (window.llcAfterReady) { window.llcAfterReady(); } });
+</script>
+</%def>

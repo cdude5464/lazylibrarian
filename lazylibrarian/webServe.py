@@ -435,8 +435,12 @@ def serve_template(templatename, **kwargs):
         module_directory = None
     else:
         module_directory = os.path.join(DIRS.CACHEDIR, 'mako')
-    _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                               module_directory=module_directory)
+    # an interface only needs the pages it changes, anything missing comes from bookstrap.
+    # The interfaces folder is a root too, so a page can use another interface's page by its
+    # path, eg modern's config.html renders the form of /bookstrap/config.html
+    bookstrap_dir = os.path.join(str(interface_dir), 'bookstrap')
+    _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir, str(interface_dir)])),
+                               input_encoding='utf-8', module_directory=module_directory)
     # noinspection PyBroadException
     try:
         style = CONFIG['BOOKSTRAP_THEME']
@@ -659,8 +663,9 @@ def serve_template(templatename, **kwargs):
                     template_dir = os.path.join(str(interface_dir), CONFIG['HTTP_LOOK'])
 
                 module_directory = os.path.join(DIRS.CACHEDIR, 'mako', str(userid))
-                _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                                           module_directory=module_directory)
+                _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir,
+                                                                           str(interface_dir)])),
+                                           input_encoding='utf-8', module_directory=module_directory)
             try:
                 template = _hplookup.get_template(templatename)
             except (AttributeError, KeyError):
@@ -682,7 +687,9 @@ def serve_template(templatename, **kwargs):
 
         # keep template name for help context
         cherrypy.response.cookie['ll_template'] = templatename
-        return template.render(perm=perm, pref=userprefs, style=style, **kwargs)
+        # the interface this user sees, pages modern doesn't have yet are still rendered by bookstrap
+        ui_look = usertheme.split('_', 1)[0] or CONFIG['HTTP_LOOK']
+        return template.render(perm=perm, pref=userprefs, style=style, ui_look=ui_look, **kwargs)
 
     except Exception:
         return exceptions.html_error_template().render()
@@ -1158,6 +1165,57 @@ class WebInterface:
         return serve_template(templatename="register.html", title=i18n.gettext("User Registration / Contact form"))
 
     @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @require_auth()
+    def switch_interface(self, look='', lang=None):
+        """ Switch the interface (bookstrap or modern) and/or the UI language, for the language menu
+            and the new interface notice of both interfaces.
+            With user accounts this is the user's own setting (Theme, UI_Lang). Without them the interface
+            is the global HTTP_LOOK, which needs config permission, and the language is kept in the browser """
+        logger = logging.getLogger(__name__)
+        if look and look not in ('bookstrap', 'modern'):
+            raise cherrypy.HTTPError(400, 'Invalid interface')
+        if lang is not None and not valid_ui_lang(lang):
+            raise cherrypy.HTTPError(400, 'Invalid language')
+        cookie = cherrypy.request.cookie
+        userid = cookie['ll_uid'].value if cookie and 'll_uid' in list(cookie.keys()) else ''
+        accounts = CONFIG.get_bool('USER_ACCOUNTS') and userid
+        if accounts:
+            db = database.DBConnection()
+            try:
+                user = db.match('SELECT Theme from users where UserID=?', (userid,))
+                if not user:
+                    raise cherrypy.HTTPError(403, 'Unknown user')
+                if look:
+                    if look == CONFIG['HTTP_LOOK']:
+                        theme = ''  # the global interface
+                    elif look == 'modern':
+                        theme = 'modern'
+                    else:
+                        # back to bookstrap with the user's own bootswatch style, if they had one
+                        parts = (user['Theme'] or '').split('_', 1)
+                        style = parts[1] if len(parts) == 2 and parts[0] == 'bookstrap' else CONFIG['BOOKSTRAP_THEME']
+                        theme = f'bookstrap_{style}' if style else 'bookstrap'
+                    db.action('UPDATE users SET Theme=? WHERE UserID=?', (theme, userid))
+                    clear_mako_cache(userid)
+                if lang is not None:
+                    db.action('UPDATE users SET UI_Lang=? WHERE UserID=?', (lang, userid))
+            finally:
+                db.close()
+        elif look and look != CONFIG['HTTP_LOOK']:
+            self.check_permitted(lazylibrarian.perm_config)
+            CONFIG.set_str('HTTP_LOOK', look)
+            CONFIG.save_config_and_backup_old()
+            clear_mako_cache()
+        if lang is not None:
+            # set it for the next page too, which reads the language before it looks at the user
+            cherrypy.response.cookie['ll_uilang'] = lang
+            if not accounts:
+                cherrypy.response.cookie['ll_uilang']['max-age'] = 365 * 24 * 3600
+        logger.debug(f"Switched interface [{look}] language [{lang}] for [{userid}]")
+        return 'OK'
+
+    @cherrypy.expose
     @require_auth()
     def user_update(self, **kwargs):
         if ('password' in kwargs and 'password2' in kwargs and kwargs['password'] and
@@ -1206,7 +1264,7 @@ class WebInterface:
                         theme = ''
                     if not theme:
                         valid = True
-                    if theme == 'legacy':
+                    if theme in ('legacy', 'modern'):
                         valid = True
                     else:
                         parts = theme.split('_', 1)
@@ -1950,6 +2008,20 @@ class WebInterface:
                     rows = filtered
                 else:
                     rows = filtered[displaystart:(displaystart + displaylength)]
+
+            if kwargs.get('covers') and rows:
+                # the modern interface shows the first covers of each series as a small stack
+                db = database.DBConnection()
+                try:
+                    for row in rows:
+                        res = db.select("SELECT BookImg FROM member,books WHERE member.BookID=books.BookID "
+                                        "AND member.SeriesID=? AND BookImg IS NOT NULL AND BookImg != '' "
+                                        "AND BookImg NOT LIKE '%nocover%' "
+                                        "ORDER BY SeriesNum IS NULL OR SeriesNum = '', CAST(SeriesNum AS REAL) LIMIT 3",
+                                        (row[0],))
+                        row.append([r['BookImg'] for r in res])
+                finally:
+                    db.close()
 
             serversidelogger.debug(f"get_series returning {displaystart} to {displaystart + displaylength}")
             serversidelogger.debug(f"get_series filtered {len(filtered)} from {len(rowlist)}:{len(rows)}")
@@ -3731,6 +3803,12 @@ class WebInterface:
                                          'ScanResult']
                         if library == 'AudioBook':
                             search_fields[3] = 'AudioStatus'
+                        # the modern interface can search just the title, author or series
+                        field_sets = {'title': ['BookName', 'BookSub'], 'author': ['AuthorName'],
+                                      'series': ['series', 'SeriesDisplay']}
+                        field_sets['all'] = field_sets['title'] + field_sets['author'] + field_sets['series']
+                        if kwargs.get('searchfield') in field_sets:
+                            search_fields = field_sets[kwargs['searchfield']]
 
                         filtered = []
                         for row in rowlist:
@@ -3873,7 +3951,7 @@ class WebInterface:
                     else:
                         flag = ''
 
-                    if status_type == 'audiostatus' and kwargs['source'] == 'Audio':
+                    if status_type == 'audiostatus' and kwargs['source'] in ('Audio', 'Manage'):
                         row[5] = row[14]
                         row[13] = row[15]
 
@@ -4845,7 +4923,7 @@ class WebInterface:
 
     @cherrypy.expose
     @require_auth()
-    def book_detail(self, bookid=None):
+    def book_detail(self, bookid=None, library=None):
         """ Read-only "master" detail view for a book, replacing the old bookinfo()
         popup (which only ever showed image/title/description via bookdesc) for plain
         book ids - see base.html's bookinfo() for the author/comic cases, unchanged. """
@@ -4853,6 +4931,11 @@ class WebInterface:
         db = database.DBConnection()
         book = db.match("SELECT books.*, AuthorName from books,authors WHERE "
                         "books.AuthorID=authors.AuthorID AND BookID=?", (bookid,))
+        book_series = []
+        if book:
+            book_series = [dict(s) for s in db.select(
+                "SELECT series.SeriesID, SeriesName, SeriesNum FROM member, series "
+                "WHERE member.SeriesID=series.SeriesID AND member.BookID=?", (bookid,))]
         db.close()
         if not book:
             raise cherrypy.HTTPRedirect("books")
@@ -4881,7 +4964,8 @@ class WebInterface:
         amazon_link = f'https://www.amazon.com/dp/{book["ASIN"]}' if book.get('ASIN') else ''
 
         return serve_template(templatename="book_detail.html", title=book['BookName'], book=book,
-                              book_links=book_links, amazon_link=amazon_link)
+                              book_links=book_links, amazon_link=amazon_link, book_series=book_series,
+                              library='AudioBook' if library == 'AudioBook' else 'eBook')
 
     @cherrypy.expose
     @require_auth()

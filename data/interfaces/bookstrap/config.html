@@ -88,7 +88,7 @@
                       <select id="http_look" name="http_look" class="form-control">
                         %for http_look in config['http_look_list']:
                         <% selected = 'selected="selected"' if http_look == CONFIG['HTTP_LOOK'] else '' %>
-                        <option value="${http_look}" ${selected}>${http_look}</option>
+                        <option value="${http_look}" ${selected}>${_('modern (beta)') if http_look == 'modern' else http_look}</option>
                         %endfor
                       </select>
                     </div>
@@ -190,8 +190,6 @@
                       <label for="http_root" class="input-group-addon">${_('Web Root')}</label>
                       <input type="text" id="http_root" name="http_root" value="${CONFIG['HTTP_ROOT']}" class="form-control" placeholder="${_('Web Root') | h}">
                     </div>
-                  </fieldset>
-                  <fieldset>
                     <div class="row checkbox">
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['HTTP_PROXY'] else '' %>
@@ -199,6 +197,11 @@
                       <input type="checkbox" id="http_proxy" name="http_proxy" value="1" ${checked} />
                       ${_('HTTP proxy (see wiki)')}</label>
                     </div>
+                    </div>
+                  </fieldset>
+                  <fieldset>
+                    <legend>${_('HTTPS and SSL')}</legend>
+                    <div class="row checkbox">
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['HTTPS_ENABLED'] else '' %>
                       <label for="https_enabled" class="control-label">
@@ -206,7 +209,6 @@
                         ${_('HTTPS access to lazylibrarian')}</label>
                     </div>
                     </div>
-                  </fieldset>
                     <fieldset id="https_options">
                       <div class="form-group">
                         <label for="https_cert" class="control-label">${_('Https Certificate:')}</label>
@@ -231,6 +233,7 @@
                         <input type="text" id="ssl_certs" name="ssl_certs" value="${CONFIG['SSL_CERTS']}" class="form-control" placeholder="${_('leave empty to use requests certificate') | h}">
                       </div>
                     </fieldset>
+                  </fieldset>
                     <fieldset>
                       <legend>${_('Logs')}</legend>
                       <div class="input-group">
@@ -486,8 +489,6 @@
                       ${_('Single user bypass login')}</label>
                     </div>
                     </div>
-                  </fieldset>
-                  <fieldset>
                     <fieldset id="admin_options">
                       <div class="form-group">
                         <label for="admin_email" class="control-label">${_('Admin Email:')}</label>
@@ -531,16 +532,15 @@
                         </div>
                       </fieldset>
                     <fieldset id="webserver_options">
-                    ${_('WebServer Options:')}
+                    <legend>${_('WebServer Options:')}</legend>
                     <div class="input-group">
                       <label for="http_user" class="input-group-addon">${_('User')}</label>
                       <input type="text" id="http_user" name="http_user" value="${CONFIG['HTTP_USER']}" class="form-control" placeholder="${_('Username') | h}">
                       <label for="http_pass" class="input-group-addon">${_('Pass')}</label>
                       <input type="password" id="http_pass" name="http_pass" value="${CONFIG['HTTP_PASS']}" class="form-control" placeholder="${_('Password') | h}">
                     </div>
-                    <legend>${_('Authentication')}</legend>
-                    <div class="input-group col-md-6">
-                      <label for="auth_type" class="input-group-addon">${_('Auth:')}</label>
+                    <div class="form-group">
+                      <label for="auth_type" class="control-label">${_('Authentication')}</label>
                       <select id="auth_type" name="auth_type" class="form-control">
                         <% selected = 'selected="selected"' if CONFIG['AUTH_TYPE'] == 'BASIC' else '' %>
                         <option value="BASIC" ${selected}>${_('Basic (Browser Popup)')}</option>
@@ -551,6 +551,12 @@
                     </fieldset>
                     <small>${_('Enabling/Disabling user accounts or changing webserver user/pass requires restart')}<br></small>
                   </fieldset>
+                  %if docker():
+                  ## no browser in a container; keep the saved value so saving the page does not change it
+                  %if CONFIG['LAUNCH_BROWSER']:
+                  <input type="hidden" name="launch_browser" value="1">
+                  %endif
+                  %else:
                   <fieldset>
                     <legend>${_('Startup')}</legend>
                     <div class="row checkbox">
@@ -560,15 +566,17 @@
                       <input type="checkbox" id="launch_browser" name="launch_browser" value="1" ${checked} />
                       ${_('Launch browser')}</label>
                     </div>
-                    <div class="col-md-6">
+                    </div>
+                  </fieldset>
+                  %endif
+                  <fieldset>
+                    <legend>${_('API')}</legend>
+                    <div class="checkbox">
                       <% checked = 'checked="checked"' if CONFIG['API_ENABLED'] else '' %>
                       <label for="api_enabled" title="${_('Allow remote applications to interface with LazyLibrarian') | h}">
                       <input type="checkbox" id="api_enabled" name="api_enabled" value="1" ${checked} />
                       ${_('Enable API')}</label>
                     </div>
-                    </div>
-                  </fieldset>
-                  <fieldset>
                     <fieldset id="api_options">
                       <div class="form-group">
                         <label for="api_key">${_('API Full Access key')}</label>
@@ -874,6 +882,7 @@
                 </fieldset>
                 <fieldset>
                   %if CONFIG['COMIC_TAB']:
+                  <legend>ComicVine</legend>
                   <div class="form-group">
                     <label for="cv_apikey" class="control-label">${_('ComicVine Api Key:')}</label>
                     <input type="text" id="cv_apikey" name="cv_apikey" value="${CONFIG['CV_APIKEY']}" class="form-control" placeholder="${_('optional') | h}">
@@ -923,6 +932,9 @@
                     <input type="text" id="comic_genres" name="comic_genres" value="${CONFIG['COMIC_GENRES']}" class="form-control" placeholder="graphic novel, comics, manga">
                     <span class="help-block">${_('eBooks with these genres also search comic provider categories (clear to disable)')}</span>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Book Filters')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['NO_FUTURE'] else '' %>
                     <label for="no_future">
@@ -959,6 +971,9 @@
                       <input type="checkbox" id="imp_ignore" name="imp_ignore" value="1" ${checked} />
                       ${_('Add ignored books to database (marked Ignored)')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Imports and Downloads')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['DELETE_CSV'] else '' %>
                     <label for="delete_csv">
@@ -2158,14 +2173,22 @@
                       <input type="number" id="versioncheck_interval" name="versioncheck_interval" value="${CONFIG['VERSIONCHECK_INTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}" >
                       <span class="input-group-addon">${_('Hours')}</span>
                     </div>
+                    %if docker():
+                    ## a container is updated by rebuilding its image, keep the saved value
+                    %if CONFIG['AUTO_UPDATE']:
+                    <input type="hidden" name="auto_update" value="1">
+                    %endif
+                    %else:
                     <% checked = 'checked="checked"' if CONFIG['AUTO_UPDATE'] else '' %>
                     <label for="auto_update" class="control-label">
                       <input type="checkbox" id="auto_update" name="auto_update" value="1" ${checked} />
                       ${_('Auto Update when new version found')}</label>
                     <span class="help-block">${_('This will auto update if the task finds a new version. Does not apply to manual version checks')}</span>
+                    %endif
                   </div>
                   <div class="help-block">${_('Setting a scan interval to zero disables the task')}</div>
                 </fieldset>
+                <fieldset>
                 <legend>${_('Status')}</legend>
                   <div class="form-group">
                     <label for="notfound_status">${_('Missing Book Status:')}</label>
@@ -2273,6 +2296,9 @@
                     </select>
                     <span class="help-block">${_('Should we monitor/download new books in the series')}</span>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Authors')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['NEWAUTHOR_BOOKS'] else '' %>
                     <label for="newauthor_books" class="control-label">
@@ -2294,6 +2320,7 @@
                       ${_('Periodically delete secondaries')}</label>
                     <span class="help-block">${_('This will delete authors who are only listed as secondary, not as the "primary" author of any book')}</span>
                   </div>
+                </fieldset>
                   <fieldset>
                   <legend>${_('External Programs')}</legend>
                   <div class="form-group">
@@ -2319,19 +2346,23 @@
                     <span class="help-block">${_('If you need to force a particular output type')}</span>
                     <input type="button" value="${_('Test ffmpeg') | h}" id="test_ffmpeg" class="btn btn-default" />
                   </div>
+                  %if docker():
+                  <input type="hidden" name="git_program" value="${CONFIG['GIT_PROGRAM'] | h}">
+                  %else:
                   <div class="form-group">
                     <label for="git_program">${_('git program:')}</label>
                     <input type="text" placeholder="${_('git program') | h}" id="git_program" name="git_program" value="${CONFIG['GIT_PROGRAM']}" class="form-control">
                     <span class="help-block">${_('Git program unless already in your path. Usually leave this blank')}</span>
                   </div>
+                  %endif
                   <div class="form-group">
                     <label for="create_link">${_('Link creation program:')}</label>
                     <input type="text" placeholder="${_('link program') | h}" id="create_link" name="create_link" value="${CONFIG['CREATE_LINK']}" class="form-control">
                     <span class="help-block">${_('Program to create a link to large files')}</span>
                   </div>
                   </fieldset>
-                  <legend>Calibre</legend>
                   <fieldset>
+                  <legend>Calibre</legend>
                   <div class="form-group">
                     <label for="imp_calibredb">${_('Calibredb import program:')}</label>
                     <input type="text" id="imp_calibredb" name="imp_calibredb" value="${CONFIG['IMP_CALIBREDB']}" class="form-control" placeholder="${_('calibredb program') | h}">
@@ -2344,7 +2375,6 @@
                         <input type="checkbox" id="calibre_use_server" name="calibre_use_server" value="1" ${checked} />
                         ${_('Use Calibre Content Server')}</label>
                   </div>
-                  </fieldset>
                   <fieldset id="calibre_options">
                   <div class="form-group">
                     <label for="calibre_server">${_('Calibre Server:')}</label>
@@ -2451,6 +2481,7 @@
                       <input type="checkbox" id="imp_autoadd_magonly" name="imp_autoadd_magonly" value="1" ${checked} />
                       ${_('Only add magazine, not opf or jpg')}</label>
                   </div>
+                  </fieldset>
                   </fieldset>
               </div>
               <div class="col-md-4">
@@ -2597,6 +2628,8 @@
                     <span class="help-block help-keep">${_('Directory for wishlists and manually importing books')}<br>
                       <strong>${_('If "keep original files" is not set, LazyLibrarian can delete this folder after import')}</strong></span>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Permissions')}</legend>
                   <div class="input-group">
                     <span class="input-group-addon">${_('File')}</span>
@@ -2605,6 +2638,8 @@
                     <input type="text" id="dir_perm" name="dir_perm" value="${CONFIG['DIR_PERM'][2:]}" class="form-control" placeholder="755">
                     </div>
                     <span class="help-block">${_('Permissions should be 3 or 4 digits')}<br>${_('Defaults are File:644 Directory:755')}</span>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Miscellaneous')}</legend>
                   <div class="form-group">
                     <label for="cache_age" class="control-label">${_('Cache expire after:')}</label>
@@ -2685,8 +2720,9 @@
                     <input type="number" id="max_wall" name="max_wall" value="${CONFIG['MAX_WALL']}" class="form-control" placeholder="${_('0 for no limit') | h}">
                   </div>
                 </fieldset>
+                %if CONFIG['MAG_TAB']:
                 <fieldset>
-                  %if CONFIG['MAG_TAB']:
+                  <legend>${_('Magazines')}</legend>
                   <div class="form-group">
                     <label for="imp_convert">${_('Cover creation program:')}</label>
                     <input type="text" placeholder="${_('Cover creation program') | h}" id="imp_convert" name="imp_convert" value="${CONFIG['IMP_CONVERT']}" class="form-control">
@@ -2704,10 +2740,11 @@
                       <input type="checkbox" id="imp_magopf" name="imp_magopf" value="1" ${checked} />
                       ${_('Create opf files for magazines')}</label>
                   </div>
-                  %endif
                 </fieldset>
+                %endif
+                %if CONFIG['COMIC_TAB']:
                 <fieldset>
-                  %if CONFIG['COMIC_TAB']:
+                  <legend>${_('Comics')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['IMP_COMICCOVER'] else '' %>
                     <label for="imp_comiccover" class="control-label">
@@ -2720,9 +2757,10 @@
                       <input type="checkbox" id="imp_comicopf" name="imp_comicopf" value="1" ${checked} />
                       ${_('Create opf files for comics')}</label>
                   </div>
-                  %endif
                 </fieldset>
+                %endif
                 <fieldset>
+                  <legend>${_('Library Scan')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['PREF_EBOOKOPF'] else '' %>
                     <label for="pref_ebookopf" class="control-label">
@@ -2834,6 +2872,8 @@
                       <input type="checkbox" id="delete_other_formats" name="delete_other_formats" value="1" ${checked} />
                       ${_('Delete unwanted filetypes')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('AudioBook Conversions')}</legend>
                   <div class="form-group">
                     <label for="audio_options">${_('ffmpeg options:')}</label>
@@ -2863,6 +2903,8 @@
                       <input type="checkbox" id="keep_separateaudio" name="keep_separateaudio" value="1" ${checked} />
                       ${_('Keep separate parts')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Magazine Conversions')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['SWAP_COVERPAGE'] else '' %>
@@ -2888,6 +2930,9 @@
         </div>
         <div role="tabpanel" class="tab-pane" id="notifications">
           <div class="configtable">
+          <div id="notifieroptions">
+          <fieldset>
+            <legend>${_('Options')}</legend>
             <div class="row">
               <div class="col-md-6">
                 <div class="form-group">
@@ -2903,6 +2948,24 @@
                 </div>
               </div>
             </div>
+            <div class="row checkbox">
+              <div class="col-md-6">
+                <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_TITLE'] else '' %>
+                <label for="notify_with_title" class="control-label">
+                  <input type="checkbox" id="notify_with_title" name="notify_with_title" value="1" ${checked} />
+                  ${_('Show title in download notification')}</label>
+              </div>
+              <div class="col-md-6">
+                <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_URL'] else '' %>
+                <label for="notify_with_url" class="control-label">
+                  <input type="checkbox" id="notify_with_url" name="notify_with_url" value="1" ${checked} />
+                  ${_('Show url in download notification')}<br><small>${_('(WARNING may contain api key)')}</small></label>
+              </div>
+            </div>
+          </fieldset>
+          </div>
+          <fieldset>
+            <legend>${_('Notifiers')}</legend>
             <%
               notifier_boxes = [('use_twitter', 'USE_TWITTER', 'Twitter'), 
                                      ('use_boxcar', 'USE_BOXCAR', 'Boxcar'),
@@ -3361,13 +3424,16 @@
                   </fieldset>
                 </div>
               </div>
+            </div>
+          </fieldset>
+            <div class="row">
               %if APPRISE_VER and APPRISE_VER[0].isdigit():
-                <div id="apprise">
-                  <div class="col-md-12">
-                    <legend>${_('Apprise Notifiers')}
+                <div id="apprise" class="col-md-12">
+                  <fieldset>
+                    <legend>${_('Apprise Notifiers')}</legend>
+                    <div class="form-group col-md-12">
                     <button class="button btn btn-sm btn-primary" type="button" value="Supported Types" id="show_apprise"><i class="fa fa-list-ul"></i> ${_('Supported Types')}</button>
-                    </legend>
-                  </div>
+                    </div>
                   %for provider in CONFIG.providers('APPRISE'):
                   %if provider['DISPNAME'] != '':
                   <%
@@ -3400,27 +3466,10 @@
                   </div>
                   %endif
                   %endfor
+                    <div class="clearfix"></div>
+                  </fieldset>
                 </div>
               %endif
-              <div id="notifieroptions">
-                <div class="col-md-12">
-                  <legend>${_('Options')}</legend>
-                    <div class="row checkbox">
-                      <div class="col-md-6">
-                        <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_TITLE'] else '' %>
-                        <label for="notify_with_title" class="control-label">
-                          <input type="checkbox" id="notify_with_title" name="notify_with_title" value="1" ${checked} />
-                          ${_('Show title in download notification')}</label>
-                      </div>
-                      <div class="col-md-6">
-                         <% checked = 'checked="checked"' if CONFIG['NOTIFY_WITH_URL'] else '' %>
-                        <label for="notify_with_url" class="control-label">
-                          <input type="checkbox" id="notify_with_url" name="notify_with_url" value="1" ${checked} />
-                          ${_('Show url in download notification')}<br><small>${_('(WARNING may contain api key)')}</small></label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
           </div>
         </div>
@@ -3707,9 +3756,9 @@
                 ${size_limits('reject_mincomic', 'REJECT_MINCOMIC', 'reject_maxcomic', 'REJECT_MAXCOMIC')}
                 </div>
                 <div class="col-md-12">
-                <br>
+                <fieldset>
                 <legend>${_('Comic Options (per title)')}</legend>
-                </div>
+                <div class="row">
                 %for mag in config['comics_list']:
                 <div class="col-md-6">
                 <label>${mag['Title']}</label>
@@ -3719,6 +3768,9 @@
                   </div>
                 </div>
                 %endfor
+                </div>
+                </fieldset>
+                </div>
                 %endif
                 %if CONFIG['MAG_TAB']:
                 <div class="col-md-6">
@@ -3727,7 +3779,7 @@
                 </div>
                 <div class="col-md-12">
                 <legend>${_('Magazine Options (per title)')}</legend>
-                </div>
+                <div class="row">
                 %for mag in config['magazines_list']:
                 <div class="col-md-6 addon-align">
                 <label>${mag['Title']}</label>
@@ -3757,6 +3809,8 @@
                   </div>
                 </div>
                 %endfor
+                </div>
+                </div>
                 %endif
             </div>
             <br>
@@ -3931,29 +3985,6 @@
                       ${_('Used for magazine issue file and folder names, issue titles in Calibre and OPF metadata, and dates shown with a month name (the date formats are under Interface).')}<br/>
                       ${_('It does not affect reading dates: month names in magazine titles are recognised in all the languages switched on above.')}</span>
                   </div>
-                </fieldset>
-                <br>
-                <fieldset>
-                  <legend>${_('Author Names and Titles')}</legend>
-                  <div class="form-group">
-                    <label for="name_postfix" class="control-label">${_('Author Name suffix')}</label>
-                    <input type="text" id="name_postfix" name="name_postfix" value="${CONFIG['NAME_POSTFIX']}" class="form-control" placeholder="eg snr, jnr">
-                    <span class="help-block">${_('Comma separated list of suffixes to ignore when showing surname first')}</span>
-                  </div>
-                  <div class="form-group">
-                    <label for="name_definite" class="control-label">${_('Definite Articles')}</label>
-                    <input type="text" id="name_definite" name="name_definite" value="${CONFIG['NAME_DEFINITE']}" class="form-control" placeholder="eg The, A, Les">
-                    <span class="help-block">${_('Comma separated list of definite articles for sorting titles')}</span>
-                  </div>
-                  <div class="form-group">
-                    <label for="imp_nosplit" class="control-label">${_('Non-splitting titles')}</label>
-                    <input type="text" id="imp_nosplit" name="imp_nosplit" value="${CONFIG['IMP_NOSPLIT']}" class="form-control" placeholder="eg Doctor Who">
-                    <span class="help-block">${_('Comma separated list of prefixes and (items in braces) to ignore when splitting titles')}</span>
-                  </div>
-                </fieldset>
-                <br>
-                <fieldset>
-                  <legend>${_('Magazine Titles')}</legend>
                   <div class="form-group">
                     <label for="pref_maglang" class="control-label">${_('Default language for magazines:')}</label>
                     <% maglangs = config['mag_languages'] %>
@@ -4006,6 +4037,21 @@
                     %endfor
                     <span class="help-block">${_('Long and short month names of each language, in the order of the languages. Month names in magazine titles are recognised in all of them, and the Date Language picks the ones LazyLibrarian writes.')}</span>
                   </div>
+                  <div class="form-group">
+                    <label for="name_postfix" class="control-label">${_('Author Name suffix')}</label>
+                    <input type="text" id="name_postfix" name="name_postfix" value="${CONFIG['NAME_POSTFIX']}" class="form-control" placeholder="eg snr, jnr">
+                    <span class="help-block">${_('Comma separated list of suffixes to ignore when showing surname first')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="name_definite" class="control-label">${_('Definite Articles')}</label>
+                    <input type="text" id="name_definite" name="name_definite" value="${CONFIG['NAME_DEFINITE']}" class="form-control" placeholder="eg The, A, Les">
+                    <span class="help-block">${_('Comma separated list of definite articles for sorting titles')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="imp_nosplit" class="control-label">${_('Non-splitting titles')}</label>
+                    <input type="text" id="imp_nosplit" name="imp_nosplit" value="${CONFIG['IMP_NOSPLIT']}" class="form-control" placeholder="eg Doctor Who">
+                    <span class="help-block">${_('Comma separated list of prefixes and (items in braces) to ignore when splitting titles')}</span>
+                  </div>
                 </fieldset>
               </div>
             </div>
@@ -4015,6 +4061,7 @@
           <div class="configtable">
             <div class="row">
               <div class="col-md-6">
+                <fieldset>
                 <legend>${_('Genre Settings')}</legend>
                 <div class="input-group">
                   <span class="input-group-addon">${_('Genres per book')}</span>
@@ -4022,23 +4069,29 @@
                   <span class="input-group-addon">${_('Genre Users')}</span>
                   <input type="number" id="genreusers" name="genreusers" value="${lazylibrarian.GRGENRES['genreUsers']}" class="form-control">
                 </div>
+                </fieldset>
               </div>
             </div>
             <p>
             <div class="row">
               <div class="col-md-12">
+                <fieldset>
                 <legend>${_('Reject Genres')}</legend>
                 <div class="form-group">
                   <input type="text" id="genreexclude" name="genreexclude" value="${', '.join(i for i in sorted(lazylibrarian.GRGENRES['genreExclude']))}" class="form-control" placeholder="${_('Reject word list') | h}">
                   <span class="help-block">${_('Comma separated list of genres to reject: Results that match any of these words will be ignored')}<br/>
                   </span>
                 </div>
+                </fieldset>
+                <fieldset>
                 <legend>${_('Reject Parts')}</legend>
                 <div class="form-group">
                   <input type="text" id="genreexcludeparts" name="genreexcludeparts" value="${', '.join(i for i in sorted(lazylibrarian.GRGENRES['genreExcludeParts']))}" class="form-control" placeholder="${_('Reject word list') | h}">
                   <span class="help-block">${_('Comma separated list of part-words in genres to reject: Results that contain any of these part-words will be ignored')}<br/>
                   </span>
                 </div>
+                </fieldset>
+                <fieldset>
                 <legend>${_('Replace Genre')}</legend>
                   <span class="help-block">${_('Replace one genre name with another (replace happens before processing reject lists)')}<br/>
                   </span>
@@ -4058,6 +4111,8 @@
                     <input type="text" id="genrereplace[${item}]" name="genrereplace[${item}]" value="${lazylibrarian.GRGENRES['genreReplace'][item]}" class="form-control" placeholder="${_('<delete>') | h}">
                   </div>
                   %endfor
+                  <div class="clearfix"></div>
+                </fieldset>
               </div>
             </div>
           </div>
@@ -4071,6 +4126,7 @@
               </div>
             <div class="row">
               <div class="col-md-12">
+                <fieldset>
                 <legend>${_('Telemetry Settings')}</legend>
                 <div class="checkbox">
                   <% checked = 'checked="checked"' if CONFIG['TELEMETRY_ENABLE'] else '' %>
@@ -4107,20 +4163,22 @@
                     </div>
                   </div>
                 </div>
+                </fieldset>
               </div>
               <div class="col-md-12">
+                <fieldset>
+                <legend>${_('Telemetry Data')}</legend>
                 <p>${_('Refresh to see the current telemetry data that will be sent when telemetry is enabled:')}</p>
                 <textarea id="telemetry_data" class="form-control" rows="16"
                   placeholder="${_('Click Refresh Telemetry to see the current data') | h}" readonly="true"></textarea>
-              </div>
-              <div class="col-md-6">
-                <div class="form-group">
+                <div class="form-group" style="margin-top: 10px">
                   <input type="button" value="${_('Refresh telemetry') | h}" id="telemetry_refresh" class="btn btn-primary" />
                   <input type="button" value="${_('Reset usage data') | h}" id="telemetry_reset" class="btn btn-primary" />
                   %if CONFIG['TELEMETRY_SERVER']:
                   <input type="button" value="${_('Submit telemetry') | h}" id="telemetry_submit" class="btn btn-primary" />
                   %endif
                 </div>
+                </fieldset>
               </div>
             </div>
           </div>
@@ -4243,9 +4301,11 @@
         $('.tab-content .tab-pane').each(function () {
             var pane = $(this);
             // fieldset sections, and the provider columns on the Categories tab
-            pane.find('fieldset > legend, div.col-md-6 > legend').each(function (index) {
+            pane.find('fieldset > legend, div.col-md-6 > legend, div.col-md-12 > legend').each(function (index) {
                 var legend = $(this);
-                if (!legend.nextAll().length) { return; }
+                // a heading with its own switch (Newznab, Torznab... providers) already shows and hides its
+                // section, a click on it must reach the switch, not fold the section
+                if (!legend.nextAll().length || legend.find('input').length) { return; }
                 legend.nextAll().wrapAll('<div class="section-body"></div>');
                 legend.data('section-key', pane.attr('id') + ':' + index);
                 legend.addClass('section-toggle').attr({'tabindex': '0', 'role': 'button', 'aria-expanded': 'true'});

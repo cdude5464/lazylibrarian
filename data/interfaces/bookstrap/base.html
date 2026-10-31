@@ -20,6 +20,17 @@
             return '%s?v=%d' % (name, os.path.getmtime(os.path.join(DIRS.PROG_DIR, 'data', name)))
         except OSError:
             return name
+
+    # the interface and the UI language can be switched from the navbar and the new interface popup.
+    # With user accounts it is each user's own choice, without them the interface is global, so only
+    # someone allowed to change the config may switch it (see switch_interface in webServe.py)
+    ui_look = context.get('ui_look', CONFIG['HTTP_LOOK'])
+    can_switch = bool(perm > 0 and (CONFIG['USER_ACCOUNTS'] or perm & lazylibrarian.perm_config))
+    offer_modern = (can_switch and ui_look != 'modern'
+                    and os.path.isdir(os.path.join(DIRS.PROG_DIR, 'data', 'interfaces', 'modern')))
+    cur_lang = user_lang.value if user_lang else ''
+    lang_opts = [('', _('Default')), (i18n.AUTO, _('Automatic (browser language)'))] + \
+        [(code, i18n.language_name(code)) for code in i18n.available_languages()]
 %>
 <!doctype html>
 <html lang="${ui_lang}">
@@ -470,6 +481,24 @@
                   </a></li>
                 %endif
                 <li><a id="help" href="help" target="_new"><i class="fa fa-question-circle"></i> ${_('Help')}</a></li>
+                %if can_switch and len(lang_opts) > 3:
+                  <li class="dropdown"><a href="#" id="uilang" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                      aria-haspopup="true" aria-expanded="false" title="${_('Interface language') | h}"><i class="fa fa-globe"></i>
+                      <span class="visible-xs-inline">${_('Interface language')}</span> <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                    %for code, name in lang_opts:
+                      <li${' class="active"' if code == cur_lang else ''}><a href="#" data-ll-lang="${code | h}">${name | h}</a></li>
+                    %endfor
+                    </ul>
+                  </li>
+                %endif
+                %if offer_modern:
+                  <li><a id="modernlook" href="#" data-ll-look="modern" title="${_('Try the new interface (beta)') | h}"><i class="fa fa-magic"></i>
+                  <span class="visible-xs-inline">${_('New interface (beta)')}</span></a></li>
+                %elif ui_look == 'modern':
+                  <li><a id="modernlook" href="home" title="${_('Back to the new interface') | h}"><i class="fa fa-magic"></i>
+                  <span class="visible-xs-inline">${_('Back to the new interface')}</span></a></li>
+                %endif
                 %if perm > 0:
                   %if CONFIG['USER_ACCOUNTS']:
                     %if perm&lazylibrarian.perm_config == 0:
@@ -590,6 +619,63 @@
           }
           $(document).on('click', '#translateYes', function() { hideTranslateNotice(this, 30); });
           $(document).on('click', '#translateNo', function(e) { e.preventDefault(); hideTranslateNotice(this, 365); });
+        }
+        %endif
+
+        // the language menu and the new interface link and popup, see switch_interface in webServe.py
+        function llSwitchInterface(data) {
+            $.post('switch_interface', data).done(function () { window.location.reload(); })
+                .fail(function () { bootbox.alert(${_js('Something went wrong, try again')}); });
+        }
+        $(document).on('click', '[data-ll-lang]', function (e) {
+            e.preventDefault();
+            llSwitchInterface({lang: $(this).attr('data-ll-lang')});
+        });
+        $(document).on('change', 'select.ll-lang-select', function () {
+            llSwitchInterface({lang: $(this).val()});
+        });
+        $(document).on('click', '[data-ll-look]', function (e) {
+            e.preventDefault();
+            createCookie('ll_modern_prompt', 'yes', 365);
+            llSwitchInterface({look: $(this).attr('data-ll-look')});
+        });
+
+        %if offer_modern:
+        // offer the new interface once, with the language choice next to it. "Not now" asks again after 30 days,
+        // trying it (here or from the navbar) doesn't ask again, also after going back to this interface
+        if (readCookie('ll_modern_prompt') == null) {
+          var modernMsg = $('<div></div>').append($('<div></div>').text(${_js('LazyLibrarian has a new interface: covers as cards, '
+              'infinite scroll and a layout made for phones. Pages it does not have yet open in this one, '
+              'and you can switch back at any time.')}));
+          var modernLangs = ${js(lang_opts)}, modernLang = ${js(cur_lang)};
+          if (modernLangs.length > 3) {
+              var modernSel = $('<select class="form-control input-sm ll-lang-select" style="width:auto;display:inline-block"></select>');
+              $.each(modernLangs, function (i, o) {
+                  var opt = $('<option></option>').val(o[0]).text(o[1]);
+                  if (o[0] === modernLang) { opt.attr('selected', 'selected'); }
+                  modernSel.append(opt);
+              });
+              modernMsg.append($('<div style="margin-top:8px"></div>')
+                  .append($('<label style="margin-right:6px"></label>').text(${_js('Interface language:')})).append(modernSel));
+          }
+          modernMsg.append($('<div style="margin-top:8px"></div>')
+              .append($('<a href="#" class="btn btn-xs btn-primary" data-ll-look="modern"></a>').text(${_js('Try it')}))
+              .append('&nbsp;')
+              .append($('<a href="#" class="btn btn-xs btn-default" id="modernLater"></a>').text(${_js('Not now')})));
+          $.notify({
+              icon: "images/ll48.png",
+              title: '<strong>' + ${_js('New interface (beta)')} + '</strong>',
+              message: modernMsg.html()
+          },{
+              icon_type: 'image',
+              type: 'info',
+              delay: 0
+          });
+          $(document).on('click', '#modernLater', function (e) {
+              e.preventDefault();
+              createCookie('ll_modern_prompt', 'later', 30);
+              $(this).closest('[data-notify="container"]').remove();
+          });
         }
         %endif
 

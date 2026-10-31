@@ -63,6 +63,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('General', 'HIST_REFRESH', 1000),
     ConfigBool('General', 'NO_IPV6', 0),
     ConfigStr('General', 'BOOKSTRAP_THEME', 'slate'),
+    ConfigStr('General', 'MODERN_ACCENT', ''),  # accent colour of the modern interface (#rrggbb), empty is the default
     ConfigStr('General', 'UI_LANGUAGE', 'auto'),  # 'auto' follows the browser's Accept-Language, or a code like 'en'
     ConfigStr('General', 'NOTIFY_LANGUAGE', ''),  # empty uses UI_LANGUAGE, or the language last shown when 'auto'
     ConfigBool('General', 'SERIES_TAB', 1),

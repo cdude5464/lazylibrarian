@@ -140,6 +140,9 @@
   .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
   .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  /* Processing: the sections in one list that flows over columns where there is room */
+  .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
+  .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
   /* $variables of the name patterns: a click inserts them at the cursor of the pattern field */
   .llc .llc-token { display: inline-block; font: inherit; font-family: var(--bs-font-monospace); font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
                     background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 0 .3rem; margin: .1rem 0; cursor: pointer; }
@@ -672,6 +675,37 @@
         var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext'], true);
         var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin'], true);
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+      })();
+      // Processing: bookstrap spreads its sections over three columns in no particular order; here they are one
+      // list in the order the work happens, each section found by a setting it holds
+      (function () {
+        var pane = document.getElementById('searchprocessing');
+        var row = pane && pane.querySelector('.configtable > .row');
+        if (!row) { return; }
+        var order = ['search_bookinterval', 'notfound_status', 'newauthor_books', 'imp_convert', 'imp_comiccover', 'pref_ebookopf',
+                     'imp_calibredb', 'download_dir', 'file_perm', 'fmt_series', 'ebook_wanted_formats', 'audio_options',
+                     'swap_coverpage', 'ffmpeg', 'cache_age'];
+        var top = function (el) {
+          var fs = el && el.closest('fieldset');
+          while (fs && fs.parentElement.parentElement !== row) { fs = fs.parentElement.closest('fieldset'); }
+          return fs;
+        };
+        var flow = document.createElement('div'), seen = [];
+        flow.className = 'col-12 llc-flow';
+        var add = function (fs) {
+          if (!fs || seen.indexOf(fs) >= 0) { return; }
+          seen.push(fs);
+          var item = document.createElement('div'); item.className = 'llc-flow-item';
+          item.appendChild(fs); flow.appendChild(item);
+        };
+        order.forEach(function (id) { add(top(document.getElementById(id))); });
+        // a section this list does not know yet keeps its place after the known ones
+        row.querySelectorAll(':scope > [class*="col-"] > fieldset').forEach(add);
+        if (!seen.length) { return; }
+        Array.prototype.slice.call(row.children).forEach(function (col) {
+          if (!col.querySelector('input, select, textarea, legend')) { col.remove(); }
+        });
+        row.insertBefore(flow, row.firstChild);
       })();
       // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
       (function () {

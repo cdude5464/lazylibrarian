@@ -889,6 +889,7 @@
                 </fieldset>
                 <fieldset>
                   %if CONFIG['COMIC_TAB']:
+                  <legend>ComicVine</legend>
                   <div class="form-group">
                     <label for="cv_apikey" class="control-label">${_('ComicVine Api Key:')}</label>
                     <input type="text" id="cv_apikey" name="cv_apikey" value="${CONFIG['CV_APIKEY']}" class="form-control" placeholder="${_('optional') | h}">

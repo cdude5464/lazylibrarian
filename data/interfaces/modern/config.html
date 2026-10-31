@@ -140,6 +140,10 @@
   .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
   .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  /* $variables of the name patterns: a click inserts them at the cursor of the pattern field */
+  .llc .llc-token { display: inline-block; font: inherit; font-family: var(--bs-font-monospace); font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
+                    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 0 .3rem; margin: .1rem 0; cursor: pointer; }
+  .llc .llc-token:hover, .llc .llc-token:focus-visible { border-color: var(--ll-accent); color: var(--ll-accent); outline: 0; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
   .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
@@ -668,6 +672,46 @@
         var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext'], true);
         var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin'], true);
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+      })();
+      // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
+      (function () {
+        var TOK = /\$\$|\$[A-Za-z]+/g, insertTip = ${_js('Insert at the cursor')};
+        form.querySelectorAll('.tab-pane .help-block').forEach(function (help) {
+          var field = help.previousElementSibling;
+          while (field && !field.matches('input[type="text"], textarea')) { field = field.previousElementSibling; }
+          if (!field) { return; }
+          var walker = document.createTreeWalker(help, NodeFilter.SHOW_TEXT), nodes = [];
+          while (walker.nextNode()) {
+            // the limitation notes (in <strong>) name variables too, they stay text
+            if (!walker.currentNode.parentNode.closest('strong') && TOK.test(walker.currentNode.nodeValue)) { nodes.push(walker.currentNode); }
+            TOK.lastIndex = 0;
+          }
+          nodes.forEach(function (node) {
+            var text = node.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+            TOK.lastIndex = 0;
+            while ((m = TOK.exec(text))) {
+              if (m.index > last) { frag.appendChild(document.createTextNode(text.slice(last, m.index))); }
+              var b = document.createElement('button');
+              b.type = 'button'; b.className = 'llc-token'; b.textContent = m[0]; b.title = insertTip;
+              frag.appendChild(b);
+              last = m.index + m[0].length;
+            }
+            if (last < text.length) { frag.appendChild(document.createTextNode(text.slice(last))); }
+            node.parentNode.replaceChild(frag, node);
+          });
+          if (!nodes.length) { return; }
+          help.addEventListener('click', function (e) {
+            var b = e.target.closest('.llc-token');
+            if (!b) { return; }
+            e.preventDefault();
+            var s = field.selectionStart, end = field.selectionEnd;
+            if (s === null || s === undefined) { s = end = field.value.length; }
+            field.focus();
+            field.setRangeText(b.textContent, s, end, 'end');
+            field.dispatchEvent(new Event('input', {bubbles: true}));
+            field.dispatchEvent(new Event('change', {bubbles: true}));
+          });
+        });
       })();
       // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
       // fieldset sections elsewhere; the fold keeps working, its click handler is delegated

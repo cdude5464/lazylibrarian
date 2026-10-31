@@ -450,6 +450,7 @@
     // switch and Test in a header, then the same fields with their label above them. The inputs are moved, not
     // copied, so names, ids and the page scripts' handlers stay as they are.
     var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}, fold: ${_js('Show or hide details')}};
+    var TF = {words: ${_js('Word Lists')}, sizes: ${_js('Size Limits')}};
     function llcProviderCards() {
       form.querySelectorAll('fieldset > .col-md-4.form-group, fieldset > .col-md-6.form-group').forEach(function (block) {
         var groups = block.querySelectorAll(':scope > .input-group');
@@ -617,6 +618,33 @@
           form.querySelectorAll('legend.llc-lfold').forEach(function (lg) { if (lg.parentNode.classList.contains('llc-sfold') !== b[1]) { lg.click(); } });
         });
       });
+      // Filters: the word lists and the size limits each go into one section, the per-title options stay as they are
+      (function () {
+        var pane = document.getElementById('filters');
+        var row = pane && pane.querySelector('.configtable > .row');
+        if (!row) { return; }
+        var group = function (title, ids) {
+          var cols = [];
+          ids.forEach(function (id) {
+            var el = document.getElementById(id), col = el && el.closest('[class*="col-"]');
+            while (col && col.parentNode !== row) { col = col.parentNode.closest('[class*="col-"]'); }
+            if (col && cols.indexOf(col) < 0) { cols.push(col); }
+          });
+          if (!cols.length) { return null; }
+          var outer = document.createElement('div'); outer.className = 'col-md-12';
+          var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div'), inner = document.createElement('div');
+          lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+          lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+          lg.appendChild(document.createTextNode(title));
+          body.className = 'section-body'; inner.className = 'row';
+          cols.forEach(function (c) { inner.appendChild(c); });
+          body.appendChild(inner); fs.appendChild(lg); fs.appendChild(body); outer.appendChild(fs);
+          return outer;
+        };
+        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext']);
+        var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin']);
+        [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+      })();
       // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
       // fieldset sections elsewhere; the fold keeps working, its click handler is delegated
       form.querySelectorAll('.tab-pane [class*="col-"] > legend.section-toggle').forEach(function (lg) {

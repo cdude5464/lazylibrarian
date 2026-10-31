@@ -93,6 +93,17 @@
   .llc .llc-ptitle:empty::before { content: attr(data-empty); color: var(--bs-secondary-color); font-weight: 500; }
   .llc .llc-ph .btn { font-size: .75rem; padding: .15rem .65rem; }
   .llc .llc-pon { display: inline-flex; align-items: center; gap: .4rem; margin: 0; font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); cursor: pointer; }
+  /* folding: a provider card down to its header, a provider type section down to its heading; search shows all */
+  .llc .llc-pcaret { border: 0; background: none; padding: 0 .1rem; color: var(--bs-secondary-color); line-height: 1; }
+  .llc .llc-pcaret i { transition: transform .15s ease; }
+  .llc .llc-pcard.llc-pfold .llc-pcaret i { transform: rotate(-90deg); }
+  .llc .llc-ptitle { cursor: pointer; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold > .llc-pbox > :not(.llc-ph) { display: none !important; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold .llc-ph { margin-bottom: .5rem; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold { align-self: flex-start; }
+  .llc:not(.llc-searching) .llc-pcard.llc-pfold > .llc-pbox { height: auto; }
+  .llc legend.llc-lfold { cursor: pointer; user-select: none; }
+  .llc:not(.llc-searching) fieldset.llc-sfold > :not(legend) { display: none !important; }
   .llc .llc-pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .6rem; }
   .llc .llc-pf { min-width: 0; margin-bottom: .55rem; }
   .llc .llc-pf.llc-wide { grid-column: 1 / -1; }
@@ -412,7 +423,7 @@
     // button" input groups that fall into many broken lines on a phone. Each block becomes a card: name, enable
     // switch and Test in a header, then the same fields with their label above them. The inputs are moved, not
     // copied, so names, ids and the page scripts' handlers stay as they are.
-    var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}};
+    var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}, fold: ${_js('Show or hide details')}};
     function llcProviderCards() {
       form.querySelectorAll('fieldset > .col-md-4.form-group, fieldset > .col-md-6.form-group').forEach(function (block) {
         var groups = block.querySelectorAll(':scope > .input-group');
@@ -486,6 +497,15 @@
         }
         // whatever else the block holds (hidden labels, help) goes below the fields
         var rest = Array.prototype.slice.call(block.childNodes);
+        // fold to the header: the caret or the name; unused (switched off) providers start folded
+        var caret = document.createElement('button');
+        caret.type = 'button'; caret.className = 'llc-pcaret'; caret.innerHTML = '<i class="fa fa-caret-down" aria-hidden="true"></i>';
+        caret.setAttribute('aria-label', TP.fold);
+        head.insertBefore(caret, head.firstChild);
+        var fold = function (c) { block.classList.toggle('llc-pfold', c); caret.setAttribute('aria-expanded', c ? 'false' : 'true'); };
+        caret.addEventListener('click', function () { fold(!block.classList.contains('llc-pfold')); });
+        title.addEventListener('click', function () { fold(!block.classList.contains('llc-pfold')); });
+        fold(!!enable && !enable.checked);
         box.appendChild(head); box.appendChild(grid);
         rest.forEach(function (n) { if (n.nodeType === 1 && !n.matches('label.sr-only')) { box.appendChild(n); } else if (n.nodeType === 1) { n.remove(); } });
         block.appendChild(box);
@@ -496,6 +516,33 @@
     window.llcAfterReady = function () {
       llcModernize(form);
       llcProviderCards();
+      // provider type headings (Newznab, Torznab, rss...) carry their own show switch, so bookstrap leaves them
+      // unfoldable; here the switch keeps working and a click anywhere else on the heading folds the section
+      form.querySelectorAll('#providers fieldset > legend').forEach(function (lg) {
+        var cb = lg.querySelector('input[type="checkbox"]');
+        if (!cb || lg.classList.contains('section-toggle')) { return; }
+        var fs = lg.parentNode, lab = lg.querySelector('label[for="' + cb.id + '"]');
+        if (lab) { cb.setAttribute('aria-label', lab.textContent.trim()); lab.removeAttribute('for'); }
+        lg.insertAdjacentHTML('afterbegin', '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>');
+        lg.classList.add('llc-lfold'); lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+        var flip = function (e) {
+          if (e.target === cb) { return; }
+          if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') { return; }
+          e.preventDefault();
+          var c = !fs.classList.contains('llc-sfold');
+          fs.classList.toggle('llc-sfold', c); lg.classList.toggle('section-collapsed', c); lg.setAttribute('aria-expanded', c ? 'false' : 'true');
+        };
+        lg.addEventListener('click', flip); lg.addEventListener('keydown', flip);
+      });
+      // Collapse all / Expand all reach these folds too
+      [['collapse_all', true], ['expand_all', false]].forEach(function (b) {
+        var btn = document.getElementById(b[0]);
+        if (!btn) { return; }
+        btn.addEventListener('click', function () {
+          form.querySelectorAll('.llc-pcard').forEach(function (c) { var k = c.querySelector('.llc-pcaret'); if (c.classList.contains('llc-pfold') !== b[1] && k) { k.click(); } });
+          form.querySelectorAll('legend.llc-lfold').forEach(function (lg) { if (lg.parentNode.classList.contains('llc-sfold') !== b[1]) { lg.click(); } });
+        });
+      });
       // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
       // fieldset sections elsewhere; the fold keeps working, its click handler is delegated
       form.querySelectorAll('.tab-pane [class*="col-"] > legend.section-toggle').forEach(function (lg) {

@@ -1,0 +1,338 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'comics'
+%>
+<%def name="headIncludes()">
+<style>
+  .llm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 24px 18px; }
+  @media (max-width: 480px) { .llm-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 10px; } }
+  .llm-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .llm-filter { flex: 1 1 100%; order: 5; } }
+  .llm-views .btn { width: 34px; padding-left: 0; padding-right: 0; }
+  .llm-card { position: relative; display: flex; flex-direction: column; gap: 4px; min-width: 0; cursor: pointer; }
+  .llm-card:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 3px; border-radius: 8px; }
+  .llm-cover { position: relative; aspect-ratio: 3 / 4; border-radius: 6px; overflow: hidden; background: var(--bs-secondary-bg);
+               box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 10px 22px -12px rgba(0,0,0,.45); transition: transform .2s ease; }
+  .llm-card:hover .llm-cover { transform: translateY(-3px); }
+  .llm-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .llm-gen { position: absolute; inset: 0; padding: 10px; color: #fff; display: flex; flex-direction: column; }
+  .llm-gen .t { font-family: Georgia, "Times New Roman", serif; font-weight: 700; font-size: 1.15rem; line-height: 1.05; letter-spacing: -.01em; text-transform: uppercase; }
+  .llm-gen .l { margin-top: auto; height: 3px; background: rgba(255,255,255,.55); width: 40%; }
+  .llm-count { position: absolute; right: 6px; bottom: 6px; background: rgba(0,0,0,.65); color: #fff; font-size: .68rem; font-weight: 600;
+               border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+  .llm-title { font-weight: 600; font-size: .9rem; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .llm-sub { font-size: .75rem; color: var(--bs-secondary-color); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .llm-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .llm-tags a { font-size: .66rem; text-decoration: none; }
+  .llm-pill { font-size: .66rem; font-weight: 600; padding: 3px 8px; }
+  .llm-act { font-size: .75rem; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  .llm-check { position: absolute; top: 6px; right: 6px; z-index: 2; width: 26px; height: 26px; border-radius: 50%; background: rgba(255,255,255,.95);
+               border: 2px solid #fff; display: flex; align-items: center; justify-content: center; color: var(--ll-accent); }
+  .llm-card.llm-sel .llm-cover { outline: 3px solid var(--ll-accent); outline-offset: 2px; }
+  .llm-card.llm-sel .llm-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+  @media (max-width: 480px) {
+    .llm-gen { padding: 6px; } .llm-gen .t { font-size: .72rem; } .llm-title { font-size: .78rem; } .llm-sub, .llm-tags { display: none; }
+    .llm-pill { font-size: .58rem; padding: 2px 6px; } .llm-act { font-size: .66rem; } .llm-check { width: 22px; height: 22px; }
+  }
+  .llm-v-list.llm-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .llm-v-list .llm-card { display: grid; align-items: center; gap: 0 12px; padding: 6px 4px; border-bottom: 1px solid var(--bs-border-color-translucent);
+                          grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: "cover title status" "cover sub status"; }
+  .llm-v-list .llm-card:hover, .llm-v-list .llm-card.llm-sel { background: var(--bs-tertiary-bg); }
+  .llm-v-list .llm-cover { grid-area: cover; width: 36px; border-radius: 3px; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .llm-v-list .llm-card:hover .llm-cover { transform: none; }
+  .llm-v-list .llm-gen .t, .llm-v-list .llm-count, .llm-v-list .llm-tags { display: none; }
+  .llm-v-list .llm-title { grid-area: title; -webkit-line-clamp: 1; font-size: .9rem; }
+  .llm-v-list .llm-sub { grid-area: sub; display: block; }
+  .llm-v-list .llm-status { grid-area: status; flex-direction: column; align-items: flex-end !important; gap: 2px !important; }
+  .llm-v-list .llm-check { top: -2px; right: auto; left: 24px; width: 18px; height: 18px; font-size: .55rem; border-width: 1px; }
+  .llm-skel .llm-cover { box-shadow: none; animation: llm-pulse 1.2s ease-in-out infinite; }
+  @keyframes llm-pulse { 50% { opacity: .5; } }
+  .llm-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+             padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); transition: transform .25s ease; }
+  .llm-bar-hidden { transform: translateY(110%); }
+  @media (prefers-reduced-motion: reduce) { .llm-bar, .llm-cover { transition: none; } .llm-skel .llm-cover { animation: none; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    pref = context.get('pref') or 0
+%>
+<div x-data="llComics" x-init="start()">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llm-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" id="llm-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             placeholder="${_('Filter comics') | h}" autocomplete="off" aria-label="${_('Filter comics') | h}">
+    </div>
+    <div class="btn-group btn-group-sm llm-views" role="group" aria-label="${_('View') | h}">
+      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
+              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
+      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
+              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
+    </div>
+    <select id="llm-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="2:asc">${_('Title')}</option>
+      <option value="5:desc">${_('Latest Issue')}</option>
+      <option value="4:desc">${_('Added')}</option>
+      <option value="3:desc">${_('Issues')}</option>
+      <option value="8:asc">${_('Start')}</option>
+    </select>
+    %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
+            x-text="selecting ? T.done : T.select"></button>
+    %endif
+    <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-toggle="modal" data-bs-target="#llm-add">
+      <i class="fa fa-plus" aria-hidden="true"></i> ${_('Comic')}
+    </button>
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><a class="dropdown-item" href="comic_wall"><i class="fa fa-calendar-check fa-fw me-2" aria-hidden="true"></i>${_('Recent Issues')}</a></li>
+        %if perm&lazylibrarian.perm_force:
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="force_search?source=comics"><i class="fa fa-search fa-fw me-2" aria-hidden="true"></i>${_('Search')}</a></li>
+        <li><a class="dropdown-item" href="force_process?source=comics"><i class="fa fa-cogs fa-fw me-2" aria-hidden="true"></i>${_('Run Post-Processor')}</a></li>
+        <li><a class="dropdown-item" href="comic_scan"><i class="fa fa-bolt fa-fw me-2" aria-hidden="true"></i>${_('Library Scan')}</a></li>
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="toggle_my_comics">
+          %if pref&lazylibrarian.pref_mycomics:
+          <i class="fa fa-users fa-fw me-2" aria-hidden="true"></i>${_('Show all comics')}
+          %else:
+          <i class="fa fa-user-circle fa-fw me-2" aria-hidden="true"></i>${_('Show only my comics')}
+          %endif
+        </a></li>
+        %endif
+      </ul>
+    </div>
+  </div>
+
+  <div x-show="busy" x-cloak role="status">
+    <div class="alert alert-info d-flex align-items-center gap-2 py-2 small">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>${_('Libraryscan in progress ...')}</span>
+    </div>
+  </div>
+
+  <div class="llm-grid" :class="'llm-v-' + view">
+    <template x-for="m in mags" :key="m.id">
+      <article class="llm-card" :class="sel[m.id] && 'llm-sel'" tabindex="0"
+               @click="open(m, $event)" @keydown.enter.prevent="open(m, $event)" @keydown.space.prevent="open(m, $event)">
+        <div class="llm-cover">
+          <template x-if="m.cover"><img loading="lazy" :src="m.cover" alt="" @error="m.cover = ''"></template>
+          <template x-if="!m.cover"><div class="llm-gen" :style="'background:hsl(' + m.hue + ' 45% 38%)'"><span class="t" x-text="m.title"></span><span class="l"></span></div></template>
+          <span class="llm-count" x-show="m.issues" x-text="m.issues"></span>
+          <span class="llm-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        </div>
+        <span class="llm-title" :title="m.title" x-text="m.title"></span>
+        <span class="llm-sub" x-text="[m.start, m.publisher].filter(Boolean).join(' · ') || (m.latest || T.noIssues)"></span>
+        <span class="llm-sub" x-show="m.latest && (m.start || m.publisher)" x-text="m.latest + (m.added ? ' · ' + m.added : '')"></span>
+        <div class="llm-tags" x-show="m.genres.length">
+          <template x-for="g in m.genres" :key="g">
+            <a class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis" href="#" @click.prevent.stop="q = g" x-text="g"></a>
+          </template>
+        </div>
+        <div class="llm-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
+          <span class="badge rounded-pill llm-pill" :class="pillClass(m.status)" x-text="llStatus(m.status)"></span>
+          <span class="badge rounded-pill llm-pill bg-secondary-subtle text-secondary-emphasis" x-show="m.magStatus === 'Paused'" x-text="llStatus('Paused')"></span>
+          %if perm&lazylibrarian.perm_force:
+          <template x-if="m.status === 'Wanted'"><button type="button" class="btn btn-link llm-act" data-do="search">${_('Search')}</button></template>
+          %endif
+          %if perm&lazylibrarian.perm_download:
+          <template x-if="m.status === 'Open' && m.issues"><button type="button" class="btn btn-link llm-act" data-do="read">${_('Open')}</button></template>
+          %endif
+        </div>
+      </article>
+    </template>
+    <template x-for="n in (loading ? (mags.length ? 6 : 12) : 0)" :key="'s' + n">
+      <div class="llm-card llm-skel"><div class="llm-cover"></div></div>
+    </template>
+    <div class="text-center text-body-secondary py-5" style="grid-column: 1 / -1" x-show="!loading && done && !mags.length" x-cloak>${_('No comics found')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && mags.length ? T.allShown : ''"></div>
+
+  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
+  <div class="llm-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llm-bar-hidden'" role="region" aria-label="${_('Selected comics') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    %if perm&lazylibrarian.perm_status:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Active')">${_('Active')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Paused')">${_('Paused')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Reset')">${_('Reset')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Remove')">${_('Remove')}</button>
+    <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" @click="bulk('Delete')">${_('Delete')}</button>
+    %endif
+    %if CONFIG['USER_ACCOUNTS']:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Subscribe')">${_('Subscribe')}</button>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button>
+    %endif
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+  %endif
+
+  <div class="modal fade" id="llm-add" tabindex="-1" aria-labelledby="llm-add-title" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <form action="find_comic" method="get">
+        <div class="modal-header border-0 pb-0">
+          <h2 class="modal-title h5" id="llm-add-title">${_('Add Comic')}</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+        </div>
+        <div class="modal-body">
+          <label for="llm-addtitle" class="form-label small text-body-secondary">${_('Comic Title')}</label>
+          <input type="text" class="form-control" id="llm-addtitle" name="title" required autocomplete="off">
+          %if CONFIG['IMP_AUTOSEARCH']:
+          <div class="form-text">${_('Search for comic')}</div>
+          %endif
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="submit" class="btn btn-ll rounded-pill"><i class="fa fa-search-plus me-1" aria-hidden="true"></i>${_('Comic')}</button>
+        </div>
+      </form>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 30;
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')}, noIssues: ${_js('No issues yet')},
+    pickFirst: ${_js('Select at least one comic first')}, failed: ${_js('Something went wrong, try again')},
+    searching: ${_js('Searching...')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')},
+    mags: ${_jsn('%(count)s comic', '%(count)s comics')},
+    confirmDel: ${_jsn('Are you sure you want to permanently delete the selected comic?', 'Are you sure you want to permanently delete the %(count)s selected comics?')}
+  };
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
+
+  // get_comics row: 0 id, 1 cover thumb, 2 title, 3 issues, 4 last acquired, 5 latest issue, 6 status, 7 issue status,
+  // 8 start year, 9 publisher, 10 link, 11 genres
+  function toComic(r) {
+    var cover = r[1] || '';
+    return {
+      id: String(r[0]), title: String(r[2] || ''), cover: (cover && !/nocover/i.test(cover)) ? cover : '', issues: +r[3] || 0,
+      added: r[4] || '', latest: r[5] || '', status: String(r[7] || r[6] || ''), magStatus: String(r[6] || ''),
+      start: r[8] ? String(r[8]) : '', publisher: r[9] || '',
+      genres: String(r[11] || '').split(',').map(function (g) { return g.trim(); }).filter(Boolean), hue: hue(String(r[2] || ''))
+    };
+  }
+
+  Alpine.data('llComics', function () {
+    return {
+      T: T, mags: [], total: 0, start_: 0, loading: false, done: false, gen: 0, busy: false, pollTimer: 0,
+      q: '', sort: '2:asc', view: 'grid', selecting: false, sel: {}, toastText: '',
+      get countText() { return this.total || this.done ? llNgettext(T.mags, this.total) : ''; },
+      get selCount() { return Object.keys(this.sel).length; },
+      start: function () {
+        var self = this;
+        try { var v = localStorage.getItem('llm-view'); if (v === 'grid' || v === 'list') { this.view = v; } } catch (e) {}
+        try {
+          var saved = JSON.parse(sessionStorage.getItem('llm-comics') || 'null');
+          if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
+        } catch (e) {}
+        var mf = getUrlVars()['comic_filter'];
+        if (mf) { this.q = decodeURIComponent(mf); }
+        ['q', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        var add = document.getElementById('llm-add');
+        if (add) { add.addEventListener('shown.bs.modal', function () { document.getElementById('llm-addtitle').focus(); }); }
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'}).observe(this.$refs.sentinel);
+        this.load();
+      },
+      url: function () {
+        var p = this.sort.split(':');
+        return 'get_comics?iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] +
+          '&sSortDir_0=' + p[1] + '&sSearch=' + encodeURIComponent(this.q) + '&_=' + Date.now();
+      },
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.mags = self.mags.concat(rows.map(toComic));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+          self.busy = !!json.loading;
+          clearTimeout(self.pollTimer);
+          if (self.busy) { self.pollTimer = setTimeout(function () { self.reset(); }, 10000); }
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.mags = []; this.done = false; this.loading = false;
+        try { sessionStorage.setItem('llm-comics', JSON.stringify({q: this.q, sort: this.sort})); } catch (e) {}
+        this.load();
+      },
+      setView: function (v) {
+        this.view = v;
+        try { localStorage.setItem('llm-view', v); } catch (e) {}
+        var self = this;
+        this.$nextTick(function () {
+          if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+        });
+      },
+      pillClass: function (s) {
+        return {Open: 'text-bg-success', Have: 'bg-success-subtle text-success-emphasis', Active: 'text-bg-success', Wanted: 'text-bg-warning',
+                Snatched: 'text-bg-info', Paused: 'bg-secondary-subtle text-secondary-emphasis'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+      open: function (m, e) {
+        if (this.selecting) {
+          e.preventDefault();
+          if (this.sel[m.id]) { delete this.sel[m.id]; } else { this.sel[m.id] = true; }
+          this.sel = Object.assign({}, this.sel);
+          return;
+        }
+        if (e.target.closest('a')) { return; }
+        var d = e.target.closest('[data-do]');
+        if (d && d.dataset.do === 'search') {
+          this.toast(T.searching);
+          fetch('search_for_comic?comicid=' + encodeURIComponent(m.id), {credentials: 'same-origin'});
+          return;
+        }
+        if (d && d.dataset.do === 'read') { window.location = 'open_comic?comicid=' + encodeURIComponent(m.id); return; }
+        window.location = 'comicissue_page?comicid=' + encodeURIComponent(m.id);
+      },
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+      bulk: function (action) {
+        var ids = Object.keys(this.sel);
+        if (!ids.length) { this.toast(T.pickFirst); return; }
+        if (action === 'Delete' && !window.confirm(llNgettext(T.confirmDel, ids.length))) { return; }
+        var self = this;
+        var body = new URLSearchParams({action: action});
+        ids.forEach(function (id) { body.append(id, 'on'); });
+        this.stopSelect();
+        // mark_comics is the classic form handler, it answers with a redirect to the comics page
+        fetch('mark_comics', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } self.toast(llStatus(action)); self.reset(); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

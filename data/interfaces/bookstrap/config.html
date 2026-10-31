@@ -2926,6 +2926,8 @@
         </div>
         <div role="tabpanel" class="tab-pane" id="notifications">
           <div class="configtable">
+          <fieldset>
+            <legend>${_('Notifiers')}</legend>
             <div class="row">
               <div class="col-md-6">
                 <div class="form-group">
@@ -2959,6 +2961,7 @@
                 ${enable_grid(notifier_boxes)}
               </div>
             </div>
+          </fieldset>
             <div class="row">
               <div class="col-md-6">
                 <div id="twitteroptions">
@@ -3400,12 +3403,12 @@
                 </div>
               </div>
               %if APPRISE_VER and APPRISE_VER[0].isdigit():
-                <div id="apprise">
-                  <div class="col-md-12">
-                    <legend>${_('Apprise Notifiers')}
+                <div id="apprise" class="col-md-12">
+                  <fieldset>
+                    <legend>${_('Apprise Notifiers')}</legend>
+                    <div class="form-group col-md-12">
                     <button class="button btn btn-sm btn-primary" type="button" value="Supported Types" id="show_apprise"><i class="fa fa-list-ul"></i> ${_('Supported Types')}</button>
-                    </legend>
-                  </div>
+                    </div>
                   %for provider in CONFIG.providers('APPRISE'):
                   %if provider['DISPNAME'] != '':
                   <%
@@ -3438,10 +3441,13 @@
                   </div>
                   %endif
                   %endfor
+                    <div class="clearfix"></div>
+                  </fieldset>
                 </div>
               %endif
               <div id="notifieroptions">
                 <div class="col-md-12">
+                  <fieldset>
                   <legend>${_('Options')}</legend>
                     <div class="row checkbox">
                       <div class="col-md-6">
@@ -3457,6 +3463,7 @@
                           ${_('Show url in download notification')}<br><small>${_('(WARNING may contain api key)')}</small></label>
                       </div>
                     </div>
+                  </fieldset>
                   </div>
                 </div>
               </div>

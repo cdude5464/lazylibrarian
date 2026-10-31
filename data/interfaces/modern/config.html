@@ -113,6 +113,16 @@
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
   .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
+  /* language pickers: even gaps between chips in both directions (they were inline-blocks spaced by whitespace) */
+  .llc .langpicker { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .15rem 0 .1rem; }
+  .llc .langpicker .langchip { margin: 0; border-radius: 999px; padding: .2rem .8rem; font-size: .85rem; line-height: 1.4; }
+  .llc .langpicker-more { margin: .45rem 0 .1rem; font-size: .9rem; }
+  .llc .langpicker-more a, .llc .searchlang-change { text-decoration: none; }
+  .llc .langpicker-more i { margin-right: .25rem; }
+  .llc .searchlang-summary { margin: .1rem 0; }
+  .llc .searchlang-editor .langpicker { margin-top: .5rem; }
+  .llc .searchlang-modes { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+  .llc #lang_refresh_options .help-block, .llc #config_langrefreshstatus { display: block; margin: .4rem 0 0 !important; }
   .llc .checkbox, .llc .radio { margin: 0 0 .55rem; }
   .llc .row.checkbox { margin-bottom: .2rem; }
   .llc .row.checkbox > [class*="col-"] { margin-bottom: .55rem; }

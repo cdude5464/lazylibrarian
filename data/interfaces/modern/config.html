@@ -221,8 +221,8 @@
         <div class="form-group">
           <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
           <div class="accent-picker">
-            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
-            %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
+            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#56a3da' | h}" class="form-control">
+            %for color in ['#56a3da', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
             <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
             %endfor
           </div>
@@ -682,7 +682,7 @@
           var r = parseInt(v.substr(1, 2), 16), g = parseInt(v.substr(3, 2), 16), b = parseInt(v.substr(5, 2), 16);
           var dark = root.getAttribute('data-bs-theme') === 'dark';
           root.style.setProperty('--ll-accent', dark ? 'color-mix(in srgb, ' + v + ' 55%, #fff)' : v);
-          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#111' : '#fff'));
+          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55 ? '#111' : '#fff'));
           swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === v.toLowerCase()); });
         };
         swatches.forEach(function (s) {

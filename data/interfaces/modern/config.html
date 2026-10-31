@@ -64,10 +64,20 @@
   .llc legend { float: left; width: 100%; font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--bs-secondary-color);
                 margin: 0 0 .75rem; padding: 0; border: 0; display: flex; align-items: center; gap: .35rem; }
   .llc legend.section-toggle { cursor: pointer; user-select: none; }
+  .llc legend label.fa { font: inherit; letter-spacing: inherit; margin: 0; cursor: pointer; }
   .llc legend .section-caret { transition: transform .15s ease; font-size: .9em; }
   .llc legend + * { clear: left; }
   .llc legend.section-collapsed { margin-bottom: .6rem; }
   .llc legend.section-collapsed .section-caret { transform: rotate(-90deg); }
+  /* provider blocks (col-md-4) sit straight in a fieldset, Bootstrap 3 floated them into columns */
+  .llc fieldset:has(> [class*="col-"]) { display: flex; flex-wrap: wrap; margin-inline: -.5rem; }
+  .llc fieldset:has(> [class*="col-"]) > * { flex: 0 0 100%; padding-inline: .5rem; }
+  .llc fieldset:has(> [class*="col-"]) > legend { margin-inline: .5rem; width: calc(100% - 1rem); }
+  @media (min-width: 768px) {
+    .llc fieldset:has(> [class*="col-"]) > .col-md-3 { flex-basis: 25%; } .llc fieldset:has(> [class*="col-"]) > .col-md-4 { flex-basis: 33.333%; }
+    .llc fieldset:has(> [class*="col-"]) > .col-md-6 { flex-basis: 50%; } .llc fieldset:has(> [class*="col-"]) > .col-md-8 { flex-basis: 66.666%; }
+  }
+  .llc fieldset:has(> [class*="col-"]) > [class*="col-"] > .input-group:last-child { margin-bottom: 1.4rem; }
   .llc .form-group { margin-bottom: .9rem; }
   .llc label, .llc .control-label { font-size: .85rem; font-weight: 500; margin-bottom: .3rem; }
   .llc .form-control, .llc .form-select { font-size: .9rem; }

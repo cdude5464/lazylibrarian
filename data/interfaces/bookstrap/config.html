@@ -4230,7 +4230,9 @@
             // fieldset sections, and the provider columns on the Categories tab
             pane.find('fieldset > legend, div.col-md-6 > legend').each(function (index) {
                 var legend = $(this);
-                if (!legend.nextAll().length) { return; }
+                // a heading with its own switch (Newznab, Torznab... providers) already shows and hides its
+                // section, a click on it must reach the switch, not fold the section
+                if (!legend.nextAll().length || legend.find('input').length) { return; }
                 legend.nextAll().wrapAll('<div class="section-body"></div>');
                 legend.data('section-key', pane.attr('id') + ':' + index);
                 legend.addClass('section-toggle').attr({'tabindex': '0', 'role': 'button', 'aria-expanded': 'true'});

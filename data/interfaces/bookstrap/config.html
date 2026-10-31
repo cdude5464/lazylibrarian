@@ -2188,6 +2188,7 @@
                   </div>
                   <div class="help-block">${_('Setting a scan interval to zero disables the task')}</div>
                 </fieldset>
+                <fieldset>
                 <legend>${_('Status')}</legend>
                   <div class="form-group">
                     <label for="notfound_status">${_('Missing Book Status:')}</label>
@@ -2295,6 +2296,9 @@
                     </select>
                     <span class="help-block">${_('Should we monitor/download new books in the series')}</span>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Authors')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['NEWAUTHOR_BOOKS'] else '' %>
                     <label for="newauthor_books" class="control-label">
@@ -2316,6 +2320,7 @@
                       ${_('Periodically delete secondaries')}</label>
                     <span class="help-block">${_('This will delete authors who are only listed as secondary, not as the "primary" author of any book')}</span>
                   </div>
+                </fieldset>
                   <fieldset>
                   <legend>${_('External Programs')}</legend>
                   <div class="form-group">
@@ -2352,8 +2357,8 @@
                     <span class="help-block">${_('Program to create a link to large files')}</span>
                   </div>
                   </fieldset>
-                  <legend>Calibre</legend>
                   <fieldset>
+                  <legend>Calibre</legend>
                   <div class="form-group">
                     <label for="imp_calibredb">${_('Calibredb import program:')}</label>
                     <input type="text" id="imp_calibredb" name="imp_calibredb" value="${CONFIG['IMP_CALIBREDB']}" class="form-control" placeholder="${_('calibredb program') | h}">
@@ -2366,7 +2371,6 @@
                         <input type="checkbox" id="calibre_use_server" name="calibre_use_server" value="1" ${checked} />
                         ${_('Use Calibre Content Server')}</label>
                   </div>
-                  </fieldset>
                   <fieldset id="calibre_options">
                   <div class="form-group">
                     <label for="calibre_server">${_('Calibre Server:')}</label>
@@ -2473,6 +2477,7 @@
                       <input type="checkbox" id="imp_autoadd_magonly" name="imp_autoadd_magonly" value="1" ${checked} />
                       ${_('Only add magazine, not opf or jpg')}</label>
                   </div>
+                  </fieldset>
                   </fieldset>
               </div>
               <div class="col-md-4">
@@ -2619,6 +2624,8 @@
                     <span class="help-block help-keep">${_('Directory for wishlists and manually importing books')}<br>
                       <strong>${_('If "keep original files" is not set, LazyLibrarian can delete this folder after import')}</strong></span>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Permissions')}</legend>
                   <div class="input-group">
                     <span class="input-group-addon">${_('File')}</span>
@@ -2627,6 +2634,8 @@
                     <input type="text" id="dir_perm" name="dir_perm" value="${CONFIG['DIR_PERM'][2:]}" class="form-control" placeholder="755">
                     </div>
                     <span class="help-block">${_('Permissions should be 3 or 4 digits')}<br>${_('Defaults are File:644 Directory:755')}</span>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Miscellaneous')}</legend>
                   <div class="form-group">
                     <label for="cache_age" class="control-label">${_('Cache expire after:')}</label>
@@ -2707,8 +2716,9 @@
                     <input type="number" id="max_wall" name="max_wall" value="${CONFIG['MAX_WALL']}" class="form-control" placeholder="${_('0 for no limit') | h}">
                   </div>
                 </fieldset>
+                %if CONFIG['MAG_TAB']:
                 <fieldset>
-                  %if CONFIG['MAG_TAB']:
+                  <legend>${_('Magazines')}</legend>
                   <div class="form-group">
                     <label for="imp_convert">${_('Cover creation program:')}</label>
                     <input type="text" placeholder="${_('Cover creation program') | h}" id="imp_convert" name="imp_convert" value="${CONFIG['IMP_CONVERT']}" class="form-control">
@@ -2726,10 +2736,11 @@
                       <input type="checkbox" id="imp_magopf" name="imp_magopf" value="1" ${checked} />
                       ${_('Create opf files for magazines')}</label>
                   </div>
-                  %endif
                 </fieldset>
+                %endif
+                %if CONFIG['COMIC_TAB']:
                 <fieldset>
-                  %if CONFIG['COMIC_TAB']:
+                  <legend>${_('Comics')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['IMP_COMICCOVER'] else '' %>
                     <label for="imp_comiccover" class="control-label">
@@ -2742,9 +2753,10 @@
                       <input type="checkbox" id="imp_comicopf" name="imp_comicopf" value="1" ${checked} />
                       ${_('Create opf files for comics')}</label>
                   </div>
-                  %endif
                 </fieldset>
+                %endif
                 <fieldset>
+                  <legend>${_('Library Scan')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['PREF_EBOOKOPF'] else '' %>
                     <label for="pref_ebookopf" class="control-label">
@@ -2856,6 +2868,8 @@
                       <input type="checkbox" id="delete_other_formats" name="delete_other_formats" value="1" ${checked} />
                       ${_('Delete unwanted filetypes')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('AudioBook Conversions')}</legend>
                   <div class="form-group">
                     <label for="audio_options">${_('ffmpeg options:')}</label>
@@ -2885,6 +2899,8 @@
                       <input type="checkbox" id="keep_separateaudio" name="keep_separateaudio" value="1" ${checked} />
                       ${_('Keep separate parts')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
                   <legend>${_('Magazine Conversions')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['SWAP_COVERPAGE'] else '' %>

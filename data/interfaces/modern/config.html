@@ -548,7 +548,10 @@
     // there is room. Groups with buttons or switches in them (API keys, providers) stay as they are.
     function llcFieldGrids() {
       form.querySelectorAll('.tab-content .input-group').forEach(function (g) {
-        if (g.closest('.llc-pcard') || g.querySelector('button, input[type="checkbox"], input[type="button"], .btn')) { return; }
+        if (g.closest('.llc-pcard') || g.querySelector('input[type="checkbox"], input[type="button"]')) { return; }
+        // a password's show/hide eye stays with its field; any other button keeps the group as it is
+        var isEye = function (c) { return c.matches('.secret-toggle') || (c.matches('.input-group-btn') && c.querySelector('.secret-toggle') && c.children.length === 1); };
+        if (Array.prototype.some.call(g.querySelectorAll('button, .btn'), function (b) { return !b.matches('.secret-toggle'); })) { return; }
         var kids = Array.prototype.slice.call(g.children);
         var isText = function (c) { return c.matches('.input-group-text, .input-group-addon') && !c.querySelector('input, select'); };
         if (!kids.length || !isText(kids[0])) { return; }
@@ -560,7 +563,8 @@
             if (nx && nx.matches('input, select, textarea')) { pending = t; } else if (fields.length) { fields[fields.length - 1].unit = t; }
           } else if (c.matches('input, select, textarea')) {
             if (c.type === 'hidden') { extra.push(c); return; }
-            fields.push({el: c, label: pending, unit: ''}); pending = '';
+            fields.push({el: c, label: pending, unit: '', eye: null}); pending = '';
+          } else if (isEye(c) && fields.length) { fields[fields.length - 1].eye = c.matches('.secret-toggle') ? c : c.querySelector('.secret-toggle');
           } else if (!c.matches('label.sr-only')) { extra.push(c); }
         });
         if (!fields.length) { return; }
@@ -574,10 +578,12 @@
           var lb = document.createElement('label'); lb.className = 'control-label';
           lb.textContent = f.label.replace(/\s*:\s*$/, ''); if (f.el.id) { lb.htmlFor = f.el.id; }
           if (f.label) { w.appendChild(lb); }
-          if (f.unit) {
+          if (f.unit || f.eye) {
             var ig = document.createElement('div'); ig.className = 'input-group';
-            var u = document.createElement('span'); u.className = 'input-group-text'; u.textContent = f.unit;
-            ig.appendChild(f.el); ig.appendChild(u); w.appendChild(ig);
+            ig.appendChild(f.el);
+            if (f.unit) { var u = document.createElement('span'); u.className = 'input-group-text'; u.textContent = f.unit; ig.appendChild(u); }
+            if (f.eye) { ig.appendChild(f.eye); }
+            w.appendChild(ig);
           } else { w.appendChild(f.el); }
           grid.appendChild(w);
         });

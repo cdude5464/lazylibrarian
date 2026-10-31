@@ -4088,6 +4088,7 @@
           <div class="configtable">
             <div class="row">
               <div class="col-md-6">
+                <fieldset>
                 <legend>${_('Genre Settings')}</legend>
                 <div class="input-group">
                   <span class="input-group-addon">${_('Genres per book')}</span>
@@ -4095,23 +4096,29 @@
                   <span class="input-group-addon">${_('Genre Users')}</span>
                   <input type="number" id="genreusers" name="genreusers" value="${lazylibrarian.GRGENRES['genreUsers']}" class="form-control">
                 </div>
+                </fieldset>
               </div>
             </div>
             <p>
             <div class="row">
               <div class="col-md-12">
+                <fieldset>
                 <legend>${_('Reject Genres')}</legend>
                 <div class="form-group">
                   <input type="text" id="genreexclude" name="genreexclude" value="${', '.join(i for i in sorted(lazylibrarian.GRGENRES['genreExclude']))}" class="form-control" placeholder="${_('Reject word list') | h}">
                   <span class="help-block">${_('Comma separated list of genres to reject: Results that match any of these words will be ignored')}<br/>
                   </span>
                 </div>
+                </fieldset>
+                <fieldset>
                 <legend>${_('Reject Parts')}</legend>
                 <div class="form-group">
                   <input type="text" id="genreexcludeparts" name="genreexcludeparts" value="${', '.join(i for i in sorted(lazylibrarian.GRGENRES['genreExcludeParts']))}" class="form-control" placeholder="${_('Reject word list') | h}">
                   <span class="help-block">${_('Comma separated list of part-words in genres to reject: Results that contain any of these part-words will be ignored')}<br/>
                   </span>
                 </div>
+                </fieldset>
+                <fieldset>
                 <legend>${_('Replace Genre')}</legend>
                   <span class="help-block">${_('Replace one genre name with another (replace happens before processing reject lists)')}<br/>
                   </span>
@@ -4131,6 +4138,8 @@
                     <input type="text" id="genrereplace[${item}]" name="genrereplace[${item}]" value="${lazylibrarian.GRGENRES['genreReplace'][item]}" class="form-control" placeholder="${_('<delete>') | h}">
                   </div>
                   %endfor
+                  <div class="clearfix"></div>
+                </fieldset>
               </div>
             </div>
           </div>

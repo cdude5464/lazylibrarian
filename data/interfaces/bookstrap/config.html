@@ -4153,6 +4153,7 @@
               </div>
             <div class="row">
               <div class="col-md-12">
+                <fieldset>
                 <legend>${_('Telemetry Settings')}</legend>
                 <div class="checkbox">
                   <% checked = 'checked="checked"' if CONFIG['TELEMETRY_ENABLE'] else '' %>
@@ -4189,20 +4190,22 @@
                     </div>
                   </div>
                 </div>
+                </fieldset>
               </div>
               <div class="col-md-12">
+                <fieldset>
+                <legend>${_('Telemetry Data')}</legend>
                 <p>${_('Refresh to see the current telemetry data that will be sent when telemetry is enabled:')}</p>
                 <textarea id="telemetry_data" class="form-control" rows="16"
                   placeholder="${_('Click Refresh Telemetry to see the current data') | h}" readonly="true"></textarea>
-              </div>
-              <div class="col-md-6">
-                <div class="form-group">
+                <div class="form-group" style="margin-top: 10px">
                   <input type="button" value="${_('Refresh telemetry') | h}" id="telemetry_refresh" class="btn btn-primary" />
                   <input type="button" value="${_('Reset usage data') | h}" id="telemetry_reset" class="btn btn-primary" />
                   %if CONFIG['TELEMETRY_SERVER']:
                   <input type="button" value="${_('Submit telemetry') | h}" id="telemetry_submit" class="btn btn-primary" />
                   %endif
                 </div>
+                </fieldset>
               </div>
             </div>
           </div>

@@ -381,7 +381,7 @@
 
     // the tab list becomes the section menu
     var ul = form.querySelector('#configtabs');
-    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-book', downloadsettings: 'fa-download', providers: 'fa-globe',
+    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-database', downloadsettings: 'fa-download', providers: 'fa-globe',
                  searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
                  languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
     if (ul) {
@@ -389,6 +389,8 @@
       ul.querySelectorAll('li[role="presentation"]').forEach(function (li) {
         var a = li.querySelector('a'), pane = document.getElementById(li.getAttribute('aria-controls'));
         a.removeAttribute('data-toggle');
+        // with its file formats and book filters under Filters, Importing holds the info sources only
+        if (li.getAttribute('aria-controls') === 'importoptions') { a.textContent = ${_js('Info Sources')}; }
         a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
         if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
       });
@@ -750,6 +752,14 @@
       // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
       llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
         'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'logdir']);
+      // Imports and Downloads (csv deletion, blacklists, search delay) act on downloads: it goes to that tab
+      (function () {
+        var el = document.getElementById('blacklist_failed'), fs = el && el.closest('fieldset');
+        var row = document.querySelector('#downloadsettings > .configtable > .row');
+        if (!fs || !row || row.contains(fs)) { return; }
+        var wrap = document.createElement('div'); wrap.className = 'col-md-6';
+        wrap.appendChild(fs); row.appendChild(wrap);
+      })();
       // rss feeds belong to a user: without user accounts the section stays in sight, locked, with a note why. inert
       // (not disabled) keeps its fields in the form, so saving does not change them
       (function () {

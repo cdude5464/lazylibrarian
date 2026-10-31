@@ -3805,7 +3805,6 @@
                   </div>
                 </div>
                 <div class="col-md-12">
-                <fieldset>
                 <legend>${_('Magazine Options (per title)')}</legend>
                 <div class="row">
                 %for mag in config['magazines_list']:
@@ -3835,7 +3834,6 @@
                 </div>
                 %endfor
                 </div>
-                </fieldset>
                 </div>
                 %endif
             </div>
@@ -4281,7 +4279,7 @@
         $('.tab-content .tab-pane').each(function () {
             var pane = $(this);
             // fieldset sections, and the provider columns on the Categories tab
-            pane.find('fieldset > legend, div.col-md-6 > legend').each(function (index) {
+            pane.find('fieldset > legend, div.col-md-6 > legend, div.col-md-12 > legend').each(function (index) {
                 var legend = $(this);
                 // a heading with its own switch (Newznab, Torznab... providers) already shows and hides its
                 // section, a click on it must reach the switch, not fold the section

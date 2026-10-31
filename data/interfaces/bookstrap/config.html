@@ -189,8 +189,6 @@
                       <label for="http_root" class="input-group-addon">${_('Web Root')}</label>
                       <input type="text" id="http_root" name="http_root" value="${CONFIG['HTTP_ROOT']}" class="form-control" placeholder="${_('Web Root') | h}">
                     </div>
-                  </fieldset>
-                  <fieldset>
                     <div class="row checkbox">
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['HTTP_PROXY'] else '' %>
@@ -198,6 +196,11 @@
                       <input type="checkbox" id="http_proxy" name="http_proxy" value="1" ${checked} />
                       ${_('HTTP proxy (see wiki)')}</label>
                     </div>
+                    </div>
+                  </fieldset>
+                  <fieldset>
+                    <legend>${_('HTTPS and SSL')}</legend>
+                    <div class="row checkbox">
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['HTTPS_ENABLED'] else '' %>
                       <label for="https_enabled" class="control-label">
@@ -205,7 +208,6 @@
                         ${_('HTTPS access to lazylibrarian')}</label>
                     </div>
                     </div>
-                  </fieldset>
                     <fieldset id="https_options">
                       <div class="form-group">
                         <label for="https_cert" class="control-label">${_('Https Certificate:')}</label>
@@ -230,6 +232,7 @@
                         <input type="text" id="ssl_certs" name="ssl_certs" value="${CONFIG['SSL_CERTS']}" class="form-control" placeholder="${_('leave empty to use requests certificate') | h}">
                       </div>
                     </fieldset>
+                  </fieldset>
                     <fieldset>
                       <legend>${_('Logs')}</legend>
                       <div class="input-group">

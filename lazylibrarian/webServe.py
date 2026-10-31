@@ -435,9 +435,11 @@ def serve_template(templatename, **kwargs):
         module_directory = None
     else:
         module_directory = os.path.join(DIRS.CACHEDIR, 'mako')
-    # an interface only needs the pages it changes, anything missing comes from bookstrap
+    # an interface only needs the pages it changes, anything missing comes from bookstrap.
+    # The interfaces folder is a root too, so a page can use another interface's page by its
+    # path, eg modern's config.html renders the form of /bookstrap/config.html
     bookstrap_dir = os.path.join(str(interface_dir), 'bookstrap')
-    _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir])),
+    _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir, str(interface_dir)])),
                                input_encoding='utf-8', module_directory=module_directory)
     # noinspection PyBroadException
     try:
@@ -661,7 +663,8 @@ def serve_template(templatename, **kwargs):
                     template_dir = os.path.join(str(interface_dir), CONFIG['HTTP_LOOK'])
 
                 module_directory = os.path.join(DIRS.CACHEDIR, 'mako', str(userid))
-                _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir])),
+                _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir,
+                                                                           str(interface_dir)])),
                                            input_encoding='utf-8', module_directory=module_directory)
             try:
                 template = _hplookup.get_template(templatename)

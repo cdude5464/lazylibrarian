@@ -1,0 +1,409 @@
+<%inherit file="modern_base.html" />
+<%doc>
+  The settings form itself is bookstrap's (data/interfaces/bookstrap/config.html and config_functions.js),
+  so a new setting is only ever added in one place. This page gives it the modern frame: a section menu,
+  cards, switches, a search over all settings, a save bar and Bootstrap 5 dialogs. The bookstrap markup is
+  Bootstrap 3, the modernize() script below maps the few classes that differ.
+</%doc>
+<%namespace name="bs" file="/bookstrap/config.html" />
+<%!
+    page_id = 'config'
+%>
+<%def name="headIncludes()">
+<style>
+  .llc-head { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .llc-head h1 { font-size: 1.75rem; font-weight: 650; letter-spacing: -.015em; margin: 0 .5rem 0 0; }
+  /* bookstrap's system buttons (restart, info, jobs...) as a row of small pills */
+  .llc-sys { min-width: 0; max-width: 100%; }
+  .llc-sys #subhead_menu { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .llc-sys .btn { border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; --bs-btn-bg: transparent; --bs-btn-color: var(--bs-body-color);
+                  --bs-btn-border-color: var(--bs-border-color); --bs-btn-hover-bg: var(--bs-tertiary-bg); --bs-btn-hover-color: var(--bs-body-color);
+                  --bs-btn-hover-border-color: var(--bs-border-color); }
+  .llc-sys .btn-danger { --bs-btn-color: var(--bs-danger-text-emphasis); }
+  .llc-sys .btn .fa { margin-right: .3rem; opacity: .75; }
+  .llc-sys #myAlert { border: 0; background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
+  @media (max-width: 767.98px) { .llc-sys { flex: 1 1 100%; } .llc-sys #subhead_menu { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } .llc-sys .btn { white-space: nowrap; } }
+
+  .llc-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 2rem; align-items: start; }
+  @media (max-width: 991.98px) { .llc-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; } }
+  .llc-side { position: sticky; top: 76px; display: flex; flex-direction: column; gap: .75rem; }
+  @media (max-width: 991.98px) { .llc-side { position: sticky; top: 56px; z-index: 5; background: var(--bs-body-bg); padding: .5rem 0; margin: -.5rem 0 0; } }
+  .llc-search { position: relative; }
+  .llc-search .fa { position: absolute; left: .8rem; top: 50%; transform: translateY(-50%); opacity: .5; font-size: .8rem; }
+  .llc-search input { padding-left: 2.1rem; border-radius: 999px; }
+  .llc-hits { font-size: .75rem; color: var(--bs-secondary-color); padding-left: .8rem; }
+
+  /* the bookstrap tab list becomes the section menu */
+  .llc #configtabs { display: flex; flex-direction: column; gap: 2px; border: 0; margin: 0; padding: 0; list-style: none; }
+  .llc #configtabs > li > a { display: flex; align-items: center; gap: .6rem; padding: .45rem .8rem; border-radius: 10px; color: var(--bs-body-color);
+                              text-decoration: none; font-size: .92rem; border: 0; }
+  .llc #configtabs > li > a .fa { width: 1.1em; text-align: center; opacity: .6; }
+  .llc #configtabs > li > a:hover { background: var(--bs-tertiary-bg); }
+  .llc #configtabs > li.active > a { background: var(--bs-secondary-bg); font-weight: 600; }
+  .llc #configtabs > li.active > a .fa { opacity: 1; color: var(--ll-accent); }
+  @media (max-width: 991.98px) {
+    .llc #configtabs { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .35rem; padding-bottom: 2px; }
+    .llc #configtabs > li > a { white-space: nowrap; border: 1px solid var(--bs-border-color); border-radius: 999px; padding: .3rem .8rem; font-size: .85rem; }
+    .llc #configtabs > li.active > a { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+    .llc #configtabs > li.active > a .fa { color: inherit; }
+  }
+  .llc-searching #configtabs { opacity: .45; pointer-events: none; }
+
+  .llc-tools { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; margin-bottom: .75rem; }
+  .llc-tools .btn { border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
+  .llc-pane-title { font-size: 1.25rem; font-weight: 650; margin: 0; }
+
+  /* Bootstrap 3 pieces of the bookstrap form, in Bootstrap 5 dress */
+  .llc .hidden { display: none !important; }
+  .llc .configtable > .row, .llc .tab-pane > .row { row-gap: 0; }
+  .llc fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
+  .llc .tab-pane fieldset:has(> legend), .llc .tab-pane fieldset:has(> .section-body) {
+    background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1rem 1.1rem .4rem; margin-bottom: 1rem;
+    box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .llc .tab-pane fieldset fieldset:has(> legend) { border-radius: 10px; background: var(--bs-tertiary-bg); box-shadow: none; }
+  .llc legend { float: left; width: 100%; font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--bs-secondary-color);
+                margin: 0 0 .75rem; padding: 0; border: 0; display: flex; align-items: center; gap: .35rem; }
+  .llc legend.section-toggle { cursor: pointer; user-select: none; }
+  .llc legend .section-caret { transition: transform .15s ease; font-size: .9em; }
+  .llc legend + * { clear: left; }
+  .llc legend.section-collapsed { margin-bottom: .6rem; }
+  .llc legend.section-collapsed .section-caret { transform: rotate(-90deg); }
+  .llc .form-group { margin-bottom: .9rem; }
+  .llc label, .llc .control-label { font-size: .85rem; font-weight: 500; margin-bottom: .3rem; }
+  .llc .form-control, .llc .form-select { font-size: .9rem; }
+  .llc .input-group { margin-bottom: .9rem; }
+  .llc .input-group > .input-group-text { font-size: .82rem; margin-bottom: 0; }
+  @media (max-width: 575.98px) {
+    .llc .input-group { flex-wrap: wrap; }
+    .llc .input-group > .form-control, .llc .input-group > .form-select { min-width: 55%; }
+  }
+  .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
+  .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
+  .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
+  .llc .checkbox, .llc .radio { margin: 0 0 .55rem; }
+  .llc .row.checkbox { margin-bottom: .2rem; }
+  .llc .row.checkbox > [class*="col-"] { margin-bottom: .55rem; }
+  .llc .checkbox label, .llc .radio label { display: inline-flex; align-items: center; gap: .6rem; font-weight: 400; font-size: .9rem; cursor: pointer; margin: 0; }
+  /* checkboxes as switches */
+  .llc .tab-pane input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; width: 2.1em; height: 1.2em; margin: 0; border-radius: 999px;
+    background: var(--bs-secondary-bg); border: 1px solid var(--bs-border-color); position: relative; cursor: pointer; transition: background-color .15s ease; vertical-align: middle; }
+  .llc .tab-pane input[type="checkbox"]::after { content: ""; position: absolute; top: 50%; left: .14em; width: .86em; height: .86em; border-radius: 50%;
+    background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.3); transform: translateY(-50%); transition: left .15s ease; }
+  .llc .tab-pane input[type="checkbox"]:checked { background: var(--ll-accent); border-color: var(--ll-accent); }
+  .llc .tab-pane input[type="checkbox"]:checked::after { left: calc(100% - 1em); }
+  .llc .tab-pane input[type="checkbox"]:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 2px; }
+  .llc .tab-pane .btn { border-radius: 999px; font-size: .82rem; }
+  .llc .tab-pane .input-group > .btn { border-radius: 0; }
+  .llc .tab-pane .input-group > .btn:last-child { border-top-right-radius: var(--bs-border-radius); border-bottom-right-radius: var(--bs-border-radius); }
+  .llc .tab-pane .btn .fa { margin-right: .25rem; }
+  .llc .tab-pane .btn-primary { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
+    --bs-btn-hover-bg: var(--ll-accent); --bs-btn-hover-border-color: var(--ll-accent); --bs-btn-hover-color: var(--ll-accent-contrast); }
+  .llc .tab-pane table { font-size: .85rem; }
+  .llc .tab-pane textarea { font-size: .82rem; }
+  .llc pre { white-space: pre-wrap; }
+  .llc .tab-content > p:last-child, .llc [role="tab-table"] > p[style] { font-size: .75rem; }
+
+  /* searching shows every section, with only the settings that match */
+  .llc-searching .tab-content > .tab-pane:not(.llc-miss) { display: block !important; }
+  .llc-searching .tab-content > .tab-pane::before { content: attr(data-llc-title); display: block; font-size: 1.05rem; font-weight: 650; margin: .4rem 0 .6rem; }
+  .llc-searching .section-body { display: block !important; }
+  .llc .llc-miss { display: none !important; }
+  .llc-searching .llc-hit label, .llc-searching .llc-hit .input-group-text { background: color-mix(in srgb, var(--ll-accent) 16%, transparent); border-radius: 4px; }
+  .llc-searching .llc-tools, .llc-searching .llc-pane-title { display: none; }
+
+  /* save bar */
+  .llc-save { position: sticky; bottom: 0; z-index: 20; display: flex; align-items: center; gap: .6rem; margin: 1rem 0 0;
+              padding: .7rem 0 calc(.7rem + env(safe-area-inset-bottom, 0px)); background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color-translucent); }
+  .llc-save .msg { font-size: .85rem; color: var(--bs-secondary-color); margin-right: auto; display: flex; align-items: center; gap: .4rem; }
+  .llc-save.dirty .msg { color: var(--bs-warning-text-emphasis); font-weight: 600; }
+  .llc-save .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bs-secondary-color); }
+  .llc-save.dirty .dot { background: var(--bs-warning); }
+  .ll-main { padding-bottom: 1rem; }
+  .modal pre { white-space: pre-wrap; font-size: .8rem; max-height: 60vh; }
+</style>
+</%def>
+<%def name="body()">
+<div class="llc pt-1" id="llc">
+  <div class="llc-head">
+    <h1>${title}</h1>
+    <div class="llc-sys">${bs.headerIncludes()}</div>
+  </div>
+  <div class="llc-layout">
+    <aside class="llc-side">
+      <div class="llc-search">
+        <i class="fa fa-search" aria-hidden="true"></i>
+        <input type="search" class="form-control form-control-sm" id="llc-q" placeholder="${_('Search settings') | h}" aria-label="${_('Search settings') | h}" autocomplete="off">
+      </div>
+      <div class="llc-hits" id="llc-hits" hidden></div>
+      <nav id="llc-nav" aria-label="${_('Settings sections') | h}"></nav>
+    </aside>
+    <div class="llc-main">
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+        <h2 class="llc-pane-title me-auto" id="llc-pane-title"></h2>
+        <div class="llc-tools mb-0" id="llc-tools"></div>
+      </div>
+      ${bs.body()}
+      <div class="llc-save" id="llc-save">
+        <span class="msg"><span class="dot" aria-hidden="true"></span><span id="llc-save-msg">${_('All changes saved')}</span></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" id="llc-undo" hidden>${_('Discard')}</button>
+        <button type="button" class="btn btn-ll rounded-pill px-4" id="llc-submit"><i class="fa fa-check me-1" aria-hidden="true"></i>${_('Save changes')}</button>
+      </div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script src="js/jquery-3.4.1.min.js"></script>
+<script>
+  // what the bookstrap page scripts expect from bookstrap's base.html
+  var llTexts = {restartConfirm: ${_js('Are you sure you want to restart LazyLibrarian?')},
+                 shutdownConfirm: ${_js('Are you sure you want to shutdown LazyLibrarian?')}};
+  function createCookie(name, value, days) {
+    var expires = '';
+    if (days) { var d = new Date(); d.setTime(d.getTime() + days * 864e5); expires = '; expires=' + d.toUTCString(); }
+    document.cookie = name + '=' + value + expires + '; path=/';
+  }
+  function readCookie(name) {
+    var parts = document.cookie.split(';');
+    for (var i = 0; i < parts.length; i++) { var c = parts[i].trim(); if (c.indexOf(name + '=') === 0) { return c.substring(name.length + 1); } }
+    return null;
+  }
+  function eraseCookie(name) { createCookie(name, '', -1); }
+
+  // bootbox (dialog / alert / confirm / prompt) on Bootstrap 5 modals, as far as LazyLibrarian uses it
+  window.bootbox = (function () {
+    var T = {ok: ${_js('OK')}, cancel: ${_js('Cancel')}, close: ${_js('Close')}};
+    function btnClass(c) {
+      c = c || 'btn-primary';
+      return 'btn rounded-pill ' + c.replace('btn-default', 'btn-outline-secondary').replace('btn-primary', 'btn-ll').replace('btn-xs', 'btn-sm');
+    }
+    function dialog(o) {
+      var el = document.createElement('div');
+      el.className = 'modal fade'; el.tabIndex = -1;
+      el.innerHTML = '<div class="modal-dialog modal-dialog-centered modal-dialog-scrollable' + (o.size === 'large' ? ' modal-lg' : '') + '"><div class="modal-content">' +
+        (o.title ? '<div class="modal-header border-0 pb-0"><h2 class="modal-title h5"></h2><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>' : '') +
+        '<div class="modal-body"></div><div class="modal-footer border-0 pt-0"></div></div></div>';
+      if (o.title) { el.querySelector('.modal-title').innerHTML = o.title; }
+      var body = el.querySelector('.modal-body');
+      if (typeof o.message === 'string') { body.innerHTML = o.message; } else if (o.message) { $(body).append(o.message); }
+      var foot = el.querySelector('.modal-footer');
+      var modal;
+      Object.keys(o.buttons || {}).forEach(function (k) {
+        var b = o.buttons[k];
+        if (typeof b === 'function') { b = {callback: b}; }
+        var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = btnClass(b.className); btn.innerHTML = b.label || k;
+        btn.addEventListener('click', function () {
+          var r = b.callback ? b.callback.call(el, k) : undefined;
+          if (r !== false) { modal.hide(); }
+        });
+        foot.appendChild(btn);
+      });
+      if (!foot.children.length) { foot.remove(); }
+      document.body.appendChild(el);
+      modal = new bootstrap.Modal(el, {backdrop: o.backdrop === undefined ? true : o.backdrop});
+      el.addEventListener('hidden.bs.modal', function () { if (o.onEscape && typeof o.onEscape === 'function' && !el.dataset.done) { o.onEscape(); } modal.dispose(); el.remove(); });
+      modal.show();
+      var $el = $(el); $el.modal = function (a) { if (a === 'hide') { modal.hide(); } return $el; };
+      return $el;
+    }
+    function args(a, b) { return typeof a === 'object' ? a : {message: a, callback: b}; }
+    return {
+      dialog: dialog,
+      setLocale: function () {}, addLocale: function () {},
+      hideAll: function () { document.querySelectorAll('.modal.show').forEach(function (m) { bootstrap.Modal.getInstance(m).hide(); }); },
+      alert: function (a, b) {
+        var o = args(a, b);
+        return dialog({title: o.title, message: o.message, buttons: {ok: {label: (o.buttons && o.buttons.ok && o.buttons.ok.label) || T.ok, className: 'btn-primary', callback: o.callback}}});
+      },
+      confirm: function (a, b) {
+        var o = args(a, b), bt = o.buttons || {}, done = false;
+        var cb = function (r) { if (!done) { done = true; if (o.callback) { return o.callback(r); } } };
+        var d = dialog({title: o.title, message: o.message, onEscape: function () { cb(false); }, buttons: {
+          cancel: {label: (bt.cancel && bt.cancel.label) || T.cancel, className: (bt.cancel && bt.cancel.className) || 'btn-default', callback: function () { return cb(false); }},
+          confirm: {label: (bt.confirm && bt.confirm.label) || T.ok, className: (bt.confirm && bt.confirm.className) || 'btn-primary', callback: function () { return cb(true); }}
+        }});
+        return d;
+      },
+      prompt: function (a, b) {
+        var o = args(a, b), done = false;
+        var input = $('<input class="form-control">').attr('type', o.inputType || 'text').val(o.value || '');
+        var cb = function (v) { if (!done) { done = true; if (o.callback) { return o.callback(v); } } };
+        var d = dialog({title: o.title, message: input, onEscape: function () { cb(null); }, buttons: {
+          cancel: {label: T.cancel, className: 'btn-default', callback: function () { return cb(null); }},
+          confirm: {label: T.ok, className: 'btn-primary', callback: function () { return cb(input.val()); }}
+        }});
+        setTimeout(function () { input.trigger('focus'); }, 300);
+        return d;
+      }
+    };
+  })();
+
+  // Bootstrap 3 classes of the bookstrap form that Bootstrap 5 names differently
+  function llcModernize(root) {
+    var $r = $(root);
+    $r.find('.input-group-addon').addClass('input-group-text');
+    $r.find('.input-group-btn').each(function () { $(this).children().insertBefore(this); $(this).remove(); });
+    $r.find('select.form-control').addClass('form-select');
+    $r.find('.btn-default').removeClass('btn-default').addClass('btn-outline-secondary');
+    $r.find('.btn-xs').removeClass('btn-xs').addClass('btn-sm');
+    $r.find('.pull-right').removeClass('pull-right').addClass('float-end');
+    $r.find('.pull-left').removeClass('pull-left').addClass('float-start');
+    $r.find('[class*="col-xs-"]').each(function () { this.className = this.className.replace(/\bcol-xs-(\d+)/g, 'col-$1'); });
+    $r.find('.label').each(function () {
+      var m = /\blabel-(\w+)/.exec(this.className);
+      if (m) { $(this).removeClass('label label-' + m[1]).addClass('badge text-bg-' + (m[1] === 'default' ? 'secondary' : m[1])); }
+    });
+    $r.find('[data-toggle="tooltip"]').each(function () {
+      if (this.title && !bootstrap.Tooltip.getInstance(this)) { new bootstrap.Tooltip(this, {placement: this.getAttribute('data-placement') || 'top'}); }
+    });
+  }
+
+  (function () {
+    var form = document.querySelector('#llc form[action="config_update"]');
+    if (!form) { return; }
+    form.id = 'llc-form';
+    var T = {saved: ${_js('All changes saved')}, dirty: ${_js('Unsaved changes')}, leave: ${_js('You have unsaved changes')},
+             hits: ${_jsn('%(count)s setting found', '%(count)s settings found')}, none: ${_js('No settings found')}};
+
+    // the bookstrap title row: its buttons go to the tools row, Save to the save bar
+    var h1 = form.querySelector(':scope > h1');
+    if (h1) {
+      var tools = document.getElementById('llc-tools');
+      h1.querySelectorAll('input[type="button"], button').forEach(function (b) { tools.appendChild(b); });
+      var add = h1.querySelector('#add');
+      if (add) { add.hidden = true; document.getElementById('llc-save').appendChild(add); add.setAttribute('form', 'llc-form'); }
+      h1.remove();
+    }
+
+    // the tab list becomes the section menu
+    var ul = form.querySelector('#configtabs');
+    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-book', downloadsettings: 'fa-download', providers: 'fa-globe',
+                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
+                 languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
+    if (ul) {
+      document.getElementById('llc-nav').appendChild(ul);
+      ul.querySelectorAll('li[role="presentation"]').forEach(function (li) {
+        var a = li.querySelector('a'), pane = document.getElementById(li.getAttribute('aria-controls'));
+        a.removeAttribute('data-toggle');
+        a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
+        if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
+      });
+      ul.addEventListener('click', function (e) {
+        var li = e.target.closest('li[role="presentation"]');
+        if (!li) { return; }
+        e.preventDefault();
+        show(li);
+        if (window.innerWidth < 992) { li.scrollIntoView({block: 'nearest', inline: 'center'}); }
+        window.scrollTo({top: 0});
+      });
+    }
+    function show(li) {
+      ul.querySelectorAll('li[role="presentation"]').forEach(function (x) { x.classList.toggle('active', x === li); x.setAttribute('aria-selected', x === li); });
+      form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === li.getAttribute('aria-controls')); });
+      document.getElementById('llc-pane-title').textContent = li.textContent.trim();
+    }
+
+    llcModernize(form);
+    llcModernize(document.querySelector('.llc-sys'));
+
+    // unsaved changes
+    var save = document.getElementById('llc-save'), dirty = false;
+    function setDirty(d) {
+      dirty = d; save.classList.toggle('dirty', d);
+      document.getElementById('llc-save-msg').textContent = d ? T.dirty : T.saved;
+      document.getElementById('llc-undo').hidden = !d;
+    }
+    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q') { setDirty(true); } });
+    form.addEventListener('change', function (e) { if (e.target.name) { setDirty(true); } });
+    document.getElementById('llc-submit').addEventListener('click', function () {
+      dirty = false;
+      if (form.requestSubmit) { form.requestSubmit(document.getElementById('add') || undefined); } else { form.submit(); }
+    });
+    form.addEventListener('submit', function () { dirty = false; });
+    document.getElementById('llc-undo').addEventListener('click', function () { dirty = false; window.location.reload(); });
+    window.addEventListener('beforeunload', function (e) { if (dirty) { e.preventDefault(); e.returnValue = T.leave; return T.leave; } });
+
+    // search over all settings
+    var q = document.getElementById('llc-q'), hits = document.getElementById('llc-hits'), timer = 0;
+    // a row of two switches (.row.checkbox) holds two settings, its columns count separately
+    var UNIT = '.checkbox, .radio, .form-group, .input-group, .row.checkbox > [class*="col-"]';
+    function norm(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
+    function search() {
+      var t = norm(q.value.trim());
+      var all = form.querySelectorAll('.tab-content .llc-miss, .tab-content .llc-hit');
+      all.forEach(function (el) { el.classList.remove('llc-miss', 'llc-hit'); });
+      document.getElementById('llc').classList.toggle('llc-searching', !!t);
+      if (!t) { hits.hidden = true; return; }
+      var count = 0;
+      // the smallest pieces that hold one setting
+      var units = Array.prototype.filter.call(form.querySelectorAll('.tab-content ' + UNIT.split(', ').join(', .tab-content ')), function (el) {
+        return !el.querySelector(UNIT);
+      });
+      units.forEach(function (el) {
+        var text = el.textContent;
+        el.querySelectorAll('input, select, textarea').forEach(function (i) { text += ' ' + (i.placeholder || '') + ' ' + (i.name || ''); });
+        if (norm(text).indexOf(t) >= 0) { el.classList.add('llc-hit'); count++; } else { el.classList.add('llc-miss'); }
+      });
+      // containers left without a match go too, a matching section heading keeps its whole section
+      form.querySelectorAll('.tab-content fieldset, .tab-content .form-group, .tab-content .row, .tab-content [class*="col-"], .tab-content .help-block, .tab-content .tab-pane').forEach(function (box) {
+        if (box.classList.contains('llc-hit')) { return; }
+        var legend = box.querySelector(':scope > legend');
+        if (legend && norm(legend.textContent).indexOf(t) >= 0) {
+          box.querySelectorAll('.llc-miss').forEach(function (m) { m.classList.remove('llc-miss'); }); return;
+        }
+        if (box.matches('.help-block')) { box.classList.add('llc-miss'); return; }
+        if (!box.querySelector('.llc-hit')) { box.classList.add('llc-miss'); }
+      });
+      hits.hidden = false;
+      hits.textContent = count ? llNgettext(T.hits, count) : T.none;
+    }
+    q.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(search, 150); });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); } if (e.key === 'Escape') { q.value = ''; search(); } });
+
+    window.llcAfterReady = function () {
+      llcModernize(form);
+      var active = ul && ul.querySelector('li.active');
+      if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
+      // help texts become (i) icons with a popover, next to their label or button, else next to the section heading
+      form.querySelectorAll('.help-block:not(.help-keep)').forEach(function (help) {
+        var anchor = null, prev = help.previousElementSibling;
+        while (prev && !anchor) { if (prev.matches('label, button, .control-label') && !prev.matches('.input-group-text')) { anchor = prev; } prev = prev.previousElementSibling; }
+        if (!anchor) {
+          var p = help.parentElement;
+          while (p && p !== form && !anchor) { var lg = p.querySelector(':scope > legend'); if (lg) { anchor = lg; } p = p.parentElement; }
+        }
+        if (!anchor) { return; }
+        var icon = anchor.querySelector(':scope > .help-icon');
+        if (!icon) {
+          icon = document.createElement('a');
+          icon.tabIndex = 0; icon.setAttribute('role', 'button'); icon.className = 'help-icon';
+          icon.innerHTML = '<i class="fa fa-info-circle" aria-hidden="true"></i>';
+          icon.setAttribute('aria-label', help.textContent.trim().slice(0, 120));
+          icon.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });
+          anchor.appendChild(icon);
+          icon._llcHelp = [];
+        }
+        icon._llcHelp.push(help.innerHTML);
+        help.hidden = true;
+      });
+      form.querySelectorAll('.help-icon').forEach(function (icon) {
+        if (!icon._llcHelp || bootstrap.Popover.getInstance(icon)) { return; }
+        new bootstrap.Popover(icon, {content: icon._llcHelp.join('<br><br>'), html: true, trigger: 'focus', placement: 'auto',
+                                     customClass: 'shadow-sm', container: 'body'});
+      });
+      // rows the page scripts add later (new providers, secret toggles...) get the same treatment
+      new MutationObserver(function (list) {
+        list.forEach(function (m) { m.addedNodes.forEach(function (n) { if (n.nodeType === 1 && n.closest('#llc')) { llcModernize(n.parentElement || n); } }); });
+      }).observe(form, {childList: true, subtree: true});
+    };
+  })();
+</script>
+<script src="js/lazylibrarian-bs.js"></script>
+${bs.javascriptIncludes()}
+<script>
+  // after the bookstrap page scripts have set the page up
+  $(function () { if (window.llcAfterReady) { window.llcAfterReady(); } });
+</script>
+</%def>

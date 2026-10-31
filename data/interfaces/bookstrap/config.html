@@ -938,6 +938,9 @@
                     <input type="text" id="comic_genres" name="comic_genres" value="${CONFIG['COMIC_GENRES']}" class="form-control" placeholder="graphic novel, comics, manga">
                     <span class="help-block">${_('eBooks with these genres also search comic provider categories (clear to disable)')}</span>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Book Filters')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['NO_FUTURE'] else '' %>
                     <label for="no_future">
@@ -974,6 +977,9 @@
                       <input type="checkbox" id="imp_ignore" name="imp_ignore" value="1" ${checked} />
                       ${_('Add ignored books to database (marked Ignored)')}</label>
                   </div>
+                </fieldset>
+                <fieldset>
+                  <legend>${_('Imports and Downloads')}</legend>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['DELETE_CSV'] else '' %>
                     <label for="delete_csv">

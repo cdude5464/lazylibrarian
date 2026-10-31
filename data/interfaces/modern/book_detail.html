@@ -52,6 +52,16 @@
         hue = (hue * 31 + ord(ch)) % 360
     source_names = {src['book_key']: name for name, src in lazylibrarian.INFOSOURCES.items()}
     audio_on = CONFIG.get_int('AUDIO_TAB') > 0
+    # book_detail?library=AudioBook (audiobook cards link here) puts the audiobook first
+    is_audio = context.get('library') == 'AudioBook'
+    list_page = 'audio' if is_audio else 'books'
+    kinds = ['AudioBook', 'eBook'] if is_audio else (['eBook', 'AudioBook'] if audio_on else ['eBook'])
+    kstat = {'eBook': 'Status', 'AudioBook': 'AudioStatus'}
+    kicon = {'eBook': 'fa-book', 'AudioBook': 'fa-headphones'}
+    klabel = {'eBook': _('eBook'), 'AudioBook': _('AudioBook')}
+    kopen = {'eBook': _('Open eBook'), 'AudioBook': _('Open AudioBook')}
+    ksearch = {'eBook': _('Search eBook'), 'AudioBook': _('Search AudioBook')}
+    karia = {'eBook': _('eBook status:'), 'AudioBook': _('AudioBook status:')}
     genres = [g.strip() for g in (book.get('BookGenre') or '').split(',') if g.strip() and g.strip() != 'Unknown']
     try:
         rating = round(float(book.get('BookRate') or 0), 1)

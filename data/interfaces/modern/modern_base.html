@@ -4,6 +4,8 @@
     from lazylibrarian.scheduling import show_running
     root = CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else ''
     current = (self.attr.page_id if hasattr(self.attr, 'page_id') else '')
+    if current == 'books' and context.get('library') == 'AudioBook':
+        current = 'audio'
     nav = []
     if CONFIG['HOMEPAGE'] != 'Authors':
         nav.append(('authors', 'authors', 'fa-users', _('Authors')))

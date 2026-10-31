@@ -4910,7 +4910,8 @@ class WebInterface:
         amazon_link = f'https://www.amazon.com/dp/{book["ASIN"]}' if book.get('ASIN') else ''
 
         return serve_template(templatename="book_detail.html", title=book['BookName'], book=book,
-                              book_links=book_links, amazon_link=amazon_link, book_series=book_series)
+                              book_links=book_links, amazon_link=amazon_link, book_series=book_series,
+                              library='AudioBook' if library == 'AudioBook' else 'eBook')
 
     @cherrypy.expose
     @require_auth()

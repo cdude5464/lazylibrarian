@@ -261,7 +261,7 @@ def search_language_picker(search_lang: str, source: str, preflang: str = '',
 
     known = {lang['value'].lower() for lang in languages} | {'any'}
     other = []
-    for item, key in zip(wanted, keys):
+    for item, key in zip(wanted, keys, strict=False):
         if key not in known:
             known.add(key)
             other.append({'value': item, 'label': item, 'selected': True, 'position': position[key],

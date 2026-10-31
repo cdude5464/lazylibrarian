@@ -1,6 +1,7 @@
 <%
     import lazylibrarian
     from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.common import docker
     from lazylibrarian.scheduling import show_running
     root = CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else ''
     current = (self.attr.page_id if hasattr(self.attr, 'page_id') else '')
@@ -25,6 +26,75 @@
         nav.append(('history', 'history', 'fa-history', _('History')))
     if perm & lazylibrarian.perm_logs:
         nav.append(('logs', 'logs', 'fa-file-alt', _('Logs')))
+
+    # notices shown in the corner card stack, the same ones bookstrap shows as popups.
+    # actions: (style, label, kind, arg) with kind 'link' (arg = url), 'cookie' (arg = name|value|days),
+    # 'seen' (what's new dismissed) or 'telemetry' (turn it on)
+    notices = []
+    if perm & lazylibrarian.perm_config:
+        if not CONFIG['TELEMETRY_ENABLE']:
+            notices.append(dict(id='telemetry', icon='fa-chart-bar', title=_('LazyLibrarian Telemetry'), cookie='ignoreTelemetry',
+                text=_('LazyLibrarian has the ability to send basic information about the installation, how it is configured, '
+                       'and how it is used to a server. This helps the developers figure out where it is worth improving, '
+                       'and which parts nobody uses. All telemetry information is 100% anonymized.'),
+                actions=[('primary', _('Turn on'), 'telemetry', ''), ('secondary', _('Maybe Later'), 'cookie', 'ignoreTelemetry|true|14')]))
+        elif CONFIG['INSTALL_TYPE'] in ['git', 'source']:
+            behind = CONFIG.get_int('COMMITS_BEHIND')
+            upd = ''
+            if not CONFIG['CURRENT_VERSION']:
+                upd = _('You are running an unknown version of lazylibrarian')
+            elif CONFIG['INSTALL_TYPE'] == 'source' and CONFIG['CURRENT_VERSION'] == 'No Version File':
+                upd = _('You are running an unknown version via source install')
+            elif CONFIG['CURRENT_VERSION'] != CONFIG['LATEST_VERSION']:
+                if CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
+                    upd = _('Unable to get the latest version from git')
+                elif behind < 0:
+                    upd = _('Running a local updated version. Push changes to git or rollback to Master release')
+                elif behind > 0:
+                    upd = ngettext('New version available. You are one commit behind.',
+                                   'New version available. You are %(count)d commits behind.', behind) % {'count': behind}
+            if upd:
+                manual = '** MANUAL **' in (lazylibrarian.COMMIT_LIST or '')
+                acts = []
+                if behind > 0 and not manual and not docker():
+                    acts.append(('primary', _('Update'), 'link', 'update'))
+                acts.append(('secondary', _('Ignore'), 'cookie', 'ignoreUpdate|true|1'))
+                notices.append(dict(id='update', icon='fa-sync', title=_('LazyLibrarian Update'), cookie='ignoreUpdate', text=upd,
+                                    strong=_('Manual update is required') if (behind > 0 and manual) else '', actions=acts))
+        if lazylibrarian.WHATS_NEW and current != 'whatsnew':
+            news = lazylibrarian.WHATS_NEW
+            notices.append(dict(id='whatsnew', icon='fa-bell', title=_('LazyLibrarian updated'), cookie='',
+                text=ngettext('One change since you last looked:', '%(count)d changes since you last looked:', len(news)) % {'count': len(news)},
+                items=[n['html'] for n in news[:5]], more=max(0, len(news) - 5),
+                actions=[('primary', _("What's new"), 'link', 'whats_new'), ('secondary', _('Dismiss'), 'seen', '')]))
+    # invite the user to help translate if their language has no translation or is only partly translated
+    try:
+        import cherrypy
+        from lazylibrarian import i18n
+        user_lang = cherrypy.request.cookie.get('ll_uilang')
+        invite_lang, invite_percent = i18n.translation_invite(
+            user_lang.value if user_lang else '', CONFIG.get_str('UI_LANGUAGE'),
+            cherrypy.request.headers.get('Accept-Language', ''))
+    except Exception:
+        invite_lang, invite_percent = '', 0
+    if invite_lang:
+        invite_name = i18n.language_name(invite_lang)
+        if invite_lang in i18n.available_languages():
+            invite_url = f'https://hosted.weblate.org/projects/lazylibrarian/webui/{invite_lang}/'
+        else:
+            invite_url = 'https://hosted.weblate.org/engage/lazylibrarian/'
+        if invite_percent:
+            invite_text = _('LazyLibrarian is only %(percent)s%% translated into %(language)s. '
+                            'You can help finish the translation on Hosted Weblate, no coding needed.') % {
+                            'percent': invite_percent, 'language': invite_name}
+        else:
+            invite_text = _('LazyLibrarian is not available in %(language)s yet. '
+                            'You can help translate it on Hosted Weblate, no coding needed.') % {'language': invite_name}
+        # the answer is remembered for this language, 30 days after following the link and a year for "no thanks"
+        notices.append(dict(id='translate', icon='fa-language', title=_('Translate LazyLibrarian'), cookie='ll_translate_prompt=' + invite_lang,
+                            text=invite_text, percent=invite_percent, lang=invite_name,
+                            actions=[('primary', _('Help translate'), 'link', invite_url + '|ll_translate_prompt|' + invite_lang + '|30'),
+                                     ('secondary', _('No thanks'), 'cookie', 'll_translate_prompt|' + invite_lang + '|365')]))
 %>
 <!doctype html>
 <html lang="${ui_lang}" data-bs-theme="light">
@@ -83,6 +153,42 @@
     .btn-ll { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
               --bs-btn-hover-bg: var(--ll-accent); --bs-btn-hover-border-color: var(--ll-accent); --bs-btn-hover-color: var(--ll-accent-contrast); }
     [x-cloak] { display: none !important; }
+    /* notices: a card stack in the bottom corner (full width on phones) */
+    .ll-notices { position: fixed; right: 1rem; bottom: 1rem; z-index: 1045; width: min(380px, calc(100vw - 2rem)); display: flex; flex-direction: column; gap: .6rem;
+                  max-height: calc(100vh - 6rem); overflow-y: auto; padding: 4px; margin: -4px; }
+    @media (max-width: 575.98px) { .ll-notices { right: .75rem; left: .75rem; width: auto; bottom: calc(.75rem + env(safe-area-inset-bottom, 0px)); } }
+    .ll-notice { position: relative; background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 14px;
+                 box-shadow: 0 2px 6px rgba(0,0,0,.08), 0 18px 40px -16px rgba(0,0,0,.45); padding: .9rem 1rem .9rem .9rem;
+                 display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 0 .8rem; animation: ll-notice-in .35s cubic-bezier(.2,.8,.2,1) both; }
+    .ll-notice.ll-out { animation: ll-notice-out .25s ease both; }
+    @keyframes ll-notice-in { from { opacity: 0; transform: translateY(14px) scale(.98); } }
+    @keyframes ll-notice-out { to { opacity: 0; transform: translateX(24px); } }
+    .ll-notice-ic { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+                    background: color-mix(in srgb, var(--ll-accent) 14%, transparent); color: var(--ll-accent); font-size: 1rem; }
+    .ll-notice h2 { font-size: .92rem; font-weight: 650; margin: .1rem 1.6rem .3rem 0; line-height: 1.3; }
+    .ll-notice-text { font-size: .83rem; line-height: 1.5; color: var(--bs-secondary-color); overflow-wrap: anywhere; }
+    .ll-notice-text strong { color: var(--bs-body-color); }
+    .ll-notice ul { margin: .4rem 0 0; padding: 0; list-style: none; font-size: .82rem; }
+    .ll-notice li { padding: .25rem 0 .25rem .9rem; position: relative; border-top: 1px solid var(--bs-border-color-translucent); line-height: 1.35; }
+    .ll-notice li::before { content: ""; position: absolute; left: 0; top: .72rem; width: 5px; height: 5px; border-radius: 50%; background: var(--ll-accent); }
+    .ll-notice-more { font-size: .76rem; color: var(--bs-secondary-color); padding-left: .9rem; }
+    .ll-notice-prog { display: flex; align-items: center; gap: .6rem; margin-top: .55rem; font-size: .74rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+    .ll-notice-prog .bar { flex: 1; height: 6px; border-radius: 6px; background: var(--bs-secondary-bg); overflow: hidden; }
+    .ll-notice-prog .bar i { display: block; height: 100%; background: var(--ll-accent); }
+    .ll-notice-acts { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .75rem; }
+    .ll-notice-acts .btn { font-size: .8rem; padding: .25rem .8rem; }
+    .ll-notice-x { position: absolute; top: .55rem; right: .55rem; width: 28px; height: 28px; border: 0; border-radius: 50%; background: transparent;
+                   color: var(--bs-secondary-color); display: flex; align-items: center; justify-content: center; }
+    .ll-notice-x:hover { background: var(--bs-secondary-bg); color: var(--bs-body-color); }
+    .ll-notice-out { font-family: var(--bs-font-monospace); font-size: .75rem; white-space: pre-wrap; max-height: 12rem; overflow: auto;
+                     background: var(--bs-tertiary-bg); border-radius: 8px; padding: .5rem .6rem; margin-top: .5rem; }
+    /* more than one notice: only the first is shown, the rest wait behind it like a deck of cards */
+    .ll-notices.ll-stack > .ll-notice ~ .ll-notice { display: none; }
+    .ll-notices.ll-stack > .ll-notice:first-child { margin-bottom: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.08), 0 18px 40px -16px rgba(0,0,0,.45),
+        0 7px 0 -3px var(--bs-body-bg), 0 7px 0 -2px var(--bs-border-color-translucent), 0 14px 0 -6px var(--bs-body-bg), 0 14px 0 -5px var(--bs-border-color-translucent); }
+    .ll-notices-more { align-self: flex-end; order: 99; font-size: .76rem; padding: .2rem .8rem; background: var(--bs-body-bg);
+                       box-shadow: 0 6px 18px -8px rgba(0,0,0,.4); }
+    @media (prefers-reduced-motion: reduce) { .ll-notice, .ll-notice.ll-out { animation: none; } }
     .ll-theme-btn { background: none; border: 0; }
     .ll-theme-btn .ll-t { display: none; }
     [data-ll-theme="auto"] .ll-theme-btn .ll-t-auto, [data-ll-theme="light"] .ll-theme-btn .ll-t-light,
@@ -163,6 +269,49 @@
     ${next.body()}
   </main>
 
+  %if notices:
+  <section class="ll-notices" aria-label="${_('Notifications') | h}" aria-live="polite">
+    %for n in notices:
+    <article class="ll-notice" id="ll-notice-${n['id']}" data-id="${n['id']}" data-cookie="${n['cookie'] | h}" hidden>
+      <span class="ll-notice-ic"><i class="fa ${n['icon']}" aria-hidden="true"></i></span>
+      <div>
+        <h2>${n['title'] | h}</h2>
+        <div class="ll-notice-text">${n['text'] | h}
+          %if n.get('strong'):
+          <strong class="d-block mt-1">${n['strong'] | h}</strong>
+          %endif
+        </div>
+        %if n.get('items'):
+        <ul>
+          %for item in n['items']:
+          <li>${item}</li>
+          %endfor
+        </ul>
+          %if n.get('more'):
+          <div class="ll-notice-more">${_('and %(count)s more') % {'count': n['more']}}</div>
+          %endif
+        %endif
+        %if n['id'] == 'translate' and n.get('percent'):
+        <div class="ll-notice-prog"><span>${n['lang'] | h}</span><span class="bar"><i style="width:${n['percent']}%"></i></span><span>${n['percent']}%</span></div>
+        %endif
+        <div class="ll-notice-out" hidden></div>
+        <div class="ll-notice-acts">
+          %for style, label, kind, arg in n['actions']:
+            %if kind == 'link':
+          <a class="btn btn-sm rounded-pill ${'btn-ll' if style == 'primary' else 'btn-outline-secondary'}" href="${arg.split('|')[0] | h}"
+             ${'target="_blank" rel="noopener"' if arg.startswith('http') else ''} data-act="link" data-arg="${arg | h}">${label | h}</a>
+            %else:
+          <button type="button" class="btn btn-sm rounded-pill ${'btn-ll' if style == 'primary' else 'btn-outline-secondary'}" data-act="${kind}" data-arg="${arg | h}">${label | h}</button>
+            %endif
+          %endfor
+        </div>
+      </div>
+      <button type="button" class="ll-notice-x" data-act="close" aria-label="${_('Close') | h}" title="${_('Close') | h}"><i class="fa fa-times" aria-hidden="true"></i></button>
+    </article>
+    %endfor
+  </section>
+  %endif
+
   %if perm > 0 and CONFIG['USER_ACCOUNTS'] and lazylibrarian.SHOWLOGOUT == 1:
   <div class="modal fade" id="ll-logout" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content">
@@ -180,6 +329,94 @@
   ${next.javascriptIncludes()}
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"
           integrity="sha384-l8f0VcPi/M1iHPv8egOnY/15TDwqgbOR1anMIJWvU6nLRgZVLTLSaNqi/TOoT5Fh" crossorigin="anonymous"></script>
+  %if notices:
+  <script>
+    (function () {
+      var VERSION = ${js(CONFIG['CURRENT_VERSION'] or '')}, T = {failed: ${_js('Something went wrong, try again')}, close: ${_js('Close')},
+          more: ${_jsn('%(count)s more notification', '%(count)s more notifications')}};
+      var box = document.querySelector('.ll-notices'), moreBtn = null;
+      // keep the deck and its "n more" button in step with the notices left
+      function restack() {
+        var n = box ? box.querySelectorAll('.ll-notice:not(.ll-out)').length : 0;
+        if (!n) { if (box) { box.remove(); } box = null; return; }
+        box.querySelectorAll('.ll-notice').forEach(function (el) { el.style.animationDelay = '0s'; });
+        if (moreBtn) {
+          if (n > 1) { moreBtn.textContent = '+ ' + llNgettext(T.more, n - 1); }
+          else { moreBtn.remove(); moreBtn = null; box.classList.remove('ll-stack'); }
+        }
+      }
+      function getCookie(name) {
+        var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()[\]\\/+^]/g, '\\$&') + '=([^;]*)'));
+        return m ? decodeURIComponent(m[1]) : null;
+      }
+      // same cookies as the bookstrap popups, so an answer counts for both interfaces
+      function setCookie(name, value, days) {
+        var d = new Date(); d.setTime(d.getTime() + days * 864e5);
+        document.cookie = name + '=' + value + '; expires=' + d.toUTCString() + '; path=/';
+      }
+      function hidden(el) {
+        var c = el.dataset.cookie;
+        if (c) {
+          var kv = c.split('=');
+          var v = getCookie(kv[0]);
+          if (v !== null && (kv.length < 2 || v === kv[1])) { return true; }
+        }
+        try { return sessionStorage.getItem('ll-notice-' + el.dataset.id) === '1'; } catch (e) { return false; }
+      }
+      function dismiss(el, forSession) {
+        if (forSession) { try { sessionStorage.setItem('ll-notice-' + el.dataset.id, '1'); } catch (e) {} }
+        el.classList.add('ll-out');
+        setTimeout(function () { el.remove(); restack(); }, 260);
+      }
+      function seen(el) {
+        var body = new URLSearchParams({version: VERSION});
+        fetch('whats_new_seen', {method: 'POST', body: body, credentials: 'same-origin'}).then(function () {
+          document.querySelectorAll('a[href="whats_new"] .badge').forEach(function (b) { b.remove(); });
+        });
+        dismiss(el, false);
+      }
+      document.querySelectorAll('.ll-notice').forEach(function (el, i) {
+        if (hidden(el)) { el.remove(); return; }
+        el.style.animationDelay = (0.4 + i * 0.12) + 's';
+        el.hidden = false;
+      });
+      var left = box.querySelectorAll('.ll-notice').length;
+      if (!left) { box.remove(); return; }
+      if (left > 1) {
+        box.classList.add('ll-stack');
+        moreBtn = document.createElement('button');
+        moreBtn.type = 'button'; moreBtn.className = 'btn btn-sm btn-outline-secondary rounded-pill ll-notices-more';
+        moreBtn.addEventListener('click', function () { box.classList.remove('ll-stack'); moreBtn.remove(); moreBtn = null; });
+        box.appendChild(moreBtn);
+        moreBtn.textContent = '+ ' + llNgettext(T.more, left - 1);
+      }
+      box.addEventListener('click', function (e) {
+        var b = e.target.closest('[data-act]'); if (!b) { return; }
+        var el = b.closest('.ll-notice'), act = b.dataset.act, arg = (b.dataset.arg || '').split('|');
+        if (act === 'close') { if (el.dataset.id === 'whatsnew') { seen(el); } else { dismiss(el, true); } return; }
+        if (act === 'seen') { seen(el); return; }
+        if (act === 'cookie') { setCookie(arg[0], arg[1], +arg[2]); dismiss(el, false); return; }
+        if (act === 'link') {
+          if (el.dataset.id === 'update') { setCookie('ignoreUpdate', 'true', 0.01); }  // no popup while updating
+          if (arg.length >= 4) { setCookie(arg[1], arg[2], +arg[3]); dismiss(el, false); }
+          return;  // the link itself does the rest
+        }
+        if (act === 'telemetry') {
+          e.preventDefault();
+          b.disabled = true;
+          var out = el.querySelector('.ll-notice-out');
+          fetch('enable_telemetry', {credentials: 'same-origin'}).then(function (r) { return r.text(); }).then(function (t) {
+            var d = document.createElement('div'); d.innerHTML = String(t).replace(/<br\s*\/?>/gi, '\n');
+            out.textContent = (d.textContent || '').trim(); out.hidden = false;
+            el.querySelector('.ll-notice-acts').innerHTML = '';
+            var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'btn btn-sm rounded-pill btn-ll'; ok.textContent = T.close;
+            ok.dataset.act = 'close'; el.querySelector('.ll-notice-acts').appendChild(ok);
+          }).catch(function () { out.textContent = T.failed; out.hidden = false; b.disabled = false; });
+        }
+      });
+    })();
+  </script>
+  %endif
   <script>
     setInterval(function () {
       fetch('show_running', {credentials: 'same-origin'}).then(function (r) { return r.text(); }).then(function (t) {

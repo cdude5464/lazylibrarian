@@ -1,0 +1,288 @@
+<%inherit file="modern_base.html" />
+<%namespace name="bk" file="books.html" />
+<%!
+    import re
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'series'
+%>
+<%def name="headIncludes()">
+${bk.headIncludes()}
+<style>
+  .lsd-head { display: flex; gap: 1.5rem; align-items: flex-end; margin-bottom: 1.5rem; }
+  .lsd-stack { position: relative; width: 150px; height: 150px; flex: none; }
+  .lsd-stack > div { position: absolute; bottom: 0; width: 92px; aspect-ratio: 2 / 3; border-radius: 6px; overflow: hidden; background: var(--bs-secondary-bg);
+                     box-shadow: 0 1px 2px rgba(0,0,0,.1), 0 10px 22px -10px rgba(0,0,0,.5); }
+  .lsd-stack > div:nth-child(1) { left: 0; transform: rotate(-7deg); z-index: 1; }
+  .lsd-stack > div:nth-child(2) { left: 28px; transform: rotate(-1deg); z-index: 2; }
+  .lsd-stack > div:nth-child(3) { left: 56px; transform: rotate(5deg); z-index: 3; }
+  .lsd-stack img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  @media (max-width: 575.98px) { .lsd-head { gap: 1rem; } .lsd-stack { width: 96px; height: 100px; } .lsd-stack > div { width: 60px; }
+    .lsd-stack > div:nth-child(2) { left: 18px; } .lsd-stack > div:nth-child(3) { left: 36px; } }
+  .lsd h1 { font-size: clamp(1.4rem, 1rem + 2vw, 2.2rem); font-weight: 650; letter-spacing: -.015em; line-height: 1.15; margin: 0 0 .25rem; text-wrap: balance; }
+  .lsd-by { font-size: 1rem; } .lsd-by a { color: inherit; text-underline-offset: 3px; }
+  .lsd-prog { display: flex; align-items: center; gap: .75rem; margin: .7rem 0 0; max-width: 380px; }
+  .lsd-prog .bar { flex: 1; height: 6px; border-radius: 6px; background: var(--bs-secondary-bg); overflow: hidden; }
+  .lsd-prog .bar i { display: block; height: 100%; background: var(--ll-accent); }
+  .lsd-prog .txt { font-size: .82rem; font-variant-numeric: tabular-nums; color: var(--bs-secondary-color); white-space: nowrap; }
+  .lsd-num { position: absolute; left: 6px; top: 6px; z-index: 2; background: rgba(0,0,0,.7); color: #fff; font-size: .7rem; font-weight: 700;
+             border-radius: 999px; padding: 2px 8px; font-variant-numeric: tabular-nums; }
+  .lsd-card .llb-gen { padding-top: 30px; }
+  @media (max-width: 480px) { .lsd-card .llb-gen { padding-top: 24px; } }
+  .lsd-lnum { display: none; }
+  .llb-v-list .lsd-num { display: none !important; }
+  .llb-v-list .lsd-lnum { display: block; grid-area: num; color: var(--bs-secondary-color); font-size: .75rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .llb-v-list .llb-card.lsd-card { grid-template-columns: 2.4em 28px minmax(0, 1fr) auto; grid-template-areas: "num cover title status" "num cover author status"; }
+  @media (max-width: 480px) { .lsd-num { font-size: .6rem; padding: 1px 6px; left: 4px; top: 4px; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    ser = series or {}
+    show_ignored = str(ignored) == 'True'
+    is_multi = str(multi) == 'True'
+    audio_on = CONFIG.get_int('AUDIO_TAB') > 0
+    ebook_on = CONFIG.get_int('EBOOK_TAB') > 0
+    rows = []
+    for m in (members or []):
+        name = m.get('BookName') or ''
+        sub = ''
+        if '<br>' in name:
+            name, sub = name.split('<br>', 1)
+            sub = re.sub(r'<[^>]+>', '', sub)
+        img = m.get('BookImg') or ''
+        rows.append({'id': m.get('BookID'), 'title': name, 'sub': sub, 'num': str(m.get('SeriesNum') or ''),
+                     'cover': '' if (not img or 'nocover' in img.lower() or 'nophoto' in img.lower()) else img,
+                     'ebook': m.get('Status') or '', 'audio': m.get('AudioStatus') or '',
+                     'author': m.get('AuthorName') or '', 'authorId': m.get('AuthorID') or '',
+                     'flag': 1 if m.get('Flag') else 0})
+    have = len([r for r in rows if r['ebook'] in ('Open', 'Have') or (audio_on and r['audio'] in ('Open', 'Have'))])
+    total = len(rows)
+    percent = int(have * 100.0 / total) if total else 0
+    stack = [r['cover'] for r in sorted(rows, key=lambda r: r['num'] or 'zz') if r['cover']][:3]
+    sid = str(ser.get('SeriesID') or '')
+%>
+<div x-data="llSeriesDetail" x-init="start()" class="lsd pt-2">
+  <a href="series" class="btn btn-sm btn-link text-body-secondary px-0 mb-2" onclick="if (document.referrer.indexOf(location.host) >= 0) { history.back(); return false; }">
+    <i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}
+  </a>
+
+  <div class="lsd-head">
+    %if stack:
+    <div class="lsd-stack" aria-hidden="true">
+      %for c in stack:
+      <div><img src="${c | h}" alt=""></div>
+      %endfor
+    </div>
+    %endif
+    <div class="min-w-0">
+      <div class="small text-body-secondary text-uppercase fw-semibold" style="letter-spacing:.08em"><i class="fa fa-clone me-1" aria-hidden="true"></i>${_('Series')}</div>
+      <h1>${ser.get('SeriesName') or '' | h}</h1>
+      %if is_multi:
+      <div class="lsd-by text-body-secondary">${_('Multiple authors')}</div>
+      %elif ser.get('AuthorName'):
+      <div class="lsd-by">${_('by')} <a href="author_page?authorid=${str(ser.get('AuthorID') or '') | u}">${ser.get('AuthorName') | h}</a></div>
+      %endif
+      <div class="lsd-prog">
+        <div class="bar"><i style="width:${percent}%"></i></div>
+        <span class="txt">${_('%(have)s of %(total)s') % {'have': have, 'total': total}}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    %if show_ignored:
+    <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">${_('Ignored')}</span>
+    %endif
+    <span class="text-body-secondary small" x-text="llNgettext(T.books, books.length)"></span>
+    <span class="flex-grow-1"></span>
+    <div class="btn-group btn-group-sm llb-views" role="group" aria-label="${_('View') | h}">
+      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
+              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
+      <button type="button" class="btn" :class="view === 'compact' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'compact'"
+              @click="setView('compact')" title="${_('Compact') | h}" aria-label="${_('Compact') | h}"><i class="fa fa-th" aria-hidden="true"></i></button>
+      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
+              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
+    </div>
+    %if audio_on and ebook_on:
+    <div class="btn-group btn-group-sm" role="group" aria-label="${_('Library') | h}">
+      <button type="button" class="btn rounded-start-pill" :class="lib === 'eBook' ? 'btn-secondary' : 'btn-outline-secondary'" @click="lib = 'eBook'"
+              title="${_('eBook') | h}" aria-label="${_('eBook') | h}"><i class="fa fa-book" aria-hidden="true"></i></button>
+      <button type="button" class="btn rounded-end-pill" :class="lib === 'AudioBook' ? 'btn-secondary' : 'btn-outline-secondary'" @click="lib = 'AudioBook'"
+              title="${_('AudioBook') | h}" aria-label="${_('AudioBook') | h}"><i class="fa fa-headphones" aria-hidden="true"></i></button>
+    </div>
+    %endif
+    %if perm&lazylibrarian.perm_status:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
+            x-text="selecting ? T.done : T.select"></button>
+    %endif
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if not is_multi and ser.get('AuthorID'):
+        <li><a class="dropdown-item" href="author_page?authorid=${str(ser.get('AuthorID')) | u}"><i class="fa fa-user fa-fw me-2" aria-hidden="true"></i>${_('Author')}</a></li>
+        <li><a class="dropdown-item" href="series?authorid=${str(ser.get('AuthorID')) | u}"><i class="fa fa-clone fa-fw me-2" aria-hidden="true"></i>${_('All series by this author')}</a></li>
+        %endif
+        %if show_ignored:
+        <li><a class="dropdown-item" href="series_members?seriesid=${sid | u}"><i class="fa fa-book fa-fw me-2" aria-hidden="true"></i>${_('Show active books')}</a></li>
+        %else:
+        <li><a class="dropdown-item" href="series_members?seriesid=${sid | u}&ignored=True"><i class="fa fa-ban fa-fw me-2" aria-hidden="true"></i>${_('Show ignored books')}</a></li>
+        %endif
+        %if perm&lazylibrarian.perm_force or perm&lazylibrarian.perm_edit:
+        <li><hr class="dropdown-divider"></li>
+        %endif
+        %if perm&lazylibrarian.perm_force:
+        <li><a class="dropdown-item" href="refresh_series?seriesid=${sid | u}"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Refresh Series')}</a></li>
+        %endif
+        %if perm&lazylibrarian.perm_edit:
+        <li><a class="dropdown-item" href="edit_series?seriesid=${sid | u}"><i class="fa fa-pencil-alt fa-fw me-2" aria-hidden="true"></i>${_('Edit')}</a></li>
+        %endif
+      </ul>
+    </div>
+  </div>
+
+  <div class="llb-grid" :class="'llb-v-' + view">
+    <template x-for="b in books" :key="b.id">
+      <article class="llb-card lsd-card d-flex flex-column gap-1" :class="sel[b.id] && 'llb-sel'" tabindex="0"
+               @click="open(b, $event)" @keydown.enter.prevent="open(b, $event)" @keydown.space.prevent="open(b, $event)">
+        <span class="lsd-lnum" x-text="b.num ? '#' + b.num : ''"></span>
+        <div class="llb-cover">
+          <span class="lsd-num" x-show="b.num" x-text="'#' + b.num"></span>
+          <template x-if="b.cover"><img loading="lazy" :src="b.cover" alt="" @error="b.cover = ''"></template>
+          <template x-if="!b.cover">
+            <div class="llb-gen" :style="'background:hsl(' + b.hue + ' 38% 32%)'">
+              <span class="llb-ca" x-text="b.author"></span><span class="llb-ct" x-text="b.title"></span>
+            </div>
+          </template>
+          <span class="llb-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        </div>
+        <span class="llb-title" :title="b.title" x-text="b.title"></span>
+        <span class="llb-sub llb-author text-body-secondary" x-text="${'b.author' if is_multi else 'b.sub'}"></span>
+        <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
+          <span class="badge rounded-pill llb-pill" :class="pillClass(cur(b))" x-text="llStatus(cur(b))"></span>
+          <template x-if="cur(b) === 'Open'">
+            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib">${_('Open')}</a>
+          </template>
+          %if perm&lazylibrarian.perm_status:
+          <template x-if="['Open', 'Wanted', 'Snatched', 'Matched', 'Have'].indexOf(cur(b)) < 0">
+            <button type="button" class="btn btn-link llb-act" data-do="want">+ ${_('Want')}</button>
+          </template>
+          %endif
+          %if perm&lazylibrarian.perm_force:
+          <template x-if="cur(b) === 'Wanted'">
+            <button type="button" class="btn btn-link llb-act" data-do="search">${_('Search now')}</button>
+          </template>
+          %endif
+        </div>
+      </article>
+    </template>
+    <div class="text-center text-body-secondary py-5" style="grid-column: 1 / -1" x-show="!books.length" x-cloak>${_('No books found')}</div>
+  </div>
+  <div class="pb-5"></div>
+
+  %if perm&lazylibrarian.perm_status:
+  <div class="llb-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llb-bar-hidden'" role="region" aria-label="${_('Selected books') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selectAll()">${_('All')}</button>
+    <template x-for="a in ['Wanted', 'Have', 'Skipped', 'Ignored']" :key="a">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk(a)" x-text="llStatus(a)"></button>
+    </template>
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+  %endif
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+<script>window.LL_MEMBERS = ${js(rows)}; window.LL_SERIES = ${js({'id': sid, 'author': str(ser.get('AuthorID') or '')})};</script>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, pickFirst: ${_js('Select at least one book first')},
+    failed: ${_js('Something went wrong, try again')}, searching: ${_js('Searching...')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')},
+    books: ${_jsn('%(count)s book', '%(count)s books')}
+  };
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
+  function numKey(n) { var f = parseFloat(n); return isNaN(f) ? Infinity : f; }
+
+  Alpine.data('llSeriesDetail', function () {
+    var rows = (window.LL_MEMBERS || []).map(function (r) { r.hue = hue(r.title + r.author); return r; });
+    rows.sort(function (a, b) { return (numKey(a.num) - numKey(b.num)) || a.title.localeCompare(b.title); });
+    return {
+      T: T, books: rows, view: 'grid', lib: 'eBook', selecting: false, sel: {}, toastText: '',
+      get selCount() { return Object.keys(this.sel).length; },
+      start: function () {
+        try { var v = localStorage.getItem('llb-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
+        try { var l = localStorage.getItem('lsd-lib'); if (l === 'eBook' || l === 'AudioBook') { this.lib = l; } } catch (e) {}
+        %if not CONFIG.get_int('EBOOK_TAB'):
+        this.lib = 'AudioBook';
+        %elif not CONFIG.get_int('AUDIO_TAB'):
+        this.lib = 'eBook';
+        %endif
+        var self = this;
+        this.$watch('lib', function (v) { try { localStorage.setItem('lsd-lib', v); } catch (e) {} self.stopSelect(); });
+      },
+      cur: function (b) { return this.lib === 'AudioBook' ? b.audio : b.ebook; },
+      setView: function (v) { this.view = v; try { localStorage.setItem('llb-view', v); } catch (e) {} },
+      pillClass: function (s) {
+        return {Open: 'text-bg-success', Have: 'bg-success-subtle text-success-emphasis', Wanted: 'text-bg-warning',
+                Snatched: 'text-bg-info', Matched: 'text-bg-info'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+      open: function (b, e) {
+        if (this.selecting) {
+          e.preventDefault();
+          if (this.sel[b.id]) { delete this.sel[b.id]; } else { this.sel[b.id] = true; }
+          this.sel = Object.assign({}, this.sel);
+          return;
+        }
+        if (e.target.closest('a')) { return; }
+        var d = e.target.closest('[data-do]');
+        if (d && d.dataset.do === 'want') { this.mark([b.id], 'Wanted'); return; }
+        if (d && d.dataset.do === 'search') {
+          this.toast(T.searching);
+          fetch('search_for_book?bookid=' + encodeURIComponent(b.id) + '&library=' + this.lib, {credentials: 'same-origin'});
+          return;
+        }
+        bookinfo(b.id, this.lib);
+      },
+      selectAll: function () {
+        var s = {}; this.books.forEach(function (b) { s[b.id] = true; }); this.sel = s;
+      },
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+      bulk: function (action) {
+        var ids = Object.keys(this.sel);
+        if (!ids.length) { this.toast(T.pickFirst); return; }
+        this.stopSelect();
+        this.mark(ids, action);
+      },
+      mark: function (ids, action) {
+        var self = this, lib = this.lib;
+        var body = new URLSearchParams({action: action, redirect: 'members', seriesid: LL_SERIES.id, marktype: lib});
+        ids.forEach(function (id) { body.append(id, 'on'); });
+        fetch('mark_books_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var t = document.createElement('div'); t.innerHTML = d.summary || ''; self.toast(t.textContent || llStatus(action));
+            var key = lib === 'AudioBook' ? 'audio' : 'ebook';
+            if (['Wanted', 'Have', 'Skipped', 'Ignored'].indexOf(action) >= 0) {
+              self.books.forEach(function (b) { if (ids.indexOf(String(b.id)) >= 0) { b[key] = action; } });
+            }
+          })
+          .catch(function () { self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

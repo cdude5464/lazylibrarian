@@ -89,6 +89,11 @@
 </style>
 </%def>
 <%def name="body()">
+<%
+    # audio.html inherits this page and only changes page_id
+    audio = self.attr.page_id == 'audio'
+    lib = 'AudioBook' if audio else 'eBook'
+%>
 <div x-data="llBooks" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
     <h1 class="h3 mb-0 me-1">${title}</h1>
@@ -124,7 +129,7 @@
     </select>
     %if len(languages) > 1:
     <select id="llb-lang" class="form-select form-select-sm w-auto rounded-pill" aria-label="${_('Language') | h}"
-            @change="window.location = 'books?booklang=' + encodeURIComponent($event.target.value)">
+            @change="window.location = '${'audio' if audio else 'books'}?booklang=' + encodeURIComponent($event.target.value)">
       <option value="">${_('All')}</option>
       %for language in languages:
       <option value="${language['BookLang'] | h}" ${'selected' if language['BookLang'] == booklang else ''}>${language['BookLang']}</option>
@@ -136,7 +141,7 @@
             x-text="selecting ? T.done : T.select"></button>
     %endif
     %if perm&lazylibrarian.perm_force:
-    <a class="btn btn-sm btn-ll rounded-pill" href="force_search?source=books"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search wanted')}</a>
+    <a class="btn btn-sm btn-ll rounded-pill" href="force_search?source=${'audio' if audio else 'books'}"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search wanted')}</a>
     %endif
   </div>
 
@@ -164,7 +169,7 @@
         <span class="llb-title" :title="b.title" x-text="b.title"></span>
         <span class="llb-sub llb-author text-body-secondary">
           %if perm&lazylibrarian.perm_authorbooks:
-          <a :href="'author_page?library=eBook&authorid=' + encodeURIComponent(b.authorId)" x-text="b.author"></a>
+          <a :href="'author_page?library=${lib}&authorid=' + encodeURIComponent(b.authorId)" x-text="b.author"></a>
           %else:
           <span x-text="b.author"></span>
           %endif
@@ -175,20 +180,20 @@
         <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
           <span class="badge rounded-pill llb-pill" :class="pillClass(b.status)" x-text="llStatus(b.status)"></span>
           <template x-if="b.status === 'Open'">
-            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=eBook'">${_('Open')}</a>
+            <a class="btn btn-link llb-act" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Open')}</a>
           </template>
           <template x-if="b.status === 'Wanted'">
             %if perm&lazylibrarian.perm_force:
             <button type="button" class="btn btn-link llb-act" data-do="search">${_('Search now')}</button>
             %else:
-            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=eBook'">${_('Request')}</a>
+            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Request')}</a>
             %endif
           </template>
           <template x-if="['Open', 'Wanted', 'Snatched', 'Matched'].indexOf(b.status) < 0">
             %if perm&lazylibrarian.perm_status:
             <button type="button" class="btn btn-link llb-act" data-do="want">+ ${_('Want')}</button>
             %else:
-            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=eBook'">${_('Request')}</a>
+            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Request')}</a>
             %endif
           </template>
         </div>
@@ -219,6 +224,10 @@
 </div>
 </%def>
 <%def name="javascriptIncludes()">
+<%
+    audio = self.attr.page_id == 'audio'
+    lib = 'AudioBook' if audio else 'eBook'
+%>
 <script>
 document.addEventListener('alpine:init', function () {
   var PAGE = 30;
@@ -235,6 +244,7 @@ document.addEventListener('alpine:init', function () {
     books: ${_jsn('%(count)s book', '%(count)s books')}
   };
   var booklang = ${js(booklang or '')};
+  var LIB = ${js(lib)}, SOURCE = ${js('Audio' if audio else 'Books')}, PAGE_NAME = ${js('audio' if audio else 'books')};
 
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
 
@@ -271,7 +281,7 @@ document.addEventListener('alpine:init', function () {
         var self = this;
         try { var v = localStorage.getItem('llb-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
-          var saved = JSON.parse(sessionStorage.getItem('llb-books') || 'null');
+          var saved = JSON.parse(sessionStorage.getItem('llb-' + PAGE_NAME) || 'null');
           if (saved) {
             this.q = saved.q || ''; this.f = saved.f || ''; this.sort = saved.sort || this.sort;
             if (['all', 'title', 'author', 'series'].indexOf(saved.scope) >= 0) { this.scope = saved.scope; }
@@ -289,8 +299,8 @@ document.addEventListener('alpine:init', function () {
 
       url: function () {
         var p = this.sort.split(':');
-        var src = this.f ? 'source=Manage&whichStatus=' + encodeURIComponent(this.f) : 'source=Books';
-        return 'get_books?' + src + '&library=eBook&booklang=' + encodeURIComponent(booklang) +
+        var src = this.f ? 'source=Manage&whichStatus=' + encodeURIComponent(this.f) : 'source=' + SOURCE;
+        return 'get_books?' + src + '&library=' + LIB + '&booklang=' + encodeURIComponent(booklang) +
           '&iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] + '&sSortDir_0=' + p[1] +
           '&sSearch=' + encodeURIComponent(this.q) + (this.broad ? '' : '&searchfield=' + this.scope) + '&_=' + Date.now();
       },
@@ -324,7 +334,7 @@ document.addEventListener('alpine:init', function () {
       },
 
       save: function () {
-        try { sessionStorage.setItem('llb-books', JSON.stringify({q: this.q, f: this.f, sort: this.sort, scope: this.scope})); } catch (e) {}
+        try { sessionStorage.setItem('llb-' + PAGE_NAME, JSON.stringify({q: this.q, f: this.f, sort: this.sort, scope: this.scope})); } catch (e) {}
       },
 
       pillClass: function (s) {
@@ -343,7 +353,7 @@ document.addEventListener('alpine:init', function () {
         if (d && d.dataset.do === 'want') { this.mark([b.id], 'Wanted'); return; }
         if (d && d.dataset.do === 'search') {
           this.toast(T.searching);
-          fetch('search_for_book?bookid=' + encodeURIComponent(b.id) + '&library=eBook', {credentials: 'same-origin'});
+          fetch('search_for_book?bookid=' + encodeURIComponent(b.id) + '&library=' + LIB, {credentials: 'same-origin'});
           return;
         }
         bookinfo(b.id);
@@ -370,7 +380,7 @@ document.addEventListener('alpine:init', function () {
 
       mark: function (ids, action) {
         var self = this;
-        var body = new URLSearchParams({action: action, redirect: 'books', library: 'eBook'});
+        var body = new URLSearchParams({action: action, redirect: PAGE_NAME, library: LIB});
         ids.forEach(function (id) { body.append(id, 'on'); });
         return fetch('mark_books_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
           .then(function (r) { return r.json(); })

@@ -96,7 +96,9 @@
     function llStatus(s) {
       return String(s).replace(/^[A-Za-z]+/, function (w) { return llStatusLabels[w] || w; });
     }
-    function bookinfo(bookid) { window.location = 'book_detail?bookid=' + encodeURIComponent(bookid); }
+    function bookinfo(bookid, library) {
+      window.location = 'book_detail?bookid=' + encodeURIComponent(bookid) + (library === 'AudioBook' ? '&library=AudioBook' : '');
+    }
     function getUrlVars() {
       var vars = {}, q = window.location.search.slice(1).split('&');
       for (var i = 0; i < q.length; i++) { var kv = q[i].split('='); if (kv[0]) { vars[kv[0]] = kv[1] || ''; } }

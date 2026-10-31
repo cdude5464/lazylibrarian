@@ -4869,7 +4869,7 @@ class WebInterface:
 
     @cherrypy.expose
     @require_auth()
-    def book_detail(self, bookid=None):
+    def book_detail(self, bookid=None, library=None):
         """ Read-only "master" detail view for a book, replacing the old bookinfo()
         popup (which only ever showed image/title/description via bookdesc) for plain
         book ids - see base.html's bookinfo() for the author/comic cases, unchanged. """

@@ -459,7 +459,7 @@ document.addEventListener('alpine:init', function () {
           fetch('search_for_book?bookid=' + encodeURIComponent(b.id) + '&library=' + LIB, {credentials: 'same-origin'});
           return;
         }
-        bookinfo(b.id);
+        bookinfo(b.id, LIB);
       },
       stopSelect: function () { this.selecting = false; this.sel = {}; },
       bulk: function (action) {

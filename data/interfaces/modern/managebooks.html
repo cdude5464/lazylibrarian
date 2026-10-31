@@ -278,7 +278,7 @@ document.addEventListener('alpine:init', function () {
           return;
         }
         if (e.target.closest('a')) { return; }
-        bookinfo(b.id);
+        bookinfo(b.id, LIB);
       },
       selectAll: function () {
         var all = {};

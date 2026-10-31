@@ -689,13 +689,19 @@
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
         // Book Filters (future or unknown dates, no isbn, sets...) sit in Importing in bookstrap; they decide what
         // is left out too, so they come here after the lists and limits
-        var nf = document.getElementById('no_future'), bf = nf && nf.closest('fieldset');
-        if (bf && !pane.contains(bf)) {
+        var section = function (id) {
+          var el = document.getElementById(id), fs = el && el.closest('fieldset');
+          if (!fs || pane.contains(fs)) { return null; }
           var wrap = document.createElement('div'); wrap.className = 'col-md-12';
-          wrap.appendChild(bf);
-          var after = sizes || words;
-          if (after) { after.after(wrap); } else { row.insertBefore(wrap, row.firstChild); }
-        }
+          wrap.appendChild(fs);
+          return wrap;
+        };
+        var bf = section('no_future');
+        if (bf) { var after = sizes || words; if (after) { after.after(bf); } else { row.insertBefore(bf, row.firstChild); } }
+        // File Formats (which extensions count as books, audiobooks...) come first, before the word lists with the
+        // extension reject list
+        var ff = section('ebook_type') || section('audiobook_type') || section('mag_type') || section('comic_type');
+        if (ff) { row.insertBefore(ff, row.firstChild); }
       })();
       // Processing: bookstrap spreads its sections over three columns in no particular order; here they are one
       // list in the order the work happens, each section found by a setting it holds

@@ -436,9 +436,17 @@ class BookState:
                 # on-disk content folder, so the name-based path may not exist. Fall back to the
                 # client's actual content path so we process the real files with the known BookID.
                 if not os.path.isdir(self.download_folder):
-                    content = get_download_content_path(self.source, self.download_id)
-                    if content:
-                        self.download_folder = content if os.path.isdir(content) else os.path.dirname(content)
+                    content = self.download_folder
+                    if not os.path.isfile(content):
+                        content = get_download_content_path(self.source, self.download_id)
+                    if content and os.path.isdir(content):
+                        self.download_folder = content
+                    elif content:
+                        self.download_folder = os.path.dirname(content)
+                        if os.path.isfile(content):
+                            # single-file torrent, the folder may hold other downloads, so keep
+                            # the file name to isolate just this file, as for qBittorrent
+                            self.download_title = os.path.basename(content)
             elif general_folder:
                 # Fallback: use general folder as-is
                 self.download_folder = general_folder

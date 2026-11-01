@@ -328,6 +328,53 @@ class BookStateTest(LLTestCaseWithStartup):
         finally:
             db.close()
 
+    def test_enrich_single_file_torrent_from_other_clients(self):
+        """Issue #2771: Deluge and others give the save path and the torrent name, which for a
+        single-file torrent is the file itself. The targeted pass gets its folder and the file
+        name, so it isolates just that file instead of failing to list the file as a folder."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "ll-incoming")
+            os.makedirs(shared)
+            fname = "The_Sunlit_Man_by_Brandon_Sanderson.epub"
+            for name in (fname, "The_Sunlit_Man_by_Brandon_Sanderson.epub.part", "Another Book.epub"):
+                with open(os.path.join(shared, name), "w") as f:
+                    f.write(name)
+            db = mock.Mock()
+            db.match.return_value = None
+            logger = logging.getLogger("test")
+
+            # the torrent name is the file, or the client renamed it and gives the content path
+            for name, content in ((fname, None), ("The Sunlit Man", os.path.join(shared, fname))):
+                book_state = BookState(book_id="book123", download_title="The Sunlit Man by Brandon Sanderson",
+                                       aux_type="eBook", source="DELUGEWEBUI", download_id="dl123")
+                with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value=shared), \
+                        mock.patch("lazylibrarian.postprocess.get_download_name", return_value=name), \
+                        mock.patch("lazylibrarian.postprocess.get_download_content_path", return_value=content):
+                    book_state.enrich_with_download_info(db)
+                self.assertEqual((book_state.download_folder, book_state.download_title), (shared, fname))
+
+                book_state.update_candidate(book_state.download_folder)
+                with mock.patch("lazylibrarian.postprocess.CONFIG.get_bool", return_value=True):
+                    is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+                self.assertTrue(is_valid, skip_reason)
+                self.assertEqual(os.listdir(book_state.candidate_ptr), [fname])
+                shutil.rmtree(book_state.candidate_ptr)
+            self.assertEqual(sorted(os.listdir(shared)),
+                             sorted([fname, "The_Sunlit_Man_by_Brandon_Sanderson.epub.part", "Another Book.epub"]))
+
+    def test_enrich_missing_content_path_keeps_the_title(self):
+        """A content path that isn't there (a wrong path mapping) only gives the folder."""
+        book_state = BookState(book_id="book123", download_title="Some Book", aux_type="eBook",
+                               source="TRANSMISSION", download_id="dl123")
+        db = mock.Mock()
+        db.match.return_value = None
+        with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value="/nowhere"), \
+                mock.patch("lazylibrarian.postprocess.get_download_name", return_value="Some Book"), \
+                mock.patch("lazylibrarian.postprocess.get_download_content_path",
+                           return_value="/nowhere/else/Some Book.epub"):
+            book_state.enrich_with_download_info(db)
+        self.assertEqual((book_state.download_folder, book_state.download_title), ("/nowhere/else", "Some Book"))
+
     def test_enrich_with_download_info_magazine(self):
         """Test enrichment for magazine gets title"""
 

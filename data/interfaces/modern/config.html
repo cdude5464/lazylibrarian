@@ -716,6 +716,51 @@
         var ff = section('ebook_type') || section('audiobook_type') || section('mag_type') || section('comic_type');
         if (ff) { row.insertBefore(ff, row.firstChild); }
       })();
+      // a section card like bookstrap's, its fold handled by bookstrap's delegated click handler
+      function llcCard(title) {
+        var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div');
+        lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+        lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+        lg.appendChild(document.createTextNode(title));
+        body.className = 'section-body';
+        fs.appendChild(lg); fs.appendChild(body);
+        return fs;
+      }
+      // Processing: Miscellaneous held a bit of everything; its settings go where they act, some to other tabs
+      (function () {
+        if (!document.getElementById('searchprocessing')) { return; }
+        var box = function (id, sel) { var el = document.getElementById(id); return el ? (sel ? el.closest(sel) : el) : null; };
+        var bodyOf = function (fs) { return fs ? (fs.querySelector(':scope > .section-body') || fs) : null; };
+        var moveTo = function (fs, nodes) { var b = bodyOf(fs); if (!b) { return; } nodes.forEach(function (n) { if (n) { b.appendChild(n); } }); };
+        var kids = function (fs) { return Array.prototype.slice.call(bodyOf(fs).children); };
+        // how results are judged: a card of its own after the intervals
+        var first = box('search_bookinterval', 'fieldset'), search = llcCard(${_js('Search and Matching')});
+        moveTo(search, ['match_ratio', 'dload_ratio', 'priority_weight', 'min_seeders', 'max_pages'].map(function (id) { return box(id, '.form-group'); }));
+        if (first && bodyOf(search).children.length) { first.parentElement.appendChild(search); }
+        moveTo(box('newauthor_books', 'fieldset'), [box('max_bookpages', '.form-group')]);
+        // magazines: covers, conversions and issue age in one card
+        var mags = box('imp_magcover', 'fieldset'), magconv = box('swap_coverpage', 'fieldset');
+        if (mags && magconv && mags !== magconv) { moveTo(mags, kids(magconv)); magconv.remove(); }
+        moveTo(mags, [box('mag_age', '.form-group')]);
+        // permissions with the folders they apply to
+        var perm = box('file_perm', 'fieldset'), folders = box('download_dir', 'fieldset');
+        if (perm && folders && perm !== folders) {
+          var plg = perm.querySelector(':scope > legend'), plb = document.createElement('label');
+          plb.className = 'control-label'; plb.textContent = plg ? plg.textContent.trim() : '';
+          moveTo(folders, [plb].concat(kids(perm)));
+          perm.remove();
+        }
+        // what is left of Miscellaneous keeps the installation tidy
+        var misc = box('cache_age', 'fieldset'), mlg = misc && misc.querySelector(':scope > legend'), t = mlg && mlg.lastChild;
+        while (t && t.nodeType !== 3) { t = t.previousSibling; }
+        if (t) { t.textContent = ${_js('Maintenance')}; }
+        // elsewhere: stalled downloads to Downloads, the coverwall to Appearance, version checks to Interface
+        moveTo(box('blacklist_failed', 'fieldset'), [box('stall_age', '.form-group')]);
+        moveTo(box('ui_language', 'fieldset'), [box('max_wall', '.form-group')]);
+        var logs = box('logdir', 'fieldset'), upd = llcCard(${_js('Updates')});
+        moveTo(upd, [box('versioncheck_interval', '.form-group'), box('git_program', '.form-group')]);
+        if (logs && bodyOf(upd).children.length) { logs.parentElement.appendChild(upd); }
+      })();
       // Processing and Interface: bookstrap spreads their sections over columns in no particular order; here they are
       // one list in a logical order, each section found by a setting it holds
       function llcFlow(paneId, order) {
@@ -746,12 +791,12 @@
       }
       // Processing in the order the work happens: when, with what status, what is imported, Calibre, where files go
       // and how they are named, conversions and the programs for them, the rest
-      llcFlow('searchprocessing', ['search_bookinterval', 'notfound_status', 'newauthor_books', 'imp_convert', 'imp_comiccover',
-        'pref_ebookopf', 'imp_calibredb', 'download_dir', 'file_perm', 'fmt_series', 'ebook_wanted_formats', 'audio_options',
-        'swap_coverpage', 'ffmpeg', 'cache_age']);
+      llcFlow('searchprocessing', ['search_bookinterval', 'match_ratio', 'notfound_status', 'newauthor_books', 'pref_ebookopf',
+        'download_dir', 'fmt_series', 'ebook_wanted_formats', 'audio_options', 'imp_magcover', 'swap_coverpage', 'imp_comiccover',
+        'imp_calibredb', 'ffmpeg', 'cache_age']);
       // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
       llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
-        'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'logdir']);
+        'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'versioncheck_interval', 'logdir']);
       // ComicVine has a section of its own in bookstrap only because it comes with the comics; here it joins the
       // other info sources under its name, like Databáze knih or HardCover
       (function () {

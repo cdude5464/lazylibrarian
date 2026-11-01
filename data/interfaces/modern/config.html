@@ -382,7 +382,7 @@
     // the tab list becomes the section menu
     var ul = form.querySelector('#configtabs');
     var icons = {webinterface: 'fa-desktop', importoptions: 'fa-database', downloadsettings: 'fa-download', providers: 'fa-globe',
-                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-sliders-h', filters: 'fa-filter',
+                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
                  languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
     if (ul) {
       document.getElementById('llc-nav').appendChild(ul);
@@ -391,8 +391,6 @@
         a.removeAttribute('data-toggle');
         // with its file formats and book filters under Filters, Importing holds the info sources only
         if (li.getAttribute('aria-controls') === 'importoptions') { a.textContent = ${_js('Info Sources')}; }
-        // besides categories it holds each provider's search options, limits and lock
-        if (li.getAttribute('aria-controls') === 'capabilities') { a.textContent = ${_js('Capabilities')}; }
         a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
         if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
       });
@@ -660,6 +658,21 @@
           form.querySelectorAll('legend.llc-lfold').forEach(function (lg) { if (lg.parentNode.classList.contains('llc-sfold') !== b[1]) { lg.click(); } });
         });
       });
+      // Categories: each provider's categories, search options, limits and lock, needed only when auto-detection
+      // fails; a section at the end of Providers instead of a tab of its own
+      (function () {
+        var cap = document.getElementById('capabilities'), prov = document.getElementById('providers');
+        var src = cap && cap.querySelector(':scope > .configtable'), dst = prov && prov.querySelector(':scope > .configtable');
+        if (!src || !dst) { return; }
+        var li = ul && ul.querySelector('li[aria-controls="capabilities"]');
+        var card = llcCard(li ? li.textContent.trim() : ''), body = card.querySelector('.section-body');
+        while (src.firstChild) { body.appendChild(src.firstChild); }
+        var row = document.createElement('div'), col = document.createElement('div');
+        row.className = 'row'; col.className = 'col-md-12';
+        col.appendChild(card); row.appendChild(col); dst.appendChild(row);
+        if (li) { li.remove(); }
+        cap.remove();
+      })();
       // Filters: the word lists and the size limits each go into one section, the per-title options stay as they are
       (function () {
         var pane = document.getElementById('filters');

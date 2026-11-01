@@ -918,6 +918,10 @@
           if (fs && cfg.contains(fs)) { col.appendChild(fs); n++; }
         });
         if (!n) { return; }
+        // Comic Genres sits with the file formats in bookstrap; it is a list of genres, it goes to Genre Settings
+        var cg = document.getElementById('comic_genres'), cgg = cg && cg.closest('.form-group');
+        var gl = document.getElementById('genrelimit'), gs = gl && gl.closest('fieldset');
+        if (cgg && gs) { (gs.querySelector(':scope > .section-body') || gs).appendChild(cgg); }
         Array.prototype.slice.call(cfg.children).forEach(function (c) {
           if (!c.querySelector('input, select, textarea, legend')) { c.remove(); }
         });

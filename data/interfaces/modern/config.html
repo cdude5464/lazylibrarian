@@ -154,8 +154,8 @@
   .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
   .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
   /* $variables of the name patterns: a click inserts them at the cursor of the pattern field */
-  .llc .llc-token { display: inline-block; font: inherit; font-family: var(--bs-font-monospace); font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
-                    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 6px; padding: 0 .3rem; margin: .1rem 0; cursor: pointer; }
+  .llc .llc-token { display: inline-block; font: inherit; font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
+                    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 999px; padding: 0 .55rem; margin: .1rem 0; cursor: pointer; }
   .llc .llc-token:hover, .llc .llc-token:focus-visible { border-color: var(--ll-accent); color: var(--ll-accent); outline: 0; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
@@ -943,6 +943,18 @@
       // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
       (function () {
         var TOK = /\$\$|\$[A-Za-z]+/g, insertTip = ${_js('Insert at the cursor')};
+        // what each variable stands for, shown on its button; the variable itself is in the tooltip
+        var NAMES = {
+          '$Author': ${_js('Author')}, '$SortAuthor': ${_js('Author, surname first')}, '$Title': ${_js('Title')},
+          '$SortTitle': ${_js('Title for sorting')}, '$Language': ${_js('Language')}, '$Series': ${_js('Series (pattern)')},
+          '$SerName': ${_js('Series name')}, '$SerNum': ${_js('Series number')}, '$FmtName': ${_js('Formatted series name')},
+          '$FmtNum': ${_js('Formatted series number')}, '$PadNum': ${_js('Padded series number')},
+          '$PubYear': ${_js('Publication year')}, '$SerYear': ${_js('Series year')}, '$Abridged': ${_js('Abridged')},
+          '$Part': ${_js('Part')}, '$Total': ${_js('Number of parts')}, '$$': ${_js('$ sign')},
+          '$IssueDate': ${_js('Issue date')}, '$IssueYear': ${_js('Year')}, '$IssueVol': ${_js('Volume')},
+          '$IssueNum': ${_js('Issue number')}, '$IssueMonth': ${_js('Month name')}, '$IssueMNum': ${_js('Month number')},
+          '$IssueDay': ${_js('Day')}, '$Issue': ${_js('Issue')}, '$Publisher': ${_js('Publisher')}
+        };
         form.querySelectorAll('.tab-pane .help-block').forEach(function (help) {
           var field = help.previousElementSibling;
           while (field && !field.matches('input[type="text"], textarea')) { field = field.previousElementSibling; }
@@ -959,7 +971,8 @@
             while ((m = TOK.exec(text))) {
               if (m.index > last) { frag.appendChild(document.createTextNode(text.slice(last, m.index))); }
               var b = document.createElement('button');
-              b.type = 'button'; b.className = 'llc-token'; b.textContent = m[0]; b.title = insertTip;
+              b.type = 'button'; b.className = 'llc-token'; b.dataset.token = m[0];
+              b.textContent = NAMES[m[0]] || m[0]; b.title = m[0] + ' · ' + insertTip;
               frag.appendChild(b);
               last = m.index + m[0].length;
             }
@@ -974,7 +987,7 @@
             var s = field.selectionStart, end = field.selectionEnd;
             if (s === null || s === undefined) { s = end = field.value.length; }
             field.focus();
-            field.setRangeText(b.textContent, s, end, 'end');
+            field.setRangeText(b.dataset.token, s, end, 'end');
             field.dispatchEvent(new Event('input', {bubbles: true}));
             field.dispatchEvent(new Event('change', {bubbles: true}));
           });

@@ -382,7 +382,7 @@
     // the tab list becomes the section menu
     var ul = form.querySelector('#configtabs');
     var icons = {webinterface: 'fa-desktop', importoptions: 'fa-database', downloadsettings: 'fa-download', providers: 'fa-globe',
-                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
+                 searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-sliders-h', filters: 'fa-filter',
                  languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
     if (ul) {
       document.getElementById('llc-nav').appendChild(ul);
@@ -391,6 +391,8 @@
         a.removeAttribute('data-toggle');
         // with its file formats and book filters under Filters, Importing holds the info sources only
         if (li.getAttribute('aria-controls') === 'importoptions') { a.textContent = ${_js('Info Sources')}; }
+        // besides categories it holds each provider's search options, limits and lock
+        if (li.getAttribute('aria-controls') === 'capabilities') { a.textContent = ${_js('Capabilities')}; }
         a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
         if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
       });

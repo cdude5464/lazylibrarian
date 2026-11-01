@@ -375,6 +375,22 @@ class BookStateTest(LLTestCaseWithStartup):
             book_state.enrich_with_download_info(db)
         self.assertEqual((book_state.download_folder, book_state.download_title), ("/nowhere/else", "Some Book"))
 
+    def test_enrich_prefers_the_client_content_path_to_a_file_by_name(self):
+        """A torrent renamed in the client, with an unrelated file left under its old name."""
+        with tempfile.TemporaryDirectory() as root:
+            for name in ("Old Name.epub", "Real Book.epub"):
+                open(os.path.join(root, name), "w").close()
+            book_state = BookState(book_id="book123", download_title="Real Book", aux_type="eBook",
+                                   source="DELUGEWEBUI", download_id="dl123")
+            db = mock.Mock()
+            db.match.return_value = None
+            with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value=root), \
+                    mock.patch("lazylibrarian.postprocess.get_download_name", return_value="Old Name.epub"), \
+                    mock.patch("lazylibrarian.postprocess.get_download_content_path",
+                               return_value=os.path.join(root, "Real Book.epub")):
+                book_state.enrich_with_download_info(db)
+            self.assertEqual((book_state.download_folder, book_state.download_title), (root, "Real Book.epub"))
+
     def test_enrich_with_download_info_magazine(self):
         """Test enrichment for magazine gets title"""
 

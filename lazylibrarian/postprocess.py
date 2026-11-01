@@ -436,9 +436,10 @@ class BookState:
                 # on-disk content folder, so the name-based path may not exist. Fall back to the
                 # client's actual content path so we process the real files with the known BookID.
                 if not os.path.isdir(self.download_folder):
-                    content = self.download_folder
-                    if not os.path.isfile(content):
-                        content = get_download_content_path(self.source, self.download_id)
+                    # the client's own answer first, a file under the name may be another download
+                    content = get_download_content_path(self.source, self.download_id)
+                    if not content and os.path.isfile(self.download_folder):
+                        content = self.download_folder
                     if content and os.path.isdir(content):
                         self.download_folder = content
                     elif content:

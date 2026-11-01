@@ -20,7 +20,7 @@ import traceback
 from rapidfuzz import fuzz
 from rapidfuzz.utils import default_process
 
-from lazylibrarian import database
+from lazylibrarian import database, i18n
 from lazylibrarian.common import multibook, only_punctuation
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import (
@@ -771,9 +771,12 @@ def name_vars(bookid, abridged=''):
             pubyear = '1955'
             seryear = '1954'
             lang = 'Eng'
-            seriesname = 'The Lord of the Rings'
+            # the sample book of the name pattern examples in the config page, in the language of the interface
+            # TRANSLATORS: series name of the sample book in the name pattern examples, as published in your language
+            seriesname = i18n.gettext('The Lord of the Rings')
             mydict['Author'] = 'J.R.R. Tolkien'
-            mydict['Title'] = 'The Fellowship of the Ring'
+            # TRANSLATORS: title of the sample book in the name pattern examples, as published in your language
+            mydict['Title'] = i18n.gettext('The Fellowship of the Ring')
             mydict['SortAuthor'] = surname_first(mydict['Author'], postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')))
             mydict['SortTitle'] = sort_definite(mydict['Title'], articles=get_list(CONFIG.get_csv('NAME_DEFINITE')))
             mydict['Part'] = '1'

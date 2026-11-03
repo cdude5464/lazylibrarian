@@ -3767,12 +3767,18 @@ class WebInterface:
                 serversidelogger.debug(f"User booklist length {len(mybooks)}")
                 cmd += " and books.bookID in (" + ", ".join(f"'{w}'" for w in mybooks) + ")"
 
-            if kwargs['source'] in ["Author", "Books", "Audio", "Manage"] and lazylibrarian.PRIMARY_AUTHORS:
+            if kwargs['source'] == "Author" and lazylibrarian.PRIMARY_AUTHORS:
                 # only show book for primary author
                 cmd += " and books.bookid in (SELECT bookid FROM bookauthors where bookauthors.authorid=authors.authorid "
                 cmd += f"and books.bookid=bookauthors.bookid and role={ROLE['PRIMARY']})"
+            elif kwargs['source'] in ["Books", "Audio", "Manage"] and lazylibrarian.PRIMARY_AUTHORS:
+                # one row per book, co-writers share the primary role so prefer the book's own author
+                primary = f"FROM bookauthors ba WHERE ba.bookid=books.bookid and ba.role={ROLE['PRIMARY']}"
+                cmd += (f" and bookauthors.authorid = COALESCE((SELECT ba.authorid {primary} "
+                        f"and ba.authorid=books.authorid), (SELECT ba.authorid {primary} ORDER BY ba.rowid LIMIT 1))")
 
-            cmd += (" GROUP BY books.bookid")
+            # authorid as well, so the series join is not repeated once per author
+            cmd += " GROUP BY books.bookid, bookauthors.authorid"
 
             serversidelogger.debug(f"get_books {cmd}: {str(args)}")
             rowlist = db.select(cmd, tuple(args))

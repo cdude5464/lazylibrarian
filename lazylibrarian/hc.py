@@ -384,9 +384,10 @@ query FindBookByName {
 }
 '''
 
-        self.HC_ISBN13_BOOKS = self.HC_FINDBOOK.replace('[where]', '{isbn_13: {_eq: "[isbn]"}}'
+        # isbns live on editions, books has no isbn fields to filter on
+        self.HC_ISBN13_BOOKS = self.HC_FINDBOOK.replace('[where]', '{editions: {isbn_13: {_eq: "[isbn]"}}}'
                                                         ).replace('[order]', '')
-        self.HC_ISBN10_BOOKS = self.HC_FINDBOOK.replace('[where]', '{isbn_10: {_eq: "[isbn]"}}'
+        self.HC_ISBN10_BOOKS = self.HC_FINDBOOK.replace('[where]', '{editions: {isbn_10: {_eq: "[isbn]"}}}'
                                                         ).replace('[order]', '')
 
         # queries using bookid, authorid, seriesid should be faster if we query using _by_pk e.g.
@@ -539,9 +540,13 @@ query FindAuthor { authors_by_pk(id: [authorid])
                 r = None
             if success:
                 res = r.json()
-                self.cachelogger.debug(f"CacheHandler: Storing json {myhash}")
-                with open(syspath(hashfilename), "w") as cachefile:
-                    cachefile.write(json.dumps(res))
+                if isinstance(res, dict) and res.get('errors'):
+                    # a rejected query comes back as 200, don't cache it as an empty answer
+                    self.logger.error(f"HardCover query error: {res['errors']}")
+                else:
+                    self.cachelogger.debug(f"CacheHandler: Storing json {myhash}")
+                    with open(syspath(hashfilename), "w") as cachefile:
+                        cachefile.write(json.dumps(res))
             else:
                 # expected failure codes...
                 # 401 expired or invalid api token

@@ -1,0 +1,32 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    page_id = 'dbupdate'
+%>
+<%def name="headIncludes()">
+<style>
+  .lld { max-width: 560px; margin: 3rem auto 0; text-align: center; }
+  .lld-icon { font-size: 2rem; color: var(--ll-accent); }
+</style>
+</%def>
+<%def name="body()">
+<div id="waiting" class="lld card shadow-sm">
+  <div class="card-body py-4">
+    <div class="lld-icon mb-3"><i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i></div>
+    <h1 class="h4 mb-2">${message}</h1>
+    <p id="countdown" class="mb-0 text-body-secondary">${lazylibrarian.UPDATE_MSG}</p>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+(function () {
+  // like bookstrap: go to the home page when the timer runs out
+  var countdown = ${int(timer or 0)};
+  var timer = setInterval(function () {
+    countdown--;
+    if (countdown <= 0) { clearInterval(timer); window.location = 'index'; }
+  }, 1000);
+})();
+</script>
+</%def>

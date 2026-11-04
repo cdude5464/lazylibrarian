@@ -7,6 +7,7 @@ import logging
 import time
 
 from lazylibrarian.configtypes import ConfigDict
+from lazylibrarian.providerlogging import provider_error_category, provider_log_origin
 from lazylibrarian.formatter import plural, pretty_approx_time, today
 
 
@@ -48,14 +49,14 @@ class BlockHandler:
             delay = self._config.get_int('BLOCKLIST_TIMER') if self._config is not None else 3600
 
         if delay == 0:
-            logger.debug(f'Not blocking {who},{why} as timer is zero')
+            logger.debug(f'Not blocking {provider_log_origin(who)}, {provider_error_category(why)} as timer is zero')
             return 0
 
         if len(why) > 80:
             why = why[:80]
 
         timestr = pretty_approx_time(delay)
-        logger.info(f"Blocking provider {who} for {timestr} because {why}")
+        logger.info(f"Blocking provider {provider_log_origin(who)} for {timestr} because {provider_error_category(why)}")
         self.replace_provider_entry(who, delay, why)
         logger.debug(
             f"Provider Blocklist contains {len(self._provider_list)} {plural(len(self._provider_list), 'entry')}")

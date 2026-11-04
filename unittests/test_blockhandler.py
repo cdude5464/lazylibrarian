@@ -47,7 +47,7 @@ class BlockhandlerTest(LLTestCase):
         with self.assertLogs(self.logger, 'DEBUG') as cm:
             delay = handler.block_provider(name, 'just because', delay=120)  # Block for 2 minutes
         self.assertListEqual(cm.output, [
-            'INFO:lazylibrarian.blockhandler:Blocking provider someone for 2 minutes because just because',
+            'INFO:lazylibrarian.blockhandler:Blocking provider someone for 2 minutes because provider-error',
             'DEBUG:lazylibrarian.blockhandler:Provider Blocklist contains 1 entry'
         ])
         self.assertTrue(handler.is_blocked(name), 'Expected this to be blocked')
@@ -58,7 +58,7 @@ class BlockhandlerTest(LLTestCase):
         with self.assertLogs(self.logger, 'DEBUG'):
             delay = handler.block_provider('someone', 'just because', delay=newdelay)
         self.assertListEqual(cm.output, [
-            'INFO:lazylibrarian.blockhandler:Blocking provider someone for 2 minutes because just because',
+            'INFO:lazylibrarian.blockhandler:Blocking provider someone for 2 minutes because provider-error',
             'DEBUG:lazylibrarian.blockhandler:Provider Blocklist contains 1 entry'
         ])
         self.assertTrue(handler.is_blocked(name), 'Expected this to be blocked')

@@ -146,7 +146,7 @@ class TestCache(LLTestCaseWithConfigandDIRS):
         self.assertEqual(msg, 'Response status 403: Forbidden')
         self.assertTrue(BLOCKHANDLER.is_blocked('googleapis'), 'Expected blockage')
         self.assertListEqual(logmsg.output, [
-            'DEBUG:lazylibrarian.cache:Request denied, 403, blocking googleapis for 3600 seconds: Error 403'
+            'DEBUG:lazylibrarian.cache:Request denied, 403, blocking googleapis for 3600 seconds'
         ])
         BLOCKHANDLER.clear_all()
 
@@ -164,7 +164,7 @@ class TestCache(LLTestCaseWithConfigandDIRS):
         url = 'http://someourl.com/test99999'
         msg, res = cache.fetch_url(url, agent, False, raw=False)
         self.assertFalse(res, 'Expected failure')
-        self.assertEqual(msg, 'Response status 99999: Text: Invalid error')
+        self.assertEqual(msg, 'Response status 99999: HTTP error')
         self.assertFalse(BLOCKHANDLER.is_blocked('googleapis'), 'Unknown error should not cause blockage')
 
         # Test redirect error
@@ -172,26 +172,26 @@ class TestCache(LLTestCaseWithConfigandDIRS):
         with self.assertLogs(logger, logging.ERROR):
             msg, res = cache.fetch_url(url, agent, False, raw=False)
         self.assertFalse(res, 'Expected failure')
-        self.assertEqual(msg, 'TooManyRedirects Test redirect error')
+        self.assertEqual(msg, 'TooManyRedirects')
 
         # Test redirect error with retry. Curously, no error in log
         url = 'http://someourl.com/test-redirects'
         msg, res = cache.fetch_url(url, agent, True, raw=False)
         self.assertFalse(res, 'Expected failure')
-        self.assertEqual(msg, 'Exception TooManyRedirects: Test redirect error')
+        self.assertEqual(msg, 'Exception TooManyRedirects')
 
         # Test timeout error. No error in log
         url = 'http://someourl.com/test-timeout'
         with self.assertLogs(logger, logging.ERROR):
             msg, res = cache.fetch_url(url, agent, False, raw=False)
         self.assertFalse(res, 'Expected failure')
-        self.assertEqual(msg, 'Timeout Test timeout error')
+        self.assertEqual(msg, 'Timeout')
 
         # Test timeout error with retry
         url = 'http://someourl.com/test-timeout'
         msg, res = cache.fetch_url(url, agent, True, raw=False)
         self.assertFalse(res, 'Expected failure')
-        self.assertEqual(msg, 'Exception Timeout: Test timeout error')
+        self.assertEqual(msg, 'Exception Timeout')
 
         # Test extended timeout
         url = 'http://someourl.com/torznab/all/test'

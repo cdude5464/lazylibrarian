@@ -30,6 +30,7 @@ from bs4 import BeautifulSoup
 import lazylibrarian
 import lib.feedparser as feedparser
 from lazylibrarian import database
+from lazylibrarian.providerlogging import provider_error_category, provider_log_origin
 from lazylibrarian.annas import anna_search
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url
@@ -127,7 +128,7 @@ def test_provider(name: str, host=None, api=None):
             CONFIG.set_str('BOK_EMAIL', email)
             CONFIG.set_str('BOK_PASS', pwd)
             CONFIG.set_str('BOK_SEARCH_LANG', langs)
-        logger.debug(f"Testing provider {name}:{CONFIG['BOK_HOST']}")
+        logger.debug(f"Testing provider {name}:{provider_log_origin(CONFIG['BOK_HOST'])}")
         return direct_bok(book, prov=name, test=True), "ZLibrary"
 
     if name.startswith('rss_'):
@@ -181,7 +182,7 @@ def test_provider(name: str, host=None, api=None):
         except IndexError:
             pass
         except Exception as e:
-            logger.debug(f"Exception: {str(e)}")
+            logger.debug(f"Exception: {type(e).__name__}")
 
     if name.startswith('apprise_'):
         for provider in CONFIG.providers('APPRISE'):
@@ -235,7 +236,7 @@ def test_provider(name: str, host=None, api=None):
         except IndexError:
             pass
         except Exception as e:
-            logger.debug(f"Exception: {str(e)}")
+            logger.debug(f"Exception: {type(e).__name__}")
         finally:
             for item in caps_changed:
                 item[0][item[1]] = item[2]
@@ -276,7 +277,7 @@ def test_provider(name: str, host=None, api=None):
         except IndexError:
             pass
         except Exception as e:
-            logger.debug(f"Exception: {str(e)}")
+            logger.debug(f"Exception: {type(e).__name__}")
         finally:
             for item in caps_changed:
                 item[0][item[1]] = item[2]
@@ -315,7 +316,7 @@ def test_provider(name: str, host=None, api=None):
         except IndexError:
             pass
         except Exception as e:
-            logger.debug(f"Exception: {str(e)}")
+            logger.debug(f"Exception: {type(e).__name__}")
 
     if name == 'SLSK':
         logger.debug(f"Testing provider {name}")
@@ -383,13 +384,13 @@ def get_capabilities(provider: ConfigDict, force=False):
     if not force and len(provider['UPDATED']) == 10:  # any stored values?
         updated = False
         if (age(provider['UPDATED']) > CONFIG.get_int('CACHE_AGE')) and not provider.get_bool('MANUAL'):
-            logger.debug(f"Stored capabilities for {provider['HOST']} are too old")
+            logger.debug(f"Stored capabilities for {provider_log_origin(provider['HOST'])} are too old")
             updated = True
     else:
         updated = True
 
     if not updated:
-        logger.debug(f"Using stored capabilities for {provider['HOST']}")
+        logger.debug(f"Using stored capabilities for {provider_log_origin(provider['HOST'])}")
     else:
         host = provider['HOST']
         if str(host[:4]) != "http":
@@ -402,47 +403,47 @@ def get_capabilities(provider: ConfigDict, force=False):
             url = f"{host}/api?t=caps"
 
         # most providers will give you caps without an api key
-        logger.debug(f'Requesting capabilities for {url}')
+        logger.debug(f'Requesting capabilities for {provider_log_origin(url)}')
         source_xml, success = fetch_url(url, retry=False, raw=True)
         data = None
         if not success:
-            logger.debug(f"Error getting xml from {url}, {source_xml}")
+            logger.debug(f"Error getting xml from {provider_log_origin(url)}, {type(source_xml).__name__}")
         else:
             try:
                 data = ElementTree.fromstring(source_xml)
                 if data.tag == 'error':
-                    logger.debug(f"Unable to get capabilities: {data.attrib}")
+                    logger.debug(f"Unable to get capabilities: {data.tag}")
                     success = False
             except (ElementTree.ParseError, UnicodeEncodeError):
-                logger.debug(f"Error parsing xml from {url}, {repr(source_xml)}")
+                logger.debug(f"Error parsing xml from {provider_log_origin(url)}, {type(source_xml).__name__}")
                 success = False
         if not success:
             # If it failed, retry with api key
             if provider['API']:
                 url = f"{url}&apikey={provider['API']}"
-                logger.debug(f'Retrying capabilities with apikey for {url}')
+                logger.debug(f'Retrying capabilities with apikey for {provider_log_origin(url)}')
                 source_xml, success = fetch_url(url, raw=True)
                 if not success:
-                    logger.debug(f"Error getting xml from {url}, {source_xml}")
+                    logger.debug(f"Error getting xml from {provider_log_origin(url)}, {type(source_xml).__name__}")
                 else:
                     try:
                         data = ElementTree.fromstring(source_xml)
                         if data.tag == 'error':
-                            logger.debug(f"Unable to get capabilities: {data.attrib}")
+                            logger.debug(f"Unable to get capabilities: {data.tag}")
                             success = False
                     except (ElementTree.ParseError, UnicodeEncodeError):
-                        logger.debug(f"Error parsing xml from {url}, {repr(source_xml)}")
+                        logger.debug(f"Error parsing xml from {provider_log_origin(url)}, {type(source_xml).__name__}")
                         success = False
             else:
-                logger.debug(f'Unable to retry capabilities, no apikey for {url}')
+                logger.debug(f'Unable to retry capabilities, no apikey for {provider_log_origin(url)}')
         if not success:
-            logger.warning(f"Unable to get capabilities for {url}: No data returned")
+            logger.warning(f"Unable to get capabilities for {provider_log_origin(url)}: No data returned")
             # might be a temporary error
             if provider['BOOKCAT'] or provider['MAGCAT'] or provider['AUDIOCAT']:
-                logger.debug(f"Using old stored capabilities for {provider['HOST']}")
+                logger.debug(f"Using old stored capabilities for {provider_log_origin(provider['HOST'])}")
             else:
                 # or might be provider doesn't do caps
-                logger.debug(f"Using default capabilities for {provider['HOST']}")
+                logger.debug(f"Using default capabilities for {provider_log_origin(provider['HOST'])}")
                 for key in ['GENERALSEARCH', 'EXTENDED', 'BOOKCAT', 'AUDIOCAT', 'COMICCAT', 'MAGCAT',
                             'BOOKSEARCH', 'MAGSEARCH', 'AUDIOSEARCH', 'COMICSEARCH']:
                     item = provider.get_item(key)
@@ -453,11 +454,10 @@ def get_capabilities(provider: ConfigDict, force=False):
                 provider.set_int('RATELIMIT', 0)
                 # CONFIG.save_config_and_backup_old(section=provider['NAME'])
         elif data is not None:
-            logger.debug(f"Parsing xml for capabilities of {url}")
+            logger.debug(f"Parsing xml for capabilities of {provider_log_origin(url)}")
             if xmltodict:
                 dlcommslogger = logging.getLogger('special.dlcomms')
-                data_dict = xmltodict.parse(source_xml)
-                dlcommslogger.debug(data_dict)
+                dlcommslogger.debug("Provider capabilities parsed")
             # book search isn't mentioned in the caps xml returned by
             # nzbplanet,jackett,oznzb,usenet-crawler, so we can't use it as a test
             # but the newznab+ ones usually support t=book and categories in 7000 range
@@ -485,9 +485,9 @@ def get_capabilities(provider: ConfigDict, force=False):
                     limit = limits.attrib.get('apimax')
                     if limit:
                         provider.set_int('APILIMIT', check_int(limit, 0))
-                        logger.debug(f"{provider['HOST']} apilimit {limit}")
+                        logger.debug(f"{provider_log_origin(provider['HOST'])} apilimit {limit}")
                 except Exception as e:
-                    logger.debug(f"Error getting apilimit from {provider['HOST']}: {type(e).__name__} {str(e)}")
+                    logger.debug(f"Error getting apilimit from {provider_log_origin(provider['HOST'])}: {type(e).__name__}")
 
             categories = data.iter('category')
             ebooksubs = ''
@@ -724,7 +724,7 @@ def iterate_over_torrent_sites(book=None, search_type=None):
         if CONFIG[prov]:
             ignored = False
             if BLOCKHANDLER.is_blocked(prov):
-                logger.debug(f'{CONFIG[prov + "_HOST"]} is BLOCKED')
+                logger.debug(f'{provider_log_origin(CONFIG[prov + "_HOST"])} is BLOCKED')
                 ignored = True
             elif search_type in ['book', 'shortbook', 'titlebook'] and \
                     'E' not in CONFIG[f"{prov}_DLTYPES"]:
@@ -740,7 +740,7 @@ def iterate_over_torrent_sites(book=None, search_type=None):
                 logger.debug(f"Ignoring {prov} for Comic")
                 ignored = True
             if not ignored:
-                logger.debug(f'[iterate_over_torrent_sites] - {CONFIG[prov + "_HOST"]}')
+                logger.debug(f'[iterate_over_torrent_sites] - {provider_log_origin(CONFIG[prov + "_HOST"])}')
                 if prov == 'KAT':
                     results, error = torrent_kat(book)
                 elif prov == 'TPB':
@@ -934,10 +934,10 @@ def iterate_over_rss_sites():
             f"DLTYPES: {provider['DISPNAME']}: {provider['ENABLED']} {provider['DLTYPES']} {provider['LABEL']}")
         if provider['ENABLED'] and not wishlist_type(provider['HOST']):
             if BLOCKHANDLER.is_blocked(provider['HOST']):
-                logger.debug(f"{provider['HOST']} is BLOCKED")
+                logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
             else:
                 providers += 1
-                logger.debug(f"[iterate_over_rss_sites] - {provider['HOST']}")
+                logger.debug(f"[iterate_over_rss_sites] - {provider_log_origin(provider['HOST'])}")
                 resultslist += rss(provider['HOST'], provider['NAME'], provider.get_int('DLPRIORITY'),
                                    provider['DISPNAME'], provider['DLTYPES'], False, provider['LABEL'])
                 dltypes += provider['DLTYPES']
@@ -957,108 +957,108 @@ def iterate_over_wishlists():
             wishtype = wishlist_type(provider['HOST'])
             if wishtype == 'goodreads':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += goodreads(provider['HOST'], provider['NAME'],
                                              provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                              provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'listopia':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += listopia(provider['HOST'], provider['NAME'],
                                             provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                             provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'amazon':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += amazon(provider['HOST'], provider['NAME'],
                                           provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                           provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'ny_times':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += ny_times(provider['HOST'], provider['NAME'],
                                             provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                             provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'publishersweekly':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += publishersweekly(provider['HOST'], provider['NAME'],
                                                     provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                                     provider['DLTYPES'], False, provider['LABEL'])
 
             elif wishtype == 'apps.npr.org':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += appsnprorg(provider['HOST'], provider['NAME'],
                                               provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                               provider['DLTYPES'], False, provider['LABEL'])
 
             elif wishtype == 'penguinrandomhouse':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += penguinrandomhouse(provider['HOST'], provider['NAME'],
                                                       provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                                       provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'barnesandnoble':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += barnesandnoble(provider['HOST'], provider['NAME'],
                                                   provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                                   provider['DLTYPES'], False, provider['LABEL'])
 
             elif wishtype == 'bookdepository':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += bookdepository(provider['HOST'], provider['NAME'],
                                                   provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                                   provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'indigo':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += indigo(provider['HOST'], provider['NAME'],
                                           provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                           provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'myanonamouse':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider['HOST']} is BLOCKED")
+                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
                 else:
                     providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider['HOST']}")
+                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
                     resultslist += mam(provider['HOST'], provider['NAME'],
                                        provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                        provider['DLTYPES'], False, provider['LABEL'])
             else:
-                logger.debug(f"Unrecognised wishlist {wishtype} for {provider['HOST']}")
+                logger.debug(f"Unrecognised wishlist {wishtype} for {provider_log_origin(provider['HOST'])}")
 
     return resultslist, providers
 
@@ -1118,7 +1118,7 @@ def iterate_over_irc_sites(book=None, search_type=None):
                         results = irc_results(provider, hashfilename)
                         resultslist += results
     except Exception as e:
-        logger.error(str(e))
+        logger.error(type(e).__name__)
 
     return resultslist, providers
 
@@ -1145,12 +1145,12 @@ def ny_times(host=None, feednr=None, priority=0, dispname=None, types='E', test=
     result, success = fetch_url(url)
 
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
 
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         data = result.split('itemProp="itemListElement"')
         for entry in data[1:]:
             try:
@@ -1172,9 +1172,9 @@ def ny_times(host=None, feednr=None, priority=0, dispname=None, types='E', test=
             except IndexError:
                 pass
     else:
-        logger.debug(f'No data returned from {url}')
+        logger.debug(f'No data returned from {provider_log_origin(url)}')
 
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     if test:
         return len(results)
     return results
@@ -1198,11 +1198,11 @@ def amazon(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
     url = host
     result, success = fetch_url(url)
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         soup = BeautifulSoup(result, 'html5lib')
         authors = soup.find_all("div", {"class": "kc-rank-card-author"})
         titles = soup.find_all("div", {"class": "kc-rank-card-title"})
@@ -1235,7 +1235,7 @@ def amazon(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
                     'label': label,
                 })
 
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     if test:
         return len(results)
     return results
@@ -1262,11 +1262,11 @@ def publishersweekly(host=None, feednr=None, priority=0, dispname=None, types='E
 
     result, success = fetch_url(url)
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         data = result.split('class="nielsen-bookinfo"')
         for entry in data[1:]:
             try:
@@ -1291,7 +1291,7 @@ def publishersweekly(host=None, feednr=None, priority=0, dispname=None, types='E
             except IndexError:
                 pass
     else:
-        logger.debug(f'No data returned from {url}')
+        logger.debug(f'No data returned from {provider_log_origin(url)}')
     if test:
         return len(results)
     return results
@@ -1327,7 +1327,7 @@ def appsnprorg(host=None, feednr=None, priority=0, dispname=None, types='E', tes
         result = str(e)
 
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
@@ -1358,9 +1358,9 @@ def appsnprorg(host=None, feednr=None, priority=0, dispname=None, types='E', tes
             })
 
     else:
-        logger.debug(f'No data returned from {url}')
+        logger.debug(f'No data returned from {provider_log_origin(url)}')
 
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     if test:
         return len(results)
     return results
@@ -1384,11 +1384,11 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
     url = host
     result, success = fetch_url(url)
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
 
         soup = BeautifulSoup(result, 'html5lib')
         data = soup.find_all(id="tmpl-indc")
@@ -1438,7 +1438,7 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
                         'types': types,
                         'label': label,
                     })
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     if test:
         return len(results)
     return results
@@ -1458,11 +1458,11 @@ def barnesandnoble(host=None, feednr=None, priority=0, dispname=None, types='E',
     url = host
     result, success = fetch_url(url)
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         soup = BeautifulSoup(result, 'html5lib')
         titles = soup.find_all("div", {"class": "product-shelf-title product-info-title pt-xs"})
         authors = soup.find_all("div", {"class": "product-shelf-author pt-0 mt-1"})
@@ -1498,7 +1498,7 @@ def barnesandnoble(host=None, feednr=None, priority=0, dispname=None, types='E',
                     'types': types,
                     'label': label,
                 })
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     if test:
         return len(results)
     return results
@@ -1531,11 +1531,11 @@ def bookdepository(host=None, feednr=None, priority=0, dispname=None, types='E',
 
         next_page = False
         if not success:
-            logger.error(f'Error fetching data from {url}: {result}')
+            logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
             if not test:
                 BLOCKHANDLER.block_provider(basehost, result)
         elif result:
-            logger.debug(f'Parsing results from {url}')
+            logger.debug(f'Parsing results from {provider_log_origin(url)}')
             soup = BeautifulSoup(result, 'html5lib')
             titles = soup.find_all("h3", {"class": "title"})
             authors = soup.find_all("p", {"class": "author"})
@@ -1572,7 +1572,7 @@ def bookdepository(host=None, feednr=None, priority=0, dispname=None, types='E',
                     })
 
         if test:
-            logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+            logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
             return len(results)
 
         page += 1
@@ -1599,11 +1599,11 @@ def indigo(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
 
     result, success = fetch_url(url)
     if not success:
-        logger.error(f'Error fetching data from {url}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
     elif result:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         api = 'https://www.chapters.indigo.ca/en-ca/api/v1/merchandising/GetCmsProductList/?sortDirection=0'
         api += '&sortKey=Default&rangeLength=0&rangeStart=0&pageSize=12'
         list_id = re.findall(r'(?<="productLists":\[{"ContentID":).*?,', result)[0].split(',')[0]
@@ -1662,9 +1662,9 @@ def indigo(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
                     })
             page += 1
             if test:
-                logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {host}")
+                logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
                 return len(results)
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     return results
 
 
@@ -1702,11 +1702,11 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
         next_page = False
 
         if not success:
-            logger.error(f'Error fetching data from {url}: {result}')
+            logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
             if not test:
                 BLOCKHANDLER.block_provider(basehost, result)
         elif result:
-            logger.debug(f'Parsing results from {url}')
+            logger.debug(f'Parsing results from {provider_log_origin(url)}')
             data = result.split('<td valign="top" class="number">')
             for entry in data[1:]:
                 try:
@@ -1732,10 +1732,10 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
                 except IndexError:
                     pass
         else:
-            logger.debug(f'No data returned from {url}')
+            logger.debug(f'No data returned from {provider_log_origin(url)}')
 
         if test:
-            logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {host}")
+            logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
             return len(results)
 
         page += 1
@@ -1743,7 +1743,7 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
             logger.warning('Maximum results page reached, still more results available')
             next_page = False
 
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     return results
 
 
@@ -1761,26 +1761,23 @@ def mam(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
     if success:
         data = feedparser.parse(result)
     else:
-        logger.error(f'Error fetching data from {host}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(host)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(basehost, result)
         data = None
 
-    with open(DIRS.get_logfile('mam.data'), 'w') as mamlog:
-        mamlog.write(result)
-
     if data:
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         provider = data['feed']['link']
         desc = data['feed']['description']
         if desc.startswith('Error'):
-            logger.error(f'Error fetching data from {host}: {desc}')
+            logger.error(f'Error fetching data from {provider_log_origin(host)}: {provider_error_category(desc)}')
             if test:
                 return 0
             return []
         if not dispname:
             dispname = provider
-        logger.debug(f"rss {provider} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
+        logger.debug(f"rss {provider_log_origin(provider)} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
         for post in data.entries:
             title = ''
             book_link = ''
@@ -1826,9 +1823,9 @@ def mam(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
                     'types': types,
                     'label': label,
                 })
-        logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+        logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     else:
-        logger.debug(f'No data returned from {host}')
+        logger.debug(f'No data returned from {provider_log_origin(host)}')
     if test:
         return len(results)
     return results
@@ -1863,17 +1860,17 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
         if success:
             data = feedparser.parse(result)
         else:
-            logger.error(f'Error fetching data from {host}: {result}')
+            logger.error(f'Error fetching data from {provider_log_origin(host)}: {provider_error_category(result)}')
             if not test:
                 BLOCKHANDLER.block_provider(basehost, result)
             data = None
 
         if data:
-            logger.debug(f'Parsing results from {url}')
+            logger.debug(f'Parsing results from {provider_log_origin(url)}')
             provider = data['feed']['link']
             if not dispname:
                 dispname = provider
-            logger.debug(f"rss {provider} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
+            logger.debug(f"rss {provider_log_origin(provider)} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
             for post in data.entries:
                 title = ''
                 book_id = ''
@@ -1902,7 +1899,7 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
                     })
                     next_page = True
         if test:
-            logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {host}")
+            logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
             return len(results)
 
         page += 1
@@ -1910,7 +1907,7 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
             logger.warning('Maximum results page reached, still more results available')
             next_page = False
 
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     return results
 
 
@@ -1938,26 +1935,26 @@ def rss(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
                 success = True
                 result = rss_provider.read()
         except Exception:
-            logger.error(f"{url} rss file provider doesn't exist")
+            logger.error(f"{provider_log_origin(url)} rss file provider doesn't exist")
 
     if success:
         data = feedparser.parse(result)
     else:
-        logger.error(f'Error fetching data from {host}: {result}')
+        logger.error(f'Error fetching data from {provider_log_origin(host)}: {provider_error_category(result)}')
         if not test:
             BLOCKHANDLER.block_provider(host, result)
         data = None
 
     if data:
         # to debug because of api
-        logger.debug(f'Parsing results from {url}')
+        logger.debug(f'Parsing results from {provider_log_origin(url)}')
         try:
             provider = data['feed']['link']
         except KeyError:
             provider = f'rss_{feednr}'
         if not dispname:
             dispname = provider
-        logger.debug(f"rss {provider} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
+        logger.debug(f"rss {provider_log_origin(provider)} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
         for post in data.entries:
             title = None
             magnet = None
@@ -2024,7 +2021,7 @@ def rss(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
                     'label': label,
                 })
     else:
-        logger.debug(f'No data returned from {host}')
+        logger.debug(f'No data returned from {provider_log_origin(host)}')
     if test:
         return len(results)
     return results
@@ -2084,8 +2081,8 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
     host = provider['HOST']
     api_key = provider['API']
     logger.debug(
-        f'SearchType [{search_type}] with Host [{host}] mode [{search_mode}] using api [{api_key}] '
-        f'for item [{str(book)}]')
+        f'Provider [{provider.get("DISPNAME", "provider")}] SearchType [{search_type}] with Host [{provider_log_origin(host)}] mode [{search_mode}] '
+        f'for item [{book.get("BookID", "unknown")}]')
 
     results = []
     if not host:
@@ -2107,7 +2104,7 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
     sterm = make_unicode(book['searchterm'])
 
     rootxml = None
-    logger.debug(f"URL = {url}")
+    logger.debug(f"URL = {provider_log_origin(url)}")
     result, success = fetch_url(url, raw=True)
 
     if test:
@@ -2122,15 +2119,15 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
             result = result[1:-2]
             success = False
         if not success:
-            logger.debug(result)
+            logger.debug(f"Provider response type: {type(result).__name__}")
             return success, result
 
     if success:
         try:
             rootxml = ElementTree.fromstring(result)
         except Exception as e:
-            logger.error(f'Error parsing data from {host}: {type(e).__name__} {str(e)}')
-            logger.debug(repr(result))
+            logger.error(f'Error parsing data from {provider_log_origin(host)}: {type(e).__name__}')
+            logger.debug(f"Provider response type: {type(result).__name__}")
             rootxml = None
             success = False
     else:
@@ -2143,7 +2140,7 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
 
         if not result or result == "''":
             result = "Got an empty response"
-        logger.error(f'Error reading data from {host}: {result}')
+        logger.error(f'Error reading data from {provider_log_origin(host)}: {provider_error_category(result)}')
 
     if not success:
         if '429' in result:
@@ -2153,21 +2150,21 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
             # maybe the host doesn't support the search type
             cancelled = cancel_search_type(search_type, result, provider)
             if not cancelled:  # it was some other problem
-                BLOCKHANDLER.block_provider(provider['HOST'], result)
+                BLOCKHANDLER.block_provider(provider['HOST'], provider_error_category(result))
 
     if success and rootxml is not None:
         # to debug because of api
-        logger.debug(f'Parsing results from <a href="{url}">{host}</a>')
+        logger.debug(f'Parsing results from {provider_log_origin(host)}')
         if rootxml.tag == 'error':
             # noinspection PyTypeChecker
             errormsg = rootxml.get('description', default='unknown error')
             errormsg = errormsg[:200]  # sometimes get huge error messages from jackett
             errorcode = int(rootxml.get('code', default=900))  # 900 is "Unknown Error"
-            logger.error(f"{host} - {errormsg}")
+            logger.error(f"{provider_log_origin(host)} - provider error code {errorcode}, {provider_error_category(errormsg)}")
             # maybe the host doesn't support the search type
             cancelled = cancel_search_type(search_type, errormsg, provider, errorcode)
             if not cancelled:  # it was some other problem
-                BLOCKHANDLER.block_provider(provider['HOST'], errormsg)
+                BLOCKHANDLER.block_provider(provider['HOST'], f"Provider error code {errorcode}")
 
             if search_type == 'book' and cancelled:
                 return newznab_plus(book, provider, 'generalbook', search_mode, test)
@@ -2223,7 +2220,7 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
                                 nzbage = age(f'{int(parts[3]):04d}-{month2num(parts[2]):02d}-{int(parts[1]):02d}')
                             except Exception as e:
                                 logger.warning(
-                                    f"Unable to get age from [{thisnzb['nzbdate']}] {type(e).__name__} {str(e)}")
+                                    f"Unable to get age from [{thisnzb['nzbdate']}] {type(e).__name__}")
                                 nzbage = 0
                             if nzbage <= maxage:
                                 nzbcount += 1
@@ -2232,10 +2229,10 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
                                 logger.debug(f"{thisnzb['nzbtitle']} is too old ({nzbage} {plural(nzbage, 'day')})")
 
                 except IndexError:
-                    logger.debug(f'No results from {host} for {sterm}')
-            logger.debug(f'Found {nzbcount} results at {host} for: {sterm}')
+                    logger.debug(f'No results from {provider_log_origin(host)} for {sterm}')
+            logger.debug(f'Found {nzbcount} results at {provider_log_origin(host)} for: {sterm}')
     else:
-        logger.debug(f'No data returned from {host} for {sterm}')
+        logger.debug(f'No data returned from {provider_log_origin(host)} for {sterm}')
     if test:
         return len(results), host
     return True, results
@@ -2331,7 +2328,7 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
                 except ValueError:
                     pass
 
-        logger.debug(f'{search_mode} Search parameters set to {str(params)}')
+        logger.debug(f'{search_mode} Search parameter count: {len(params)}')
     else:
         logger.debug(f'{search_mode} No matching search parameters for {search_type}')
 
@@ -2488,5 +2485,5 @@ def return_results_by_search_type(book: dict, nzbdetails, host=None, search_mode
     if comments and comments.startswith('http'):  # torznab may have a provider page link here
         result_fields['prov_page'] = comments
 
-    logger.debug(f"Result fields from NZB are {str(result_fields)}")
+    logger.debug(f"Result from NZB has {len(result_fields)} fields")
     return result_fields

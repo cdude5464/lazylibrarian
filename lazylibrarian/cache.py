@@ -28,6 +28,7 @@ import requests
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.providerlogging import provider_log_origin
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.common import get_user_agent, proxy_list
 from lazylibrarian.config2 import CONFIG
@@ -72,7 +73,7 @@ def _usable_author_cache_image(filename):
         with PILImage.open(filename) as img:
             width, height = img.size
     except Exception as e:
-        return False, f"unreadable author image: {type(e).__name__} {str(e)}"
+        return False, f"unreadable author image: {type(e).__name__}"
 
     if width < 80 or height < 80:
         return False, f"author image too small: {width}x{height}"
@@ -93,7 +94,7 @@ def _reject_bad_author_cache_image(img_type, cachefile, logger):
     try:
         remove_file(cachefile)
     except Exception as e:
-        logger.debug(f"Unable to remove rejected author image {cachefile}: {type(e).__name__} {str(e)}")
+        logger.debug(f"Unable to remove rejected author image {cachefile}: {type(e).__name__}")
     return reason
 
 
@@ -141,7 +142,8 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         Default to unicode, need to set raw=True for images/data
         Allow one retry on timeout by default """
     logger = logging.getLogger(__name__)
-    http.client.HTTPConnection.debuglevel = 1 if lazylibrarian.REQUESTSLOG else 0
+    # Wire debug prints request headers/URLs outside the logging redaction path.
+    http.client.HTTPConnection.debuglevel = 0
     # for key in logging.Logger.manager.loggerDict:
     #     print(key)
     logging.getLogger('chardet').setLevel(logging.CRITICAL)
@@ -187,25 +189,25 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         # but if it takes more than 30 loops the requests library stops trying
         # Retrying with verify off seems to clear it
         if not retry:
-            logger.error(f"fetch_url: TooManyRedirects getting response from {url}")
-            return f"TooManyRedirects {str(e)}", False
-        logger.debug(f"Retrying - got TooManyRedirects on {url}")
+            logger.error(f"fetch_url: TooManyRedirects getting response from {provider_log_origin(url)}")
+            return "TooManyRedirects", False
+        logger.debug(f"Retrying - got TooManyRedirects on {provider_log_origin(url)}")
         try:
             r = requests.get(url, verify=False, headers=headers, **request_kwargs)
             logger.debug(f"TooManyRedirects retry status code {r.status_code}")
         except Exception as e:
-            return f"Exception {type(e).__name__}: {str(e)}", False
+            return f"Exception {type(e).__name__}", False
     except requests.exceptions.Timeout as e:
         if not retry:
-            logger.error(f"fetch_url: Timeout getting response from {url}")
-            return f"Timeout {str(e)}", False
-        logger.debug(f"fetch_url: retrying - got timeout on {url}")
+            logger.error(f"fetch_url: Timeout getting response from {provider_log_origin(url)}")
+            return "Timeout", False
+        logger.debug(f"fetch_url: retrying - got timeout on {provider_log_origin(url)}")
         try:
             r = requests.get(url, verify=verify, headers=headers, **request_kwargs)
         except Exception as e:
-            return f"Exception {type(e).__name__}: {str(e)}", False
+            return f"Exception {type(e).__name__}", False
     except Exception as e:
-        return f"Exception {type(e).__name__}: {str(e)}", False
+        return f"Exception {type(e).__name__}", False
 
     if str(r.status_code).startswith('2'):  # (200 OK etc)
         if raw:
@@ -229,9 +231,9 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         if to_block:
             delay = 10
             logger.debug(f'Request denied, {r.status_code}, blocking {to_block} for {delay} seconds')
-            BLOCKHANDLER.replace_provider_entry(to_block, delay, msg)
+            BLOCKHANDLER.replace_provider_entry(to_block, delay, f"HTTP status {r.status_code}")
         else:
-            logger.debug(f"Error {r.status_code} url={url}")
+            logger.debug(f"Error {r.status_code} url={provider_log_origin(url)}")
 
     elif 'googleapis' in url or 'google.com/search?q=ISBN' in url:
         prov = 'googleapis' if 'googleapis' in url else 'ISBN'
@@ -247,12 +249,12 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
             # eg "Cannot determine user location for geographically restricted operation"
             delay = 3600
 
-        logger.debug(f'Request denied, {r.status_code}, blocking {prov} for {delay} seconds: {msg}')
-        BLOCKHANDLER.replace_provider_entry(prov, delay, msg)
+        logger.debug(f'Request denied, {r.status_code}, blocking {prov} for {delay} seconds')
+        BLOCKHANDLER.replace_provider_entry(prov, delay, f"HTTP status {r.status_code}")
     else:
-        logger.debug(f"Error {r.status_code} url={url}")
+        logger.debug(f"Error {r.status_code} url={provider_log_origin(url)}")
 
-    msg = responses.get(r.status_code, r.text)
+    msg = responses.get(r.status_code, "HTTP error")
     return f"Response status {r.status_code}: {msg}", False
 
 
@@ -286,13 +288,13 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
                     img.write(result)
                 rejected = _reject_bad_author_cache_image(img_type, cachefile, logger)
                 if rejected:
-                    logger.debug(f"Rejected cached author image from {img_url}: {rejected}")
+                    logger.debug(f"Rejected cached author image from {provider_log_origin(img_url)}: {rejected}")
                     return rejected, False, False
                 return link, True, False
             except Exception as e:
-                logger.error(f"{type(e).__name__} writing image to {cachefile}, {str(e)}")
-                logger.error(f"Image url: {img_url}")
-                return str(e), False, False
+                logger.error(f"{type(e).__name__} writing image to {cachefile}, {type(e).__name__}")
+                logger.error(f"Image url: {provider_log_origin(img_url)}")
+                return type(e).__name__, False, False
         return result, False, False
 
     if not path_isfile(img_url) and img_url.endswith('.jpg'):
@@ -303,13 +305,13 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
             shutil.copyfile(img_url, cachefile)
             rejected = _reject_bad_author_cache_image(img_type, cachefile, logger)
             if rejected:
-                logger.debug(f"Rejected cached author image from {img_url}: {rejected}")
+                logger.debug(f"Rejected cached author image from {provider_log_origin(img_url)}: {rejected}")
                 return rejected, False, had_cache
             return link, True, had_cache
         except Exception as e:
-            logger.error(f"{type(e).__name__} copying image to {cachefile}, {str(e)}")
-            return str(e), False, False
-    msg = f"No file [{img_url}]"
+            logger.error(f"{type(e).__name__} copying image to {cachefile}, {type(e).__name__}")
+            return type(e).__name__, False, False
+    msg = f"No file [{provider_log_origin(img_url)}]"
     logger.debug(msg)
     return msg, False, False
 
@@ -374,10 +376,10 @@ class CacheRequest(ABC):
 
         if valid_cache:
             lazylibrarian.CACHE_HIT += 1
-            self.cachelogger.debug(f"CacheHandler: Returning CACHED response {hashfilename} for {self.url}")
+            self.cachelogger.debug(f"CacheHandler: Returning CACHED response {hashfilename} for {provider_log_origin(self.url)}")
             source, ok = self.read_from_cache(hashfilename)
             if not ok:
-                self.logger.debug(f"CacheHandler: Failed to read {hashfilename} for {self.url}")
+                self.logger.debug(f"CacheHandler: Failed to read {hashfilename} for {provider_log_origin(self.url)}")
                 return None, False
         else:
             lazylibrarian.CACHE_MISS += 1
@@ -387,13 +389,13 @@ class CacheRequest(ABC):
 
             result, success = self.fetch_data()
             if success:
-                self.cachelogger.debug(f"CacheHandler: Storing {self.name()} {myhash} {len(result)} bytes for {self.url}")
+                self.cachelogger.debug(f"CacheHandler: Storing {self.name()} {myhash} {len(result)} bytes for {provider_log_origin(self.url)}")
                 source, result = self.load_from_result_and_cache(result, hashfilename, expire_older_than)
-                self.cachelogger.debug(result)
+                self.cachelogger.debug(f"Cache decode status: {bool(result)}")
             elif '404' in result:  # don't block on "not found"
                 return None, False
             else:
-                msg = f"Got error response for {self.url}: {result.split('<')[0]}"
+                msg = f"Got error response for {provider_log_origin(self.url)}"
                 self.logger.debug(msg)
                 to_block = ''
                 for blk in service_blocked:
@@ -482,10 +484,10 @@ class XMLCacheRequest(CacheRequest):
                             self.cachelogger.debug(f"Returning {len(source)} bytes xml uncached")
                             return source, False
                     except (ElementTree.ParseError, UnicodeEncodeError, UnicodeDecodeError):
-                        self.logger.error(f"Error parsing xml from {self.url}")
+                        self.logger.error(f"Error parsing xml from {provider_log_origin(self.url)}")
                         source = None
                 except ElementTree.ParseError:
-                    self.logger.error(f"Error parsing xml from {self.url}")
+                    self.logger.error(f"Error parsing xml from {provider_log_origin(self.url)}")
                     source = None
 
         if source is not None:
@@ -494,18 +496,18 @@ class XMLCacheRequest(CacheRequest):
                     cachefile.write(result)
                     self.cachelogger.debug(f"Cached {len(result)} bytes xml {filename}")
             except Exception as e:
-                self.logger.error(f"Exception {e} writing {filename}")
+                self.logger.error(f"Exception {type(e).__name__} writing {filename}")
                 return source, False
         else:
-            self.logger.error(f"Error getting xml data from {self.url}")
+            self.logger.error(f"Error getting xml data from {provider_log_origin(self.url)}")
             if result:
-                self.logger.error(f"Result: {result[:80]}")
+                self.logger.error(f"Invalid XML response: {len(result)} bytes")
                 try:
                     with open(syspath(f"{filename}.err"), "wb") as cachefile:
                         cachefile.write(result)
                         self.logger.error(f"Cached {len(result)} bytes {filename}.err")
                 except Exception as e:
-                    self.logger.error(f"Exception {e} writing {filename}.err")
+                    self.logger.error(f"Exception {type(e).__name__} writing {filename}.err")
             return None, False
         return source, True
 
@@ -521,7 +523,7 @@ class HTMLCacheRequest(CacheRequest):
                 source = cachefile.read()
             return source, True
         except Exception as e:
-            self.logger.error(f"Exception {e} reading {hashfilename}")
+            self.logger.error(f"Exception {type(e).__name__} reading {hashfilename}")
             return '', False
 
 
@@ -532,7 +534,7 @@ class HTMLCacheRequest(CacheRequest):
                 cachefile.write(source)
             return source, True
         except Exception as e:
-            self.logger.error(f"Exception {e} writing {filename}")
+            self.logger.error(f"Exception {type(e).__name__} writing {filename}")
             return source, False
 
 
@@ -562,15 +564,15 @@ class JSONCacheRequest(CacheRequest):
             if not docache:
                 return source, False
         except Exception as e:
-            self.logger.error(f"{type(e).__name__} decoding json from {self.url}")
-            self.logger.debug(f"{e} : {result}")
+            self.logger.error(f"{type(e).__name__} decoding json from {provider_log_origin(self.url)}")
+            self.logger.debug(f"Invalid JSON response: {type(e).__name__}")
             return None, False
         try:
             with open(filename, "w") as outfile:
                 json.dump(source, outfile)
             return source, True
         except Exception as e:
-            self.logger.error(f"Exception {e} writing {outfile}")
+            self.logger.error(f"Exception {type(e).__name__} writing {outfile}")
             return source, False
 
 def clean_cache():
@@ -636,7 +638,7 @@ def clean_cache():
             result.append(msg)
             logger.debug(msg)
     except Exception as e:
-        logger.error(str(e))
+        logger.error(type(e).__name__)
 
     db.upsert("jobs", {'Finish': time.time()}, {'Name': 'CLEANCACHE'})
     db.close()

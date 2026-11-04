@@ -759,6 +759,41 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
     return False, res
 
 
+def torrent_contains_only_audio(torrent):
+    """Recognize a provably audio-only v1 payload before adding an ebook grab."""
+    if not torrent:
+        return False
+    try:
+        info = bdecode(torrent)["info"]
+        files = info.get("files")
+        if files is None:
+            names = [info["name"]]
+        else:
+            names = [item["path"][-1] for item in files]
+        extensions = {os.path.splitext(make_unicode(name))[1].lower() for name in names}
+    except (ValueError, KeyError, TypeError, IndexError):
+        return False
+    audio = {".mp3", ".m4b", ".m4a", ".flac", ".aac", ".ogg", ".opus", ".wav"}
+    sidecars = {".jpg", ".jpeg", ".png", ".txt", ".nfo", ".cue", ".m3u", ".m3u8"}
+    return bool(extensions & audio and extensions <= audio | sidecars)
+
+
+def previously_rejected_archive(bookid, hashid):
+    """Block the same bad payload even when its release title or URL changes."""
+    if not bookid or not hashid:
+        return False
+    db = database.DBConnection()
+    try:
+        return bool(db.match(
+            "SELECT 1 FROM wanted WHERE BookID=? AND lower(DownloadID)=? "
+            "AND AuxInfo='eBook' AND Source='QBITTORRENT' AND Status='Failed' "
+            "AND DLResult LIKE 'Rejected archive payload before LazyLibrarian import:%' LIMIT 1",
+            (bookid, hashid.lower()),
+        ))
+    finally:
+        db.close()
+
+
 def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', label='', provider='',
                   requested_author='', requested_title=''):
     logger = logging.getLogger(__name__)
@@ -948,6 +983,11 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
 
         if CONFIG.get_bool('TOR_DOWNLOADER_QBITTORRENT') and CONFIG['QBITTORRENT_HOST']:
             source = "QBITTORRENT"
+            if library == "eBook":
+                if torrent_contains_only_audio(torrent):
+                    return False, "Rejected audio-only torrent payload before ebook grab"
+                if previously_rejected_archive(bookid, hashid):
+                    return False, "Refusing previously rejected ebook archive by torrent hash"
             if not qbittorrent.provider_share_limits(provider_options):
                 res = "Refusing qBittorrent add without an explicit provider share policy"
                 logger.error(res)

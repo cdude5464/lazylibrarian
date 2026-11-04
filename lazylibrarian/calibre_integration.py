@@ -573,11 +573,8 @@ def send_to_calibre(booktype, global_name, folder, data):
             else:
                 return False, f"Failed to locate author folder {author_dir}", folder
 
-        if booktype == "ebook":
-            remv = CONFIG.get_bool("FULL_SCAN")
-            logger.debug(f"Scanning directory [{target_dir}]")
-            _ = lazylibrarian.librarysync.library_scan(target_dir, remove=remv)
-
+        # This is an identified import, not a discovery scan. A scan can
+        # create a second provider edition from the embedded ebook metadata.
         newbookfile = book_file(target_dir, booktype=booktype, config=CONFIG)
         # should we be setting permissions on calibres directories and files?
         if newbookfile:

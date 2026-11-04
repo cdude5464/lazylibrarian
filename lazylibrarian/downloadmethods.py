@@ -80,7 +80,7 @@ from lazylibrarian.formatter import (
 from lazylibrarian.ircbot import irc_query
 from lazylibrarian.soulseek import SLSKD
 from lazylibrarian.telemetry import record_usage_data
-from lib.bencode import bdecode, bencode
+from lib.bencode import BencodeDecodeError, bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
 
@@ -765,13 +765,15 @@ def torrent_contains_only_audio(torrent):
         return False
     try:
         info = bdecode(torrent)["info"]
+        if not isinstance(info, dict):
+            return False
         files = info.get("files")
         if files is None:
             names = [info["name"]]
         else:
             names = [item["path"][-1] for item in files]
         extensions = {os.path.splitext(make_unicode(name))[1].lower() for name in names}
-    except (ValueError, KeyError, TypeError, IndexError):
+    except (BencodeDecodeError, ValueError, KeyError, TypeError, IndexError):
         return False
     audio = {".mp3", ".m4b", ".m4a", ".flac", ".aac", ".ogg", ".opus", ".wav"}
     sidecars = {".jpg", ".jpeg", ".png", ".txt", ".nfo", ".cue", ".m3u", ".m3u8"}

@@ -40,3 +40,5 @@ class ArchiveHashRejectionTest(TestCase):
         self.assertFalse(downloadmethods.torrent_contains_only_audio(metadata("book.m4b", "book.epub")))
         self.assertFalse(downloadmethods.torrent_contains_only_audio(metadata("book.m4b", "payload.rar")))
         self.assertFalse(downloadmethods.torrent_contains_only_audio(b""))
+        self.assertFalse(downloadmethods.torrent_contains_only_audio(b"invalid"))
+        self.assertFalse(downloadmethods.torrent_contains_only_audio(downloadmethods.bencode({"info": []})))

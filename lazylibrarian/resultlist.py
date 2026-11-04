@@ -21,6 +21,9 @@ from rapidfuzz import fuzz
 from rapidfuzz.utils import default_process
 
 from lazylibrarian import database
+from lazylibrarian.anna_download_policy import (
+    ANNA_AUTH_FAILURES, ANNA_PARTNER_UNAVAILABLE, anna_account_failure, anna_file_retry_due,
+)
 from lazylibrarian.common import only_punctuation
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.downloadmethods import (
@@ -218,6 +221,10 @@ def _failed_source_retryable(row, auxinfo, author='', title=''):
     if status != 'Failed':
         return False
     result = result.lower()
+    if provider == 'annas' and result == ANNA_PARTNER_UNAVAILABLE.lower():
+        return auxinfo == 'eBook' and anna_file_retry_due(row)
+    if provider == 'annas' and result in {text.lower() for text in ANNA_AUTH_FAILURES}:
+        return auxinfo == 'eBook'
     if auxinfo == 'eBook' and result.removeprefix('destination: ').startswith(
             'calibre duplicate has no verified existing ebook file; source retained for reconciliation'):
         return True
@@ -274,6 +281,13 @@ def _audiobook_failed_source_blocks_result(db, bookid, auxinfo, result_title, re
                 failed_title['NZBsize'], result_size):
             return failed_title
     return None
+
+
+def _anna_failure_blocks(db, identifier, auxinfo, author='', title=''):
+    """A retryable failure cannot hide another manual/content block."""
+    failures = db.select("SELECT * FROM wanted WHERE lower(NZBurl)=? AND Status='Failed'",
+                         (str(identifier).lower(),))
+    return any(not _failed_source_retryable(row, auxinfo, author, title) for row in failures)
 
 
 def process_result_list(resultlist, book, searchtype, source):
@@ -464,6 +478,13 @@ def find_best_result(resultlist, book, searchtype, source):
             if not url:
                 rejected = True
                 logger.debug(f"Rejecting {result_title}, no URL found")
+
+            if (not rejected and source == 'direct' and res.get('tor_prov') == 'annas'
+                    and _anna_failure_blocks(db, url, auxinfo, author, title)):
+                # This content/manual block is mandatory even if the general
+                # configurable failed-source blacklist has been disabled.
+                rejected = True
+                logger.debug('Rejecting Anna file with a non-retryable failure')
 
             if not rejected and CONFIG.get_bool('BLACKLIST_FAILED'):
                 cmd = "SELECT * from wanted WHERE NZBurl=? and Status='Failed'"
@@ -750,7 +771,7 @@ def weighted_score(s):
     return check_int(s[0], 0) + priority_bonus
 
 
-def download_result(match, book):
+def download_result(match, book, failure_details=None):
     """ match:  best result from search providers
         book:   book we are downloading (needed for reporting author name)
         return: 0 if failed to snatch
@@ -825,6 +846,8 @@ def download_result(match, book):
             return 2  # we found it
         db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?",
                   (res, control_value_dict["NZBurl"]))
+        if failure_details is not None and new_value_dict['NZBprov'] == 'annas':
+            failure_details['anna_account_hold'] = anna_account_failure(res)
         return 0
     except Exception:
         logger.error(f'Unhandled exception in download_result: {traceback.format_exc()}')

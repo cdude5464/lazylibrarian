@@ -32,6 +32,7 @@ from requests.exceptions import RequestException
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.anna_download_policy import anna_api_failure
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.booklanguages import anna_search_languages
 from lazylibrarian.config2 import CONFIG
@@ -570,6 +571,10 @@ def annas_download(md5, folder, title, extn, domain_index=0):
             annas_hosts_prefer(annas_hosts, host)
             break
         downloadlogger.debug(f"Anna fast-download API HTTP status: {response.status_code}")
+        # These are definitive request/account responses, not a reason to
+        # repeat the same request at every approved origin.
+        if response.status_code in (400, 401, 403, 409, 429):
+            break
 
     if response is None:
         errmsg = f"Anna fast download request failed for all configured hosts: {last_error or 'no response'}"
@@ -645,8 +650,14 @@ def annas_download(md5, folder, title, extn, domain_index=0):
         lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
         block_annas(CONFIG.get_int('ANNA_DLLIMIT'), reason=errmsg)
     else:
-        errmsg = (f"Error Status: {response.status_code} Check your ANNAS key, "
-                  f"and make sure you have a PAID subscription")
+        try:
+            payload = response.json()
+        except (ValueError, TypeError):
+            payload = None
+        errmsg = anna_api_failure(response.status_code, payload)
+        if response.status_code in (401, 403):
+            # Stop further account requests without pretending quota is zero.
+            BLOCKHANDLER.block_provider('annas', errmsg, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
     logger.error(errmsg)
     return False, errmsg
 

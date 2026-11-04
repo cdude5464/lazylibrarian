@@ -176,6 +176,7 @@ class AnnaCredentialLoggingTest(TestCase):
                     patch.object(annas, "CONFIG", config),
                     patch.object(annas.logging, "getLogger", side_effect=[logger, downloadlogger]),
                     patch.object(annas, "get", side_effect=[outcome]),
+                    patch.object(annas.BLOCKHANDLER, "block_provider"),
                 ):
                     success, error = annas.annas_download("a" * 32, "", "Book", ".epub")
                 self.assertFalse(success)

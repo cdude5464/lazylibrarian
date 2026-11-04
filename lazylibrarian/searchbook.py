@@ -21,6 +21,7 @@ import traceback
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.anna_download_policy import anna_file_retry_due
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import check_int, get_list, plural, thread_name
@@ -150,7 +151,7 @@ def warn_mode(mode, search_type=None):
     logger.warning(f'No {mode} providers are available. Check config and blocklist')
 
 
-def retryable_anna_history_candidates(book):
+def retryable_anna_history_candidates(book, due_only=False):
     """Recover previously matched sources without requiring a fresh HTML search."""
     if book.get("library") != "eBook" or not book.get("bookid"):
         return []
@@ -172,6 +173,8 @@ def retryable_anna_history_candidates(book):
                 continue
             seen.add(identifier)
             if row["Status"] != "Failed" or not re.fullmatch(r"[0-9a-f]{32}", identifier):
+                continue
+            if due_only and not anna_file_retry_due(row):
                 continue
             failures = db.select(
                 "SELECT * FROM wanted WHERE lower(NZBurl)=? AND Status='Failed'",
@@ -203,6 +206,62 @@ def retryable_anna_history_candidates(book):
     finally:
         if db is not None:
             db.close()
+
+
+def _download_candidate_matches(matches, book, direct_pool=None):
+    """Try normal matches and at most three distinct Anna files this cycle.
+
+    Reuse fetched results, but rerun the normal matcher after each failure so
+    current manual/content blocks still apply. Only download_result writes a
+    wanted row, so unattempted alternatives never become orphan Matched rows.
+    """
+    logger = logging.getLogger(__name__)
+    matches = list(matches)
+    attempted = set()
+    anna_attempts = 0
+    anna_account_hold = False
+    while matches:
+        try:
+            highest = max(matches, key=lambda s: (weighted_score(s), check_int(s[3], 0)))
+        except TypeError:
+            highest = max(matches, key=lambda s: (str(s[0]), str(s[3])))
+        matches.remove(highest)
+        is_anna = highest[1].get('NZBprov') == 'annas' and highest[1].get('NZBmode') == 'direct'
+        if is_anna:
+            identity = str(highest[2].get('NZBurl') or '').lower()
+            if (identity in attempted or anna_attempts >= 3 or anna_account_hold
+                    or BLOCKHANDLER.is_blocked('annas')):
+                continue
+            db = database.DBConnection()
+            try:
+                field = 'AudioStatus' if book['library'] == 'AudioBook' else 'Status'
+                state = db.match(f'SELECT {field} FROM books WHERE BookID=?', (book['bookid'],))
+            finally:
+                db.close()
+            if not state or state[field] != 'Wanted':
+                return 1  # A concurrent grab or user status change ends this request.
+            attempted.add(identity)
+            anna_attempts += 1
+        logger.info(f"Requesting {book['library']} download: {round(highest[0], 2)}% "
+                    f"{highest[1]['NZBprov']}: {highest[1]['NZBtitle']}")
+        failure_details = {}
+        result = (download_result(highest, book, failure_details=failure_details)
+                  if is_anna else download_result(highest, book))
+        if result > 0:
+            return result
+        anna_account_hold = anna_account_hold or failure_details.get('anna_account_hold', False)
+        if (is_anna and direct_pool and anna_attempts < 3 and not anna_account_hold
+                and not BLOCKHANDLER.is_blocked('annas')):
+            pool, context, searchtype = direct_pool
+            remaining = [item for item in pool if item.get('tor_prov') == 'annas'
+                         and str(item.get('tor_url') or '').lower() not in attempted]
+            alternative = find_best_result(remaining, context, searchtype, 'direct') if remaining else None
+            if good_enough(alternative):
+                matches.append(alternative)
+        if matches:
+            TELEMETRY.record_usage_data('SearchBook/RetryNextCandidate')
+            logger.info(f"Download attempt failed; trying next validated candidate ({len(matches)} remaining)")
+    return 0
 
 
 def search_book(books=None, library=None):
@@ -401,6 +460,19 @@ def search_book(books=None, library=None):
                             f"SearchDelay: {book['library']} {book['bookid']} due this time ({skipped}/{interval})")
 
             matches = []
+            direct_pool = None
+            searchtype = 'audio' if book['library'] == 'AudioBook' else 'book'
+            if (not do_search and book['library'] == 'eBook' and CONFIG.get_bool('ANNA')
+                    and not BLOCKHANDLER.is_blocked('annas')):
+                # A known file becoming eligible again must not wait behind an
+                # unrelated multi-day "no search results" backoff. This lane
+                # checks cached exact MD5s only; it makes no provider searches.
+                due = retryable_anna_history_candidates(book, due_only=True)
+                if due:
+                    match = find_best_result(due, book, searchtype, 'direct')
+                    if good_enough(match):
+                        matches.append(match)
+                        direct_pool = (due, dict(book), searchtype)
             if do_search:
                 # first attempt, try author/title in category "book"
                 if book['library'] == 'AudioBook':
@@ -451,6 +523,7 @@ def search_book(books=None, library=None):
                                 f"Found Direct result: {searchtype} {round(match[0], 2)}%, "
                                 f"{match[1]['NZBprov']} priority {match[3]}")
                             matches.append(match)
+                            direct_pool = (list(resultlist), dict(book), searchtype)
 
                 if CONFIG.use_irc():
                     resultlist, nprov = iterate_over_irc_sites(book, searchtype)
@@ -524,6 +597,7 @@ def search_book(books=None, library=None):
                                     f"Found Direct result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
                                     f"priority {match[3]}")
                                 matches.append(match)
+                                direct_pool = (list(resultlist), dict(book), searchtype)
 
                     if CONFIG.use_irc():
                         resultlist, nprov = iterate_over_irc_sites(book, f"short{searchtype}")
@@ -634,6 +708,7 @@ def search_book(books=None, library=None):
                                     f"Found Direct result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
                                     f"priority {match[3]}")
                                 matches.append(match)
+                                direct_pool = (list(resultlist), dict(book), searchtype)
 
                     # irchighway says search results without both author and title will be
                     # silently rejected but that doesn't seem to be actioned...
@@ -709,39 +784,14 @@ def search_book(books=None, library=None):
                     if good_enough(match):
                         logger.info("Retrying a previously matched Anna source after current policy checks")
                         matches.append(match)
+                        direct_pool = (history, dict(book), searchtype)
 
 
             if matches:
-                # Try candidates best-first, falling through to the next one if a download
-                # fails (e.g. a broken/VIP-restricted release that scores well but 500s on
-                # fetch) instead of giving up after one attempt - matches holds at most one
-                # candidate per source type (nzb/tor/direct/irc/rss), so this is a small,
-                # bounded retry using results already fetched this cycle, no extra provider
-                # queries (Issue #3023). Stops as soon as something snatches successfully,
-                # or turns out to already be snatched by someone else (result 1) - not just
-                # on our own success (result 2).
-                snatched = False
-                while matches:
-                    try:
-                        highest = max(matches, key=lambda s: (weighted_score(s), check_int(s[3], 0)))
-                    except TypeError:
-                        highest = max(matches, key=lambda s: (str(s[0]), str(s[3])))
-
-                    logger.info(
-                        f"Requesting {book['library']} download: {round(highest[0], 2)}% {highest[1]['NZBprov']}: "
-                        f"{highest[1]['NZBtitle']}")
-                    result = download_result(highest, book)
-                    if result > 1:
-                        book_count += 1  # we found it
-                    if result > 0:
-                        snatched = True
-                        break  # snatched (by us, or already by someone else) - nothing more to try
-                    matches.remove(highest)
-                    if matches:
-                        TELEMETRY.record_usage_data("SearchBook/RetryNextCandidate")
-                        logger.info(
-                            f"{highest[1]['NZBprov']} release for {book['searchterm']} failed to download, "
-                            f"trying next best candidate ({len(matches)} remaining)")
+                result = _download_candidate_matches(matches, book, direct_pool)
+                snatched = result > 0
+                if result > 1:
+                    book_count += 1
                 if snatched:
                     db.action("DELETE from failedsearch WHERE BookID=? AND Library=?",
                               (book['bookid'], book['library']))

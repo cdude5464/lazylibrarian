@@ -12,6 +12,9 @@
 
 
 import logging
+import math
+import os
+import re
 import threading
 import time
 import traceback
@@ -28,7 +31,7 @@ from lazylibrarian.providers import (
     iterate_over_torrent_sites,
     iterate_over_znab_sites,
 )
-from lazylibrarian.resultlist import download_result, find_best_result
+from lazylibrarian.resultlist import _failed_source_retryable, download_result, find_best_result
 from lazylibrarian.telemetry import TELEMETRY
 
 
@@ -89,6 +92,61 @@ def warn_mode(mode, search_type=None):
     else:
         return
     logger.warning(f'No {mode} providers are available. Check config and blocklist')
+
+
+def retryable_anna_history_candidates(book):
+    """Recover previously matched sources without requiring a fresh HTML search."""
+    if book.get("library") != "eBook" or not book.get("bookid"):
+        return []
+    db = None
+    try:
+        db = database.DBConnection()
+        current = db.match("SELECT Status FROM books WHERE BookID=?", (book["bookid"],))
+        if not current or current["Status"] != "Wanted":
+            return []
+        rows = db.select(
+            "SELECT * FROM wanted WHERE BookID=? AND NZBprov='annas' "
+            "AND NZBmode='direct' AND AuxInfo='eBook' ORDER BY rowid DESC LIMIT 50",
+            (book["bookid"],))
+        results, seen = [], set()
+        formats = {value.strip().lower() for value in CONFIG["EBOOK_TYPE"].split(",")}
+        for row in rows:
+            identifier = str(row["NZBurl"] or "").lower()
+            if identifier in seen:
+                continue
+            seen.add(identifier)
+            if row["Status"] != "Failed" or not re.fullmatch(r"[0-9a-f]{32}", identifier):
+                continue
+            failures = db.select(
+                "SELECT * FROM wanted WHERE lower(NZBurl)=? AND Status='Failed'",
+                (identifier,))
+            # A deliberate block or genuine content failure must not be
+            # resurrected through an older retryable row for the same payload.
+            if not failures or not all(_failed_source_retryable(item, "eBook") for item in failures):
+                continue
+            title = row["NZBtitle"] or ""
+            extension = os.path.splitext(title)[1].lstrip(".").lower()
+            try:
+                size = float(row["NZBsize"])
+            except (TypeError, ValueError):
+                continue
+            if extension not in formats or not math.isfinite(size) or size <= 0:
+                continue
+            results.append({
+                "bookid": book["bookid"], "tor_prov": "annas", "tor_type": "direct",
+                "tor_title": title, "tor_url": identifier,
+                "tor_size": int(size * 1048576), "tor_extn": extension,
+                "priority": CONFIG["ANNA_DLPRIORITY"],
+            })
+            if len(results) == 3:
+                break
+        return results
+    except Exception:
+        logging.getLogger(__name__).warning("Could not inspect historical Anna source evidence")
+        return []
+    finally:
+        if db is not None:
+            db.close()
 
 
 def search_book(books=None, library=None):
@@ -533,6 +591,15 @@ def search_book(books=None, library=None):
                                 f"Found RSS result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
                                 f"priority {match[3]}")
                             matches.append(match)
+
+            if (not matches and do_search and book["library"] == "eBook"
+                    and CONFIG.get_bool("ANNA") and not BLOCKHANDLER.is_blocked("annas")):
+                history = retryable_anna_history_candidates(book)
+                if history:
+                    match = find_best_result(history, book, searchtype, "direct")
+                    if good_enough(match):
+                        logger.info("Retrying a previously matched Anna source after current policy checks")
+                        matches.append(match)
 
             if matches:
                 try:

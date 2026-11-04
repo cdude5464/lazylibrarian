@@ -914,7 +914,8 @@ def iterate_over_direct_sites(book=None, search_type=None):
                 # Confirmed quota failures are blocked inside anna_search.
                 # A stale remaining counter must not turn a transport/parser
                 # outage into an 18-hour download-quota block.
-                BLOCKHANDLER.block_provider(provider, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
+                if not BLOCKHANDLER.is_blocked("annas-search"):
+                    BLOCKHANDLER.block_provider("annas-search", error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
             else:
                 resultslist += results
                 providers += 1

@@ -15,6 +15,9 @@ class FakeConfig(dict):
     def get_int(self, name):
         return int(self.get(name, 0))
 
+    def set_int(self, name, value):
+        self[name] = value
+
 
 class AnnaAvailabilityTest(TestCase):
     def setUp(self):
@@ -30,6 +33,7 @@ class AnnaAvailabilityTest(TestCase):
             patch.object(annas, "CONFIG", self.config),
             patch.object(annas, "DIRS", SimpleNamespace(CACHEDIR=self.temp.name)),
             patch.object(annas, "annas_hosts_update"),
+            patch.object(annas.BLOCKHANDLER, "is_blocked", return_value=False),
         ]
         for p in self.patches:
             p.start()
@@ -86,6 +90,36 @@ class AnnaAvailabilityTest(TestCase):
             with patch.object(annas, "annas_search", side_effect=annas.HTTPFailedError("Anna unavailable")):
                 self.assertFalse(annas.anna_search({"searchterm": "book"}, test=True))
 
+    def test_cached_md5_result_remains_usable_during_html_search_backoff(self):
+        query = "Author Book"
+        cached = self.cache / (annas.md5_utf8(query) + ".anna")
+        cached.write_text(json.dumps([{
+            "authors": "Author", "title": "Book", "extension": "epub",
+            "size": "1MB", "language": "English [en]", "id": "a" * 32,
+        }]))
+        with (
+            patch.object(annas.BLOCKHANDLER, "is_blocked", side_effect=lambda key: key == "annas-search"),
+            patch.object(annas, "annas_search") as network_search,
+        ):
+            results, error = annas.anna_search({"bookid": "42", "searchterm": query})
+        self.assertEqual(error, "")
+        self.assertEqual(results[0]["tor_url"], "a" * 32)
+        network_search.assert_not_called()
+
+    def test_confirmed_quota_block_still_prevents_search(self):
+        with patch.object(annas.BLOCKHANDLER, "is_blocked", side_effect=lambda key: key == "annas"):
+            results, error = annas.anna_search({"bookid": "42", "searchterm": "Book"})
+        self.assertEqual((results, error), ([], "provider is already blocked"))
+
+    def test_search_backoff_does_not_issue_http_requests(self):
+        with (
+            patch.object(annas.BLOCKHANDLER, "is_blocked", side_effect=lambda key: key == "annas-search"),
+            patch.object(annas, "get") as network,
+        ):
+            with self.assertRaisesRegex(annas.HTTPFailedError, "search backoff"):
+                annas.annas_search("Book")
+        network.assert_not_called()
+
 
 class AnnaProviderOutageBlockTest(TestCase):
     def test_stale_remaining_quota_does_not_extend_an_outage_block(self):
@@ -104,4 +138,69 @@ class AnnaProviderOutageBlockTest(TestCase):
         ):
             result = providers.iterate_over_direct_sites(book, "generalbook")
         self.assertEqual(result, ([], 0))
-        block.assert_called_once_with("annas", "Anna search unavailable", delay=300)
+        block.assert_called_once_with("annas-search", "Anna search unavailable", delay=300)
+
+
+    def test_existing_search_backoff_is_not_extended_by_more_wanted_books(self):
+        config = FakeConfig(BOK=False, SLSK=False, ANNA=True, ANNA_DLTYPES="E", BLOCKLIST_TIMER=300)
+        config.providers = lambda _: []
+        book = {"bookid": "42", "bookName": "Book", "authorName": "Author", "searchterm": "Author Book"}
+        with (
+            patch.object(providers, "CONFIG", config),
+            patch.object(providers.BLOCKHANDLER, "is_blocked", side_effect=lambda key: key == "annas-search"),
+            patch.object(providers.BLOCKHANDLER, "block_provider") as block,
+            patch.object(providers, "anna_search", return_value=([], "Anna HTML search is in backoff")),
+        ):
+            self.assertEqual(providers.iterate_over_direct_sites(book, "generalbook"), ([], 0))
+        block.assert_not_called()
+
+
+class AnnaCredentialLoggingTest(TestCase):
+    def test_api_transport_exception_and_http_error_do_not_log_secret_params(self):
+        config = FakeConfig(ANNA_HOST="https://annas-archive.gl", ANNA_KEY="SECRET")
+        for outcome in (ReadTimeout("https://annas-archive.gl/dyn/api/fast_download.json?key=SECRET"), Mock(status_code=403)):
+            with self.subTest(outcome=outcome):
+                logger, downloadlogger = Mock(), Mock()
+                with (
+                    patch.object(annas, "CONFIG", config),
+                    patch.object(annas.logging, "getLogger", side_effect=[logger, downloadlogger]),
+                    patch.object(annas, "get", side_effect=[outcome]),
+                ):
+                    success, error = annas.annas_download("a" * 32, "", "Book", ".epub")
+                self.assertFalse(success)
+                self.assertNotIn("SECRET", error + str(logger.mock_calls) + str(downloadlogger.mock_calls))
+
+    def test_signed_file_download_url_and_exception_are_not_logged(self):
+        config = FakeConfig(ANNA_HOST="https://annas-archive.gl", ANNA_KEY="SECRET", ANNA_MAX_SERVERS=1)
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "account_fast_download_info": {"downloads_per_day": 50, "downloads_left": 2},
+            "download_url": "https://files.invalid/download?signature=SECRET",
+        }
+        logger, downloadlogger = Mock(), Mock()
+        with (
+            patch.object(annas, "CONFIG", config),
+            patch.object(annas.logging, "getLogger", side_effect=[logger, downloadlogger]),
+            patch.object(annas, "get", side_effect=[response, ReadTimeout("https://files.invalid/?signature=SECRET")]),
+            patch.dict(annas.lazylibrarian.TIMERS, {"ANNA_REMAINING": 2}),
+        ):
+            success, error = annas.annas_download("a" * 32, "", "Book", ".epub")
+        self.assertFalse(success)
+        self.assertNotIn("SECRET", error + str(logger.mock_calls) + str(downloadlogger.mock_calls))
+
+    def test_confirmed_fast_download_rate_limits_still_block_download_provider(self):
+        config = FakeConfig(ANNA_HOST="https://annas-archive.gl", ANNA_KEY="SECRET", ANNA_DLLIMIT=50)
+        for status in (409, 429):
+            with self.subTest(status=status):
+                response = Mock(status_code=status)
+                with (
+                    patch.object(annas, "CONFIG", config),
+                    patch.object(annas, "get", return_value=response),
+                    patch.object(annas, "block_annas") as quota_block,
+                    patch.dict(annas.lazylibrarian.TIMERS, {"ANNA_REMAINING": 5}),
+                ):
+                    success, error = annas.annas_download("a" * 32, "", "Book", ".epub")
+                    self.assertEqual(annas.lazylibrarian.TIMERS["ANNA_REMAINING"], 0)
+                self.assertFalse(success)
+                self.assertIn("rate limited", error)
+                quota_block.assert_called_once_with(50, reason=error)

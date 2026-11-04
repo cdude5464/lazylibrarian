@@ -229,6 +229,8 @@ def annas_search(
 
     if not query.strip():
         raise ValueError("query can not be empty")
+    if BLOCKHANDLER.is_blocked("annas-search"):
+        raise HTTPFailedError("Anna HTML search is temporarily unavailable (search backoff)")
     params = {
         "q": query,
         "lang": language.value,
@@ -390,13 +392,13 @@ def annas_download(md5, folder, title, extn, domain_index=0):
         try:
             response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT)
         except RequestException as e:
-            last_error = f"{type(e).__name__}: {str(e)[:200]}"
-            downloadlogger.warning(f"Failed to request Anna fast download from {host}: {last_error}")
+            last_error = type(e).__name__
+            downloadlogger.warning(f"Anna fast-download API request failed: {last_error}")
             continue
         if str(response.status_code).startswith('2'):
             annas_hosts_prefer(annas_hosts, host)
             break
-        downloadlogger.debug(f"Failed to download from {host}: {response.status_code}")
+        downloadlogger.debug(f"Anna fast-download API HTTP status: {response.status_code}")
 
     if response is None:
         errmsg = f"Anna fast download request failed for all configured hosts: {last_error or 'no response'}"
@@ -406,7 +408,7 @@ def annas_download(md5, folder, title, extn, domain_index=0):
     if str(response.status_code).startswith('2'):
         max_domain_index = check_int(CONFIG['ANNA_MAX_SERVERS'], 0) - 1 # Server indexes are 0-based
         res = response.json()
-        downloadlogger.debug(res)
+        downloadlogger.debug("Anna fast-download API response received")
         counters = res['account_fast_download_info']
         CONFIG.set_int('ANNA_DLLIMIT', counters['downloads_per_day'])
         lazylibrarian.TIMERS['ANNA_REMAINING'] = counters['downloads_left']
@@ -419,21 +421,21 @@ def annas_download(md5, folder, title, extn, domain_index=0):
             try:
                 r = get(url, timeout=ANNA_HTTP_TIMEOUT)
                 if not str(r.status_code).startswith('2'):
-                    msg = f"Got a {r.status_code} response for {url}"
+                    msg = f"Anna file download returned HTTP {r.status_code}"
                     if domain_index < max_domain_index:
                         return annas_download(md5, folder, title, extn, domain_index + 1)
                     downloadlogger.warning(msg)
                     return False, msg
                 filedata = r.content
                 if not len(filedata):
-                    msg = f"Got empty response for {url}"
+                    msg = "Anna file download returned an empty response"
                     downloadlogger.warning(msg)
                     return False, msg
                 if len(filedata) < 100:
-                    msg = f"Only got {len(filedata)} bytes for {url}"
+                    msg = f"Anna file download returned only {len(filedata)} bytes"
                     downloadlogger.warning(msg)
                     return False, msg
-                downloadlogger.debug(f"Got {len(filedata)} bytes for {url}")
+                downloadlogger.debug(f"Anna file download received {len(filedata)} bytes")
                 download_dir = get_directory('Download')
                 if folder:
                     parent = os.path.join(download_dir, folder)
@@ -453,18 +455,18 @@ def annas_download(md5, folder, title, extn, domain_index=0):
                                 f"of {counters['downloads_per_day']}")
                 return True, dest_filename
             except RequestException as e:
-                msg = f"Anna direct download request failed: {type(e).__name__}: {str(e)[:200]}"
+                msg = f"Anna direct download request failed: {type(e).__name__}"
                 logger.warning(msg)
                 if domain_index < max_domain_index:
                     return annas_download(md5, folder, title, extn, domain_index + 1)
                 return False, msg
             except Exception as e:
-                msg = f"Anna direct download failed: {type(e).__name__}: {str(e)[:200]}"
+                msg = f"Anna direct download failed: {type(e).__name__}"
                 logger.warning(msg)
                 if domain_index < max_domain_index:
                     return annas_download(md5, folder, title, extn, domain_index + 1)
                 return False, msg
-        errmsg = f"Invalid url: {url} {res['error']}"
+        errmsg = "Anna fast-download API did not return a usable download URL"
         logger.error(errmsg)
         return False, errmsg
     if response.status_code in (409, 429):
@@ -472,8 +474,6 @@ def annas_download(md5, folder, title, extn, domain_index=0):
         lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
         block_annas(CONFIG.get_int('ANNA_DLLIMIT'), reason=errmsg)
     else:
-        downloadlogger.debug(url)
-        downloadlogger.debug(str(params))
         errmsg = (f"Error Status: {response.status_code} Check your ANNAS key, "
                   f"and make sure you have a PAID subscription")
     logger.error(errmsg)
@@ -545,7 +545,11 @@ def anna_search(book=None, searchtype='ebook', test=False):
             hashfilename = annas_search(book['searchterm'], language=language)
 
     except HTTPFailedError as exc:
-        logger.warning(str(exc))
+        # Repeated lookups during one search outage must not spam warnings.
+        if BLOCKHANDLER.is_blocked("annas-search"):
+            logger.debug(str(exc))
+        else:
+            logger.warning(str(exc))
         if test:
             return False
         return [], str(exc)

@@ -422,7 +422,12 @@ class Api:
                 remote_ip = cherrypy.request.headers.get('Remote-Addr')
             if not remote_ip:
                 remote_ip = cherrypy.request.remote.ip
-            self.logger.debug(f'Received API command from {remote_ip}: {self.cmd} {self.kwargs}')
+            # Arguments and responses can contain configuration credentials or
+            # signed URLs. Log request metadata only, never their raw values.
+            self.logger.debug(
+                "Received API command from %s: %s (%d parameters)",
+                remote_ip, self.cmd, len(self.kwargs),
+            )
             method_to_call = getattr(self, f"_{self.cmd.lower()}")
             method_to_call(**self.kwargs)
 
@@ -431,7 +436,9 @@ class Api:
                 return serve_file(file_path, mime_type(file_path), "attachment", name=file_name)
 
             if 'callback' not in self.kwargs:
-                self.dlcommslogger.debug(str(self.data))
+                self.dlcommslogger.debug(
+                    "API response command=%s type=%s", self.cmd, type(self.data).__name__
+                )
                 if isinstance(self.data, str):
                     return self.data
                 return json.dumps(self.data)

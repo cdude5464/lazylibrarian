@@ -1,5 +1,6 @@
 """Exact embedded identity fallback for obfuscated ebooks in helper jobs."""
 import logging
+import json
 from unittest import mock
 
 import pytest
@@ -147,3 +148,84 @@ def test_same_work_multiformat_selects_only_preferred_ebook(helper_book):
                                       "Lost Metal (2)", "Lost Metal: Mistborn 8"])
 def test_metadata_work_normalization_preserves_distinct_work_and_volume(observed):
     assert not postprocess._same_metadata_work_title("The Lost Metal (Mistborn, #7)", observed)
+
+
+def test_byte_identical_prepared_copy_is_eligible_without_path_first_bias(helper_book):
+    state, payload, _ = helper_book
+    job_root = payload.parents[3]
+    original = job_root / payload.name
+    original.write_bytes(payload.read_bytes())
+    # A retry may have another fully extracted mirror under the same job.
+    mirror = payload.parents[2] / "second-extraction" / payload.name
+    mirror.parent.mkdir()
+    mirror.write_bytes(payload.read_bytes())
+    assert postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+    assert postprocess._exact_helper_ebook_metadata_match(state, str(mirror))
+
+
+def test_same_name_different_bytes_prepared_copy_is_refused(helper_book):
+    state, payload, _ = helper_book
+    copy = payload.parents[3] / payload.name
+    copy.write_bytes(b"other EPUB bytes")
+    assert not postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+
+
+def test_same_size_different_bytes_prepared_copy_is_refused(helper_book):
+    state, payload, _ = helper_book
+    copy = payload.parents[3] / payload.name
+    copy.write_bytes(b"x" * payload.stat().st_size)
+    assert not postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+
+
+@pytest.mark.parametrize("suffix", [
+    ". Tenth Anniversary Author’s Definitive Edition",
+    ". 10th Anniversary Author's Definitive Edition",
+])
+def test_approved_anniversary_metadata_requires_exact_work_and_author(helper_book, suffix):
+    state, payload, metadata = helper_book
+    metadata.return_value = {"title": "Elantris" + suffix, "creator": "Brandon Sanderson", "language": "en"}
+    with mock.patch.object(postprocess, "_requested_context_for_content_check",
+                           return_value=("Brandon Sanderson", "Elantris (Elantris, #1)")), \
+            mock.patch.object(postprocess, "filter_edition_reject_words", return_value=[]) as policy:
+        assert postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+        policy.assert_called_once_with(["anniversary"], state.download_id, "Brandon Sanderson", "Elantris (Elantris, #1)")
+        metadata.return_value["creator"] = "Other Author"
+        assert not postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+
+
+@pytest.mark.parametrize("title", [
+    "Elantris 2. Tenth Anniversary Author’s Definitive Edition",
+    "Elantris. Annotated Edition",
+    "Elantris. Tenth Anniversary Study Guide",
+    "Elantris: Second Book. Tenth Anniversary Author’s Definitive Edition",
+])
+def test_anniversary_normalization_preserves_unapproved_identity(title):
+    assert not postprocess._same_metadata_work_title("Elantris (Elantris, #1)", title)
+
+
+def test_duplicate_symlink_to_foreign_job_remains_refused(helper_book, tmp_path):
+    state, payload, _ = helper_book
+    foreign = tmp_path / "lazylibrarian-ffffffffffffffffffffffffffffffffffffffff" / payload.name
+    foreign.parent.mkdir()
+    foreign.write_bytes(payload.read_bytes())
+    copy = payload.parents[3] / payload.name
+    copy.symlink_to(foreign)
+    assert not postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+
+
+@pytest.mark.parametrize("approved_hash", [True, False])
+def test_anniversary_edition_requires_exact_private_manifest(helper_book, tmp_path, approved_hash):
+    state, payload, metadata = helper_book
+    metadata.return_value = {"title": "Elantris. Tenth Anniversary Author’s Definitive Edition",
+                             "creator": "Brandon Sanderson", "language": "en"}
+    manifest = {"schema": "ebook-edition-exceptions-v1", "entries": [{
+        "download_id": state.download_id if approved_hash else "f" * 40,
+        "author": "Brandon Sanderson", "title": "Elantris (Elantris, #1)",
+        "approved": True, "allowed_words": ["anniversary"]}]}
+    (tmp_path / "ebook-edition-exceptions.json").write_text(json.dumps(manifest))
+    with mock.patch.object(postprocess.DIRS, "DATADIR", str(tmp_path)), \
+            mock.patch.object(postprocess, "_requested_context_for_content_check",
+                              return_value=("Brandon Sanderson", "Elantris (Elantris, #1)")):
+        assert postprocess._exact_helper_ebook_metadata_match(state, str(payload)) is approved_hash
+    # Generic work-title normalization must never strip the private exception.
+    assert not postprocess._same_metadata_work_title("Elantris (Elantris, #1)", metadata.return_value["title"])

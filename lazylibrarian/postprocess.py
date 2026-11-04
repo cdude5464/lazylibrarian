@@ -15,6 +15,7 @@
 
 import contextlib
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -33,6 +34,7 @@ from rapidfuzz import fuzz
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.archive_utils import unpack_archive, unpack_multipart
 from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
 from lazylibrarian.box_helper_handoff import wanted_row_is_durable_helper_owned
@@ -1303,6 +1305,46 @@ def _same_metadata_work_title(expected, observed):
     return True
 
 
+def _preferred_helper_ebook_copy(ebook_files, candidate):
+    """Allow byte-identical prepared copies, not multiple distinct books."""
+    by_extension = {}
+    for path in ebook_files:
+        extension = os.path.splitext(path)[1].lower().lstrip(".")
+        by_extension.setdefault(extension, []).append(path)
+    ranks = {ext: i for i, ext in enumerate(get_list(CONFIG["EBOOK_TYPE"]))}
+    if not by_extension or any(ext not in ranks for ext in by_extension):
+        return False
+    preferred = min(by_extension, key=lambda ext: ranks[ext])
+    if os.path.splitext(candidate)[1].lower().lstrip(".") != preferred:
+        return False
+    if len(by_extension) > 1:
+        stems = {os.path.splitext(os.path.basename(path))[0].casefold() for path in ebook_files}
+        parents = [{os.path.realpath(os.path.dirname(path)) for path in paths}
+                   for paths in by_extension.values()]
+        if len(stems) != 1 or not set.intersection(*parents):
+            return False
+    for paths in by_extension.values():
+        if len(paths) == 1:
+            continue
+        # Never conflate differently encoded editions merely because their
+        # names or metadata agree. Exact bytes are the duplicate-copy proof.
+        try:
+            if len({os.path.getsize(path) for path in paths}) != 1:
+                return False
+            digests = set()
+            for path in paths:
+                digest = hashlib.sha256()
+                with open(path, "rb") as handle:
+                    for block in iter(lambda: handle.read(1024 * 1024), b""):
+                        digest.update(block)
+                digests.add(digest.digest())
+                if len(digests) > 1:
+                    return False
+        except OSError:
+            return False
+    return True
+
+
 def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> bool:
     """Identify obfuscated helper ebooks by exact DB title/author metadata."""
     if (book_state.get_book_type_enum() != BookType.EBOOK
@@ -1316,24 +1358,14 @@ def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> 
     real_root, real_file = os.path.realpath(job_root), os.path.realpath(filepath)
     if os.path.commonpath([real_root, real_file]) != real_root:
         return False
-    # One work may ship in several formats. Require one exact basename and
-    # parent, unique extensions, and only the preferred format as candidate.
+    # One work may ship in several formats or mirrored extraction copies.
+    # Preserve one-work boundaries and require exact duplicate bytes per format.
     ebook_files = _ebook_files_in_directory(job_root, recurse=True)
     if not ebook_files or real_file not in {os.path.realpath(p) for p in ebook_files}:
         return False
     if any(os.path.commonpath([real_root, os.path.realpath(p)]) != real_root for p in ebook_files):
         return False
-    groups = {(os.path.realpath(os.path.dirname(p)), os.path.splitext(os.path.basename(p))[0].casefold())
-              for p in ebook_files}
-    extensions = [os.path.splitext(p)[1].lower().lstrip(".") for p in ebook_files]
-    if len(groups) != 1 or len(set(extensions)) != len(extensions):
-        return False
-    preferred = get_list(CONFIG["EBOOK_TYPE"])
-    ranks = {ext: index for index, ext in enumerate(preferred)}
-    if any(ext not in ranks for ext in extensions):
-        return False
-    selected = min(ebook_files, key=lambda p: ranks[os.path.splitext(p)[1].lower().lstrip(".")])
-    if os.path.realpath(selected) != real_file:
+    if not _preferred_helper_ebook_copy(ebook_files, filepath):
         return False
     db = None
     try:
@@ -1345,8 +1377,21 @@ def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> 
             return False
         author_tokens, title_tokens = match_tokens(author), match_tokens(_work_title(title))
         if (not author_tokens or not title_tokens
-                or sorted(author_tokens) != sorted(match_tokens(metadata.get("creator", "")))
-                or not _same_metadata_work_title(title, metadata.get("title", ""))):
+                or sorted(author_tokens) != sorted(match_tokens(metadata.get("creator", "")))):
+            return False
+        observed_title = metadata.get("title", "")
+        same_title = _same_metadata_work_title(title, observed_title)
+        if (not same_title and
+                filter_edition_reject_words(["anniversary"], book_state.download_id, author, title) == []):
+            # The private operator manifest binds this exact torrent, author
+            # and requested title. It permits only this anchored descriptor;
+            # unrelated work words and volume numbers must still match.
+            edition_title = re.sub(
+                r"[.:]\s+(?:tenth|10th)\s+anniversary\s+author['’]s\s+definitive\s+edition\s*$",
+                "", observed_title or "", flags=re.IGNORECASE,
+            ).strip()
+            same_title = edition_title != observed_title and _same_metadata_work_title(title, edition_title)
+        if not same_title:
             return False
         conflict, _ = _ebook_language_conflict(metadata.get("language", ""), row["BookLang"])
         return not conflict

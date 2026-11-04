@@ -60,6 +60,7 @@ from lazylibrarian import (
     utorrent,
 )
 from lazylibrarian.config2 import CONFIG
+from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.filesystem import path_isfile
 from lazylibrarian.formatter import check_int, get_list, unaccented
 from lazylibrarian.telemetry import TELEMETRY
@@ -133,6 +134,9 @@ def check_contents(source, downloadid, booktype, title, requested_author='', req
         banlist = get_list(banwords, ",")
     else:
         banlist = []
+
+    if booktype.lower() == "ebook" and source == "QBITTORRENT":
+        banlist = filter_edition_reject_words(banlist, downloadid, requested_author, requested_title)
 
     downloadfiles = get_download_files(source, downloadid)
 

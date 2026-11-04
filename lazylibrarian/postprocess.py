@@ -447,7 +447,7 @@ class BookState:
                 data = dict(result)
                 # Combine author and book name for better matching
                 self.book_title = _normalize_title(
-                    f"{data.get('AuthorName', '')} - {data.get('BookName', '')}"
+                    f"{data.get('AuthorName', '')} - {_work_title(data.get('BookName', ''))}"
                 )
         elif self.book_id and self.is_magazine():
             result = db.match(
@@ -915,6 +915,11 @@ def _delete_failed_task_if_unused(
     return True
 
 
+def _work_title(title: str) -> str:
+    """Discard only a terminal provider series display suffix, not work text."""
+    return re.sub(r"\s*\([^()]*#\s*\d+(?:\.\d+)?\)\s*$", "", title or "").strip()
+
+
 def _normalize_title(title: str) -> str:
     # remove accents and convert not-ascii apostrophes
     new_title = str(unaccented(title, only_ascii=False))
@@ -1303,7 +1308,7 @@ def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> 
         metadata = get_book_info(filepath)
         if not author or not title or not row:
             return False
-        author_tokens, title_tokens = match_tokens(author), match_tokens(title)
+        author_tokens, title_tokens = match_tokens(author), match_tokens(_work_title(title))
         if (not author_tokens or not title_tokens
                 or author_tokens != match_tokens(metadata.get("creator", ""))
                 or title_tokens != match_tokens(metadata.get("title", ""))):
@@ -1426,7 +1431,7 @@ def _populate_local_book_title(book_state: BookState, db) -> None:
             if result:
                 data = dict(result)
                 book_state.book_title = _normalize_title(
-                    f"{data.get('AuthorName', '')} - {data.get('BookName', '')}"
+                    f"{data.get('AuthorName', '')} - {_work_title(data.get('BookName', ''))}"
                 )
         elif book_state.is_magazine():
             result = db.match("SELECT Title FROM magazines WHERE Title=?", (book_state.book_id,))

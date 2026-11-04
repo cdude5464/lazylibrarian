@@ -56,6 +56,7 @@ from lazylibrarian.box_helper_handoff import (
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.common import get_user_agent, proxy_list
 from lazylibrarian.config2 import CONFIG
+from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.directparser import bok_grabs, bok_login, session_get
 from lazylibrarian.download_client import check_contents
 from lazylibrarian.filesystem import (
@@ -1202,6 +1203,9 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                         logger.debug(f"Invalid library [{library}] in tor_dl_method")
                         reject_list = []
 
+                    if source == "QBITTORRENT" and library == "eBook":
+                        reject_list = filter_edition_reject_words(
+                            reject_list, download_id, requested_author, requested_title)
                     rejected = False
                     for word in reject_list:
                         if _reject_word_matches(word, tor_title, requested_author, requested_title):

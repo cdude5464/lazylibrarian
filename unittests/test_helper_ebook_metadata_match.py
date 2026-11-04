@@ -116,3 +116,16 @@ def test_scoped_row_gate_accepts_obfuscated_archive_only_with_exact_metadata(hel
         matched, _ = postprocess._row_matches_helper_startdir(
             {}, mock.Mock(), str(payload.parents[2]), logger)
     assert matched is correct_title
+
+
+def test_series_display_does_not_break_exact_metadata(helper_book):
+    state, payload, _ = helper_book
+    with mock.patch.object(postprocess, "_requested_context_for_content_check",
+                           return_value=("Barbara Michaels", "Houses of Stone (Series, #2.5)")):
+        assert postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+
+
+def test_work_title_retains_non_series_work_text():
+    assert postprocess._work_title("Book (Part One)") == "Book (Part One)"
+    assert postprocess._work_title("Book 2") == "Book 2"
+    assert postprocess._work_title("Book (Series, #2.5)") == "Book"

@@ -30,7 +30,7 @@ from bs4 import BeautifulSoup
 import lazylibrarian
 import lib.feedparser as feedparser
 from lazylibrarian import database
-from lazylibrarian.annas import anna_search, block_annas
+from lazylibrarian.annas import anna_search
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.config2 import CONFIG, wishlist_type
@@ -911,14 +911,10 @@ def iterate_over_direct_sites(book=None, search_type=None):
                 searchtype = 'mag'
             results, error = anna_search(book, searchtype)
             if error:
-                dl_limit = CONFIG.get_int('ANNA_DLLIMIT')
-                count = lazylibrarian.TIMERS['ANNA_REMAINING']
-                if dl_limit and count <= 0:
-                    lazylibrarian.TIMERS['ANNA_REMAINING'] = 0
-                    block_annas(dl_limit)
-                else:
-                    # use a short delay for site unavailable etc
-                    BLOCKHANDLER.block_provider(provider, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
+                # Confirmed quota failures are blocked inside anna_search.
+                # A stale remaining counter must not turn a transport/parser
+                # outage into an 18-hour download-quota block.
+                BLOCKHANDLER.block_provider(provider, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
             else:
                 resultslist += results
                 providers += 1

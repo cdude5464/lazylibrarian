@@ -60,6 +60,40 @@ class ResultListMatchingTest(LLTestCaseWithStartup):
             "priority": 50,
         }
 
+    def test_series_display_suffix_does_not_hide_exact_ebook(self):
+        book = {
+            "library": "eBook", "bookid": "68427",
+            "bookName": "Elantris (Elantris, #1)", "bookSub": "",
+            "authorName": "Brandon Sanderson", "searchterm": "Brandon Sanderson Elantris",
+        }
+        result = self._torrent_result(
+            "Brandon Sanderson - Elantris - 01 - Elantris - epub",
+            provider="http://jackett:9117/jackett/api/v2.0/indexers/abtorrents/results/torznab")
+        match = find_best_result([result], book, "book", "tor")
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(match[0], CONFIG.get_int("MATCH_RATIO"))
+
+    def test_decimal_series_position_is_not_part_of_work_title(self):
+        book = {
+            "library": "eBook", "bookid": "34703445",
+            "bookName": "Edgedancer (The Stormlight Archive, #2.5)", "bookSub": "",
+            "authorName": "Brandon Sanderson", "searchterm": "Brandon Sanderson Edgedancer",
+        }
+        result = self._torrent_result("Brandon Sanderson - Edgedancer - epub")
+        match = find_best_result([result], book, "book", "tor")
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(match[0], CONFIG.get_int("MATCH_RATIO"))
+
+    def test_series_suffix_normalization_does_not_accept_wrong_author_or_book(self):
+        book = {
+            "library": "eBook", "bookid": "68427",
+            "bookName": "Elantris (Elantris, #1)", "bookSub": "",
+            "authorName": "Brandon Sanderson", "searchterm": "Brandon Sanderson Elantris",
+        }
+        for title in ("Other Writer - Elantris - epub", "Brandon Sanderson - The Lost Metal - epub"):
+            match = find_best_result([self._torrent_result(title)], book, "book", "tor")
+            self.assertTrue(match is None or match[0] < CONFIG.get_int("MATCH_RATIO"))
+
     def test_ebook_result_rejects_weak_author_subset_title(self):
         match = find_best_result(
             [self._direct_result("Scott-Norton, Robert The Remnant Keeper.epub")],

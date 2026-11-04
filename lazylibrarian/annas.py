@@ -197,7 +197,12 @@ def html_parser(url: str, params: dict = None) -> BeautifulSoup:
     if response.status_code >= 400:
         raise HTTPFailedError(f"server returned http status {response.status_code}")
     html = response.text.replace("<!--", "").replace("-->", "")
-    return BeautifulSoup(html, "html5lib")
+    soup = BeautifulSoup(html, "html5lib")
+    title = soup.title.get_text(" ", strip=True).casefold() if soup.title else ""
+    if (soup.select_one("#challenge-form, #cf-challenge-running")
+            or title in {"just a moment...", "attention required! | cloudflare", "access denied", "ddos-guard"}):
+        raise HTTPFailedError("provider returned an access challenge")
+    return soup
 
 
 def annas_hosts_prefer(annas_hosts, host):
@@ -222,7 +227,6 @@ def annas_search(
     order_by: OrderBy = OrderBy.MOST_RELEVANT,
 ) -> str | None:
 
-    downloadlogger = logging.getLogger('special.dlcomms')
     if not query.strip():
         raise ValueError("query can not be empty")
     params = {
@@ -236,6 +240,7 @@ def annas_search(
         # old style single host, add the wikipedia entries
         annas_hosts_update()
     soup = None
+    failures = []
     for host in annas_hosts:
         prefix = ''
         if not host.startswith('http'):
@@ -247,14 +252,25 @@ def annas_search(
                 annas_hosts_prefer(annas_hosts, host)
                 break
         except Exception as e:
-            downloadlogger.error(f"{host}: {e}")
+            # Exception text can contain request URLs or credentials. Expose
+            # only a safe error category and our own bounded HTTP status.
+            reason = type(e).__name__
+            if isinstance(e, HTTPFailedError):
+                status = re.fullmatch(r"server returned http status ([0-9]{3})", str(e))
+                if status:
+                    reason = f"HTTP {status.group(1)}"
+            failures.append(reason)
     if not soup:
-        # no searches returned anything, update the host list
         annas_hosts_update()
-        return None
+        categories = ", ".join(sorted(set(failures))) or "no hosts configured"
+        error = (f"Anna search unavailable: all {len(annas_hosts)} configured hosts failed "
+                 f"({categories})")
+        raise HTTPFailedError(error)
 
     raw_results = soup.select("div[class*='pt-3'][class*='border-b']")
     results = list(filter(lambda i: i is not None, map(parse_result, raw_results)))
+    if raw_results and not results:
+        raise HTTPFailedError("Anna search returned result cards that could not be parsed")
     myhash = md5_utf8(query)
     cache_location = os.path.join(DIRS.CACHEDIR, "IRCCache")
     hashfilename = os.path.join(cache_location, f"{myhash}.anna")
@@ -499,36 +515,45 @@ def anna_search(book=None, searchtype='ebook', test=False):
         book['bookid'] = '0'
         cache = False
 
-    if cache:
-        myhash = md5_utf8(book['searchterm'])
-        valid_cache = False
-        hashfilename = os.path.join(cache_location, f"{myhash}.anna")
-        # cache results so we can do multiple searches for the same author
-        # or multiple search types for a book without hammering the provider
-        # expire cache after 2 hours, there might be new additions
-        expiry = check_int(lazylibrarian.IRC_CACHE_EXPIRY, 2 * 3600)
+    try:
+        if cache:
+            myhash = md5_utf8(book['searchterm'])
+            valid_cache = False
+            hashfilename = os.path.join(cache_location, f"{myhash}.anna")
+            # cache results so we can do multiple searches for the same author
+            # or multiple search types for a book without hammering the provider
+            # expire cache after 2 hours, there might be new additions
+            expiry = check_int(lazylibrarian.IRC_CACHE_EXPIRY, 2 * 3600)
 
-        if path_isfile(hashfilename):
-            cache_modified_time = os.stat(hashfilename).st_mtime
-            time_now = time.time()
-            if cache_modified_time < time_now - expiry:
-                # Cache entry is too old, delete it
-                cachelogger.debug(f"Expiring {myhash}")
-                remove_file(hashfilename)
+            if path_isfile(hashfilename):
+                cache_modified_time = os.stat(hashfilename).st_mtime
+                time_now = time.time()
+                if cache_modified_time < time_now - expiry:
+                    # Cache entry is too old, delete it
+                    cachelogger.debug(f"Expiring {myhash}")
+                    remove_file(hashfilename)
+                else:
+                    valid_cache = True
+
+            if valid_cache:
+                lazylibrarian.CACHE_HIT = int(lazylibrarian.CACHE_HIT) + 1
+                cachelogger.debug(f"CacheHandler: Found CACHED response {hashfilename} for {book['searchterm']}")
             else:
-                valid_cache = True
-
-        if valid_cache:
-            lazylibrarian.CACHE_HIT = int(lazylibrarian.CACHE_HIT) + 1
-            cachelogger.debug(f"CacheHandler: Found CACHED response {hashfilename} for {book['searchterm']}")
+                lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
+                hashfilename = annas_search(book['searchterm'], language=language)
         else:
-            lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
             hashfilename = annas_search(book['searchterm'], language=language)
-    else:
-        hashfilename = annas_search(book['searchterm'], language=language)
+
+    except HTTPFailedError as exc:
+        logger.warning(str(exc))
+        if test:
+            return False
+        return [], str(exc)
 
     if not hashfilename:
-        return [], ''
+        if test:
+            return False
+        return [], "Anna search unavailable: no response from configured hosts"
 
     with open(hashfilename) as f:
         searchresults = json.load(f)

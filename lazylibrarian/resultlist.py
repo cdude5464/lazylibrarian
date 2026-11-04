@@ -160,6 +160,36 @@ def _audiobook_failed_source_retryable(row):
     )
 
 
+def _legacy_unknown_language_failure_retryable(row, auxinfo, result):
+    """Reconsider only the old Unknown-language bug against current settings."""
+    if auxinfo != 'eBook':
+        return False
+    failure = re.fullmatch(
+        r'embedded ebook metadata declares an unexpected language: ([a-z][a-z_-]*) '
+        r'\(expected unknown\)', result,
+    )
+    bookid = _row_value(row, 'BookID')
+    if not failure or not bookid:
+        return False
+    observed = _normalize_book_language(failure.group(1))
+    if not observed:
+        return False
+    db = None
+    try:
+        db = database.DBConnection()
+        if not db.match("SELECT BookLang FROM books WHERE BookID=?", (bookid,)):
+            return False
+        # Use the same row/default preference as current search selection.
+        expected = _normalize_book_language(_expected_book_language(db, {'bookid': bookid}))
+        return not expected or observed == expected
+    except Exception:
+        # Failure to inspect current preferences never authorizes a retry.
+        return False
+    finally:
+        if db is not None:
+            db.close()
+
+
 def _failed_source_retryable(row, auxinfo, author='', title=''):
     """Return True when a failed wanted row should not permanently suppress the same source."""
     if not row:
@@ -175,6 +205,8 @@ def _failed_source_retryable(row, auxinfo, author='', title=''):
     if status != 'Failed':
         return False
     result = result.lower()
+    if _legacy_unknown_language_failure_retryable(row, auxinfo, result):
+        return True
     # A pre-add configuration refusal says nothing about source quality.
     # Reconsider it after configuration repair; download policy gates still run.
     if result == 'refusing qbittorrent add without an explicit provider share policy':
@@ -275,10 +307,17 @@ def find_best_result(resultlist, book, searchtype, source):
             author, title = get_searchterm(book, searchtype)
         else:
             author = unaccented(replace_all(book['authorName'], dic), only_ascii=False)
-            title = unaccented(replace_all(book['bookName'], dic), only_ascii=False)
+            title = unaccented(replace_all(
+                re.sub(r"\s*\([^()]*#\s*\d+(?:\.\d+)?\)\s*$", "", book['bookName']),
+                dic), only_ascii=False)
 
         if 'short' in searchtype and '(' in title:
             title = title.split('(')[0].strip()
+
+        # Goodreads appends series/position metadata to the displayed title.
+        # It is not part of the work title and should not lower a valid ebook's
+        # score (e.g. Elantris (Elantris #1) versus Elantris).
+        title = re.sub(r"\s*\([^()]*#\s*\d+(?:\.\d+)?\)\s*$", "", title).strip()
 
         if book['library'] == 'AudioBook':
             reject_list = get_list(CONFIG['REJECT_AUDIO'], ',')

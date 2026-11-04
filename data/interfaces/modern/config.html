@@ -140,6 +140,23 @@
   .llc .accent-swatch { width: 1.6rem; height: 1.6rem; border-radius: 50%; border: 2px solid var(--bs-body-bg); box-shadow: 0 0 0 1px var(--bs-border-color); padding: 0; }
   .llc .accent-swatch.active { box-shadow: 0 0 0 2px var(--bs-body-color); }
   .llc .help-block { display: block; font-size: .78rem; color: var(--bs-secondary-color); margin-top: .25rem; }
+  /* Filters: the name of each list or limit over its fields, the field labels under it quieter */
+  .llc .llc-flat > label.llc-flat-name { display: block; font-size: .9rem; font-weight: 650; color: var(--bs-body-color); margin-bottom: .4rem; }
+  .llc .llc-flat .llc-ff > label { font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
+  /* rss server: bookstrap shows and hides it with user accounts (inline styles, slide animation); here it stays,
+     locked and dimmed while user accounts are off */
+  .llc .tab-pane fieldset#rss_options { display: block !important; height: auto !important; overflow: visible !important;
+                                         padding: 1rem 1.1rem .4rem !important; margin: 0 0 1rem !important; }
+  .llc #rss_options.llc-locked > :not(legend):not(.llc-needs) { opacity: .5; }
+  .llc .llc-needs { font-size: .8rem; color: var(--bs-secondary-color); margin: 0 0 .6rem; }
+  .llc .llc-needs .fa { margin-right: .3rem; }
+  /* Processing: the sections in one list that flows over columns where there is room */
+  .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
+  .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
+  /* $variables of the name patterns: a click inserts them at the cursor of the pattern field */
+  .llc .llc-token { display: inline-block; font: inherit; font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
+                    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 999px; padding: 0 .55rem; margin: .1rem 0; cursor: pointer; }
+  .llc .llc-token:hover, .llc .llc-token:focus-visible { border-color: var(--ll-accent); color: var(--ll-accent); outline: 0; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
   .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
@@ -221,8 +238,8 @@
         <div class="form-group">
           <label for="modern_accent" class="control-label">${_('Accent color:')}</label>
           <div class="accent-picker">
-            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#1f5f7a' | h}" class="form-control">
-            %for color in ['#1f5f7a', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
+            <input type="color" id="modern_accent" name="modern_accent" value="${CONFIG['MODERN_ACCENT'] or '#56a3da' | h}" class="form-control">
+            %for color in ['#56a3da', '#2f6fdf', '#5b4bd6', '#8e44ad', '#c2185b', '#c0392b', '#d35400', '#2e7d32', '#455a64']:
             <button type="button" class="accent-swatch" data-color="${color}" title="${color}" aria-label="${color}"></button>
             %endfor
           </div>
@@ -364,7 +381,7 @@
 
     // the tab list becomes the section menu
     var ul = form.querySelector('#configtabs');
-    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-book', downloadsettings: 'fa-download', providers: 'fa-globe',
+    var icons = {webinterface: 'fa-desktop', importoptions: 'fa-database', downloadsettings: 'fa-download', providers: 'fa-globe',
                  searchprocessing: 'fa-cogs', notifications: 'fa-bell', capabilities: 'fa-tags', filters: 'fa-filter',
                  languages: 'fa-language', genres: 'fa-bookmark', telemetry: 'fa-chart-bar'};
     if (ul) {
@@ -372,6 +389,8 @@
       ul.querySelectorAll('li[role="presentation"]').forEach(function (li) {
         var a = li.querySelector('a'), pane = document.getElementById(li.getAttribute('aria-controls'));
         a.removeAttribute('data-toggle');
+        // with its file formats and book filters under Filters, Importing holds the info sources only
+        if (li.getAttribute('aria-controls') === 'importoptions') { a.textContent = ${_js('Info Sources')}; }
         a.insertAdjacentHTML('afterbegin', '<i class="fa ' + (icons[li.getAttribute('aria-controls')] || 'fa-sliders-h') + '" aria-hidden="true"></i>');
         if (pane) { pane.setAttribute('data-llc-title', a.textContent.trim()); }
       });
@@ -388,7 +407,15 @@
       ul.querySelectorAll('li[role="presentation"]').forEach(function (x) { x.classList.toggle('active', x === li); x.setAttribute('aria-selected', x === li); });
       form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === li.getAttribute('aria-controls')); });
       document.getElementById('llc-pane-title').textContent = li.textContent.trim();
+      // remembered for this browser tab, so a reload comes back to the same section
+      try { sessionStorage.setItem('llc-tab', li.getAttribute('aria-controls')); } catch (e) {}
     }
+    // the info source switches and API keys are saved at once and the page reloads (the list of primary sources
+    // depends on them); they are no unsaved change, and the reload keeps the place on the page
+    var IMMEDIATE = ['ol_api', 'dnb_api', 'bn_api', 'dbk_api', 'ran_api', 'hc_api', 'gr_api', 'gb_api', 'book_api'];
+    window.addEventListener('pagehide', function () {
+      try { sessionStorage.setItem('llc-scroll', JSON.stringify({y: window.scrollY, t: Date.now()})); } catch (e) {}
+    });
 
     llcModernize(form);
     llcModernize(document.querySelector('.llc-sys'));
@@ -400,8 +427,8 @@
       document.getElementById('llc-save-msg').textContent = d ? T.dirty : T.saved;
       document.getElementById('llc-undo').hidden = !d;
     }
-    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q') { setDirty(true); } });
-    form.addEventListener('change', function (e) { if (e.target.name) { setDirty(true); } });
+    form.addEventListener('input', function (e) { if (e.target.name && e.target.id !== 'llc-q' && IMMEDIATE.indexOf(e.target.id) < 0) { setDirty(true); } });
+    form.addEventListener('change', function (e) { if (e.target.name && IMMEDIATE.indexOf(e.target.id) < 0) { setDirty(true); } });
     document.getElementById('llc-submit').addEventListener('click', function () {
       dirty = false;
       if (form.requestSubmit) { form.requestSubmit(document.getElementById('add') || undefined); } else { form.submit(); }
@@ -598,6 +625,11 @@
 
     window.llcAfterReady = function () {
       llcModernize(form);
+      // a <p> bookstrap opens between two rows (Genres) is closed by the browser at once; holding only whitespace
+      // it escapes :empty, and its margin would add to the card spacing
+      form.querySelectorAll('.tab-pane .configtable > p').forEach(function (p) {
+        if (!p.children.length && !p.textContent.trim()) { p.remove(); }
+      });
       llcProviderCards();
       // provider type headings (Newznab, Torznab, rss...) carry their own show switch, so bookstrap leaves them
       // unfoldable; here the switch keeps working and a click anywhere else on the heading folds the section
@@ -626,12 +658,27 @@
           form.querySelectorAll('legend.llc-lfold').forEach(function (lg) { if (lg.parentNode.classList.contains('llc-sfold') !== b[1]) { lg.click(); } });
         });
       });
+      // Categories: each provider's categories, search options, limits and lock, needed only when auto-detection
+      // fails; a section at the end of Providers instead of a tab of its own
+      (function () {
+        var cap = document.getElementById('capabilities'), prov = document.getElementById('providers');
+        var src = cap && cap.querySelector(':scope > .configtable'), dst = prov && prov.querySelector(':scope > .configtable');
+        if (!src || !dst) { return; }
+        var li = ul && ul.querySelector('li[aria-controls="capabilities"]');
+        var card = llcCard(li ? li.textContent.trim() : ''), body = card.querySelector('.section-body');
+        while (src.firstChild) { body.appendChild(src.firstChild); }
+        var row = document.createElement('div'), col = document.createElement('div');
+        row.className = 'row'; col.className = 'col-md-12';
+        col.appendChild(card); row.appendChild(col); dst.appendChild(row);
+        if (li) { li.remove(); }
+        cap.remove();
+      })();
       // Filters: the word lists and the size limits each go into one section, the per-title options stay as they are
       (function () {
         var pane = document.getElementById('filters');
         var row = pane && pane.querySelector('.configtable > .row');
         if (!row) { return; }
-        var group = function (title, ids) {
+        var group = function (title, ids, flat) {
           var cols = [];
           ids.forEach(function (id) {
             var el = document.getElementById(id), col = el && el.closest('[class*="col-"]');
@@ -639,6 +686,22 @@
             if (col && cols.indexOf(col) < 0) { cols.push(col); }
           });
           if (!cols.length) { return null; }
+          // flat: the heading of each column becomes the label of its field, so the section has no sub-sections
+          if (flat) {
+            cols.forEach(function (c) {
+              var lg = c.querySelector(':scope > legend');
+              if (!lg) { return; }
+              var input = c.querySelector('input, select, textarea'), lb = document.createElement('label');
+              lb.className = 'control-label llc-flat-name'; lb.textContent = lg.textContent.trim();
+              c.classList.add('llc-flat');
+              if (input && input.id) { lb.htmlFor = input.id; }
+              lg.replaceWith(lb);
+              // bookstrap made the heading a fold and wrapped the field in its body, hidden if once collapsed;
+              // without the heading nothing could open it again, so the field comes out of it
+              var body = c.querySelector(':scope > .section-body');
+              if (body) { while (body.firstChild) { body.parentNode.insertBefore(body.firstChild, body); } body.remove(); }
+            });
+          }
           var outer = document.createElement('div'); outer.className = 'col-md-12';
           var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div'), inner = document.createElement('div');
           lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
@@ -649,9 +712,286 @@
           body.appendChild(inner); fs.appendChild(lg); fs.appendChild(body); outer.appendChild(fs);
           return outer;
         };
-        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext']);
-        var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin']);
+        var words = group(TF.words, ['reject_words', 'reject_audio', 'prefer_words', 'reject_publisher', 'reject_mags', 'reject_comic', 'banned_ext'], true);
+        var sizes = group(TF.sizes, ['reject_minsize', 'reject_minaudio', 'reject_mincomic', 'reject_magmin'], true);
         [sizes, words].forEach(function (g) { if (g) { row.insertBefore(g, row.firstChild); } });
+        // Book Filters (future or unknown dates, no isbn, sets...) sit in Importing in bookstrap; they decide what
+        // is left out too, so they come here after the lists and limits
+        var section = function (id) {
+          var el = document.getElementById(id), fs = el && el.closest('fieldset');
+          if (!fs || pane.contains(fs)) { return null; }
+          var wrap = document.createElement('div'); wrap.className = 'col-md-12';
+          wrap.appendChild(fs);
+          return wrap;
+        };
+        var bf = section('no_future');
+        if (bf) { var after = sizes || words; if (after) { after.after(bf); } else { row.insertBefore(bf, row.firstChild); } }
+        // File Formats (which extensions count as books, audiobooks...) come first, before the word lists with the
+        // extension reject list
+        var ff = section('ebook_type') || section('audiobook_type') || section('mag_type') || section('comic_type');
+        if (ff) { row.insertBefore(ff, row.firstChild); }
+      })();
+      // a section card like bookstrap's, its fold handled by bookstrap's delegated click handler
+      function llcCard(title) {
+        var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div');
+        lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+        lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+        lg.appendChild(document.createTextNode(title));
+        body.className = 'section-body';
+        fs.appendChild(lg); fs.appendChild(body);
+        return fs;
+      }
+      // Processing: Miscellaneous held a bit of everything; its settings go where they act, some to other tabs
+      (function () {
+        if (!document.getElementById('searchprocessing')) { return; }
+        var box = function (id, sel) { var el = document.getElementById(id); return el ? (sel ? el.closest(sel) : el) : null; };
+        var bodyOf = function (fs) { return fs ? (fs.querySelector(':scope > .section-body') || fs) : null; };
+        var moveTo = function (fs, nodes) { var b = bodyOf(fs); if (!b) { return; } nodes.forEach(function (n) { if (n) { b.appendChild(n); } }); };
+        var kids = function (fs) { return Array.prototype.slice.call(bodyOf(fs).children); };
+        // how results are judged: a card of its own after the intervals
+        var first = box('search_bookinterval', 'fieldset'), search = llcCard(${_js('Search and Matching')});
+        moveTo(search, ['match_ratio', 'dload_ratio', 'priority_weight', 'min_seeders', 'max_pages'].map(function (id) { return box(id, '.form-group'); }));
+        if (first && bodyOf(search).children.length) { first.parentElement.appendChild(search); }
+        moveTo(box('newauthor_books', 'fieldset'), [box('max_bookpages', '.form-group')]);
+        // magazines: covers, conversions and issue age in one card
+        var mags = box('imp_magcover', 'fieldset'), magconv = box('swap_coverpage', 'fieldset');
+        if (mags && magconv && mags !== magconv) { moveTo(mags, kids(magconv)); magconv.remove(); }
+        moveTo(mags, [box('mag_age', '.form-group')]);
+        // permissions with the folders they apply to
+        var perm = box('file_perm', 'fieldset'), folders = box('download_dir', 'fieldset');
+        if (perm && folders && perm !== folders) {
+          var plg = perm.querySelector(':scope > legend'), plb = document.createElement('label');
+          plb.className = 'control-label'; plb.textContent = plg ? plg.textContent.trim() : '';
+          moveTo(folders, [plb].concat(kids(perm)));
+          perm.remove();
+        }
+        // what is left of Miscellaneous keeps the installation tidy
+        var misc = box('cache_age', 'fieldset'), mlg = misc && misc.querySelector(':scope > legend'), t = mlg && mlg.lastChild;
+        while (t && t.nodeType !== 3) { t = t.previousSibling; }
+        if (t) { t.textContent = ${_js('Maintenance')}; }
+        // elsewhere: stalled downloads to Downloads, the coverwall to Appearance, version checks to Interface
+        moveTo(box('blacklist_failed', 'fieldset'), [box('stall_age', '.form-group')]);
+        moveTo(box('ui_language', 'fieldset'), [box('max_wall', '.form-group')]);
+        var logs = box('logdir', 'fieldset'), upd = llcCard(${_js('Updates')});
+        moveTo(upd, [box('versioncheck_interval', '.form-group'), box('git_program', '.form-group')]);
+        if (logs && bodyOf(upd).children.length) { logs.parentElement.appendChild(upd); }
+      })();
+      // Processing and Interface: bookstrap spreads their sections over columns in no particular order; here they are
+      // one list in a logical order, each section found by a setting it holds
+      function llcFlow(paneId, order) {
+        var pane = document.getElementById(paneId);
+        var row = pane && pane.querySelector('.configtable > .row');
+        if (!row) { return; }
+        var top = function (el) {
+          var fs = el && el.closest('fieldset');
+          while (fs && fs.parentElement.parentElement !== row) { fs = fs.parentElement.closest('fieldset'); }
+          return fs;
+        };
+        var flow = document.createElement('div'), seen = [];
+        flow.className = 'col-12 llc-flow';
+        var add = function (fs) {
+          if (!fs || seen.indexOf(fs) >= 0) { return; }
+          seen.push(fs);
+          var item = document.createElement('div'); item.className = 'llc-flow-item';
+          item.appendChild(fs); flow.appendChild(item);
+        };
+        order.forEach(function (id) { add(top(document.getElementById(id))); });
+        // a section this list does not know yet keeps its place after the known ones
+        row.querySelectorAll(':scope > [class*="col-"] > fieldset').forEach(add);
+        if (!seen.length) { return; }
+        Array.prototype.slice.call(row.children).forEach(function (col) {
+          if (!col.querySelector('input, select, textarea, legend')) { col.remove(); }
+        });
+        row.insertBefore(flow, row.firstChild);
+      }
+      // Languages: detection gets a card of its own, the name languages split into what they serve
+      (function () {
+        var book = document.getElementById('imp_preflang'), bookFs = book && book.closest('fieldset');
+        var dl = document.getElementById('date_lang'), names = dl && dl.closest('fieldset');
+        if (!bookFs || !names) { return; }
+        var grp = function (el, sel) { return el ? el.closest(sel || '.form-group') : null; };
+        var card = function (title, nodes) {
+          nodes = nodes.filter(function (n) { return n; });
+          if (!nodes.length) { return; }
+          var fs = llcCard(title), b = fs.querySelector('.section-body');
+          nodes.forEach(function (n) { b.appendChild(n); });
+          bookFs.parentElement.appendChild(fs);
+        };
+        card(${_js('Language Detection')}, [grp(document.getElementById('google_trans_id'), '.checkbox'),
+          grp(document.getElementById('ms_trans_id')), document.getElementById('lang_refresh_options')]);
+        card(${_js('Magazine Titles')}, ['pref_maglang', 'issue_nouns', 'volume_nouns', 'mag_nouns'].map(function (id) { return grp(document.getElementById(id)); }));
+        card(${_js('Sorting')}, ['name_postfix', 'name_definite', 'imp_nosplit'].map(function (id) { return grp(document.getElementById(id)); }));
+      })();
+      // Processing in the order the work happens: when, with what status, what is imported, Calibre, where files go
+      // and how they are named, conversions and the programs for them, the rest
+      llcFlow('searchprocessing', ['search_bookinterval', 'match_ratio', 'notfound_status', 'newauthor_books', 'pref_ebookopf',
+        'download_dir', 'fmt_series', 'ebook_wanted_formats', 'audio_options', 'imp_magcover', 'swap_coverpage', 'imp_comiccover',
+        'imp_calibredb', 'ffmpeg', 'cache_age']);
+      // Interface: look and feel, the web server and who may use it, the services it offers, startup, logs
+      llcFlow('webinterface', ['ui_language', 'author_date_format', 'http_host', 'https_enabled', 'user_accounts', 'proxy_host',
+        'api_enabled', 'opds_enabled', 'rss_enabled', 'launch_browser', 'versioncheck_interval', 'logdir']);
+      // Languages in the order a book meets them: which are kept, how they are detected, which are searched, then
+      // the languages of names and dates and what they fill in
+      llcFlow('languages', ['imp_preflang', 'google_trans_id', 'anna_search_lang', 'date_lang', 'pref_maglang', 'name_postfix']);
+      // ComicVine has a section of its own in bookstrap only because it comes with the comics; here it joins the
+      // other info sources under its name, like Databáze knih or HardCover
+      (function () {
+        var cv = document.getElementById('cv_apikey'), cvfs = cv && cv.closest('fieldset');
+        var api = document.getElementById('book_api'), info = api && api.closest('fieldset');
+        if (!cvfs || !info || cvfs === info) { return; }
+        var body = info.querySelector(':scope > .section-body') || info;
+        var lt = document.getElementById('lt_devkey'), before = lt && lt.closest('.form-group');
+        if (!before || !body.contains(before)) { before = null; }
+        var lg = cvfs.querySelector(':scope > legend'), lb = document.createElement('label');
+        lb.className = 'control-label'; lb.textContent = (lg ? lg.textContent.trim() : 'ComicVine') + ':';
+        body.insertBefore(lb, before);
+        var src = cvfs.querySelector(':scope > .section-body') || cvfs;
+        Array.prototype.slice.call(src.childNodes).forEach(function (n) { if (n !== lg) { body.insertBefore(n, before); } });
+        cvfs.remove();
+      })();
+      // Info Sources: one long section in bookstrap; here the primary source stays on top and the sources are grouped
+      // by kind in cards of their own. The blocks are moved, the page scripts keep their handlers
+      (function () {
+        var api = document.getElementById('book_api'), info = api && api.closest('fieldset');
+        if (!info) { return; }
+        var box = function (id, sel) { var el = document.getElementById(id); return el ? (sel ? el.closest(sel) : el) : null; };
+        // a switch with its source name in a label just before it (HardCover API:, Audnexus:, ComicVine:)
+        var named = function (el) {
+          if (!el) { return []; }
+          var p = el.previousElementSibling;
+          return (p && p.matches('label.control-label') && !p.querySelector('input')) ? [p, el] : [el];
+        };
+        var groups = [
+          [${_js('Book Databases')}, [box('ol_options'), box('ol_use_dump', '.checkbox'), box('ol_dump_options')]
+            .concat(named(box('hc_api', '.checkbox')), [box('hc_options'), box('hcsync_options'), box('gb_options'), box('gr_options')])],
+          [${_js('National Libraries')}, [box('dnb_options'), box('bn_options'), box('dbk_options')]],
+          [${_js('Audiobooks, Comics and Light Novels')}, named(box('audnexus', '.checkbox'))
+            .concat(named(box('cv_apikey', '.form-group')), [box('cv_websearch', '.checkbox'), box('ran_options')])],
+          [${_js('Covers')}, [box('lt_devkey', '.form-group')]]
+        ];
+        var ref = info;
+        groups.forEach(function (g) {
+          var items = g[1].filter(function (n) { return n && info.contains(n); });
+          if (!items.length) { return; }
+          var fs = document.createElement('fieldset'), lg = document.createElement('legend'), body = document.createElement('div');
+          lg.className = 'section-toggle'; lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+          lg.innerHTML = '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>';
+          lg.appendChild(document.createTextNode(g[0]));
+          body.className = 'section-body';
+          items.forEach(function (n) { body.appendChild(n); });
+          fs.appendChild(lg); fs.appendChild(body);
+          ref.after(fs); ref = fs;
+        });
+        // the first card would repeat the tab name; the primary source and multiple sources say what they are
+        var head = info.querySelector(':scope > legend');
+        if (head) {
+          head.remove();
+          var ib = info.querySelector(':scope > .section-body');
+          if (ib) { ib.style.display = ''; }
+        }
+        llcFlow('importoptions', ['book_api', 'ol_options', 'dnb_options', 'audnexus', 'lt_devkey']);
+      })();
+      // Imports and Downloads (csv deletion, blacklists, search delay) act on downloads: it goes to that tab
+      (function () {
+        var el = document.getElementById('blacklist_failed'), fs = el && el.closest('fieldset');
+        var row = document.querySelector('#downloadsettings > .configtable > .row');
+        if (!fs || !row || row.contains(fs)) { return; }
+        var wrap = document.createElement('div'); wrap.className = 'col-md-6';
+        wrap.appendChild(fs); row.appendChild(wrap);
+      })();
+      // rss feeds belong to a user: without user accounts the section stays in sight, locked, with a note why. inert
+      // (not disabled) keeps its fields in the form, so saving does not change them
+      (function () {
+        var rss = document.getElementById('rss_options'), ua = document.getElementById('user_accounts');
+        if (!rss || !ua) { return; }
+        var note = document.createElement('p');
+        note.className = 'llc-needs';
+        note.innerHTML = '<i class="fa fa-lock" aria-hidden="true"></i>';
+        note.appendChild(document.createTextNode(${_js('Needs user accounts, switch them on under Access Control')}));
+        var lg = rss.querySelector(':scope > legend');
+        if (lg) { lg.after(note); } else { rss.insertBefore(note, rss.firstChild); }
+        var state = function () {
+          var off = !ua.checked;
+          rss.classList.toggle('llc-locked', off);
+          note.hidden = !off;
+          Array.prototype.forEach.call(rss.children, function (c) { if (c !== lg && c !== note) { c.inert = off; } });
+        };
+        ua.addEventListener('change', state);
+        state();
+      })();
+      // Genres: the sections in the order genres are processed: replace (before the reject lists), reject, reject
+      // parts, then how many are kept per book
+      (function () {
+        var cfg = document.querySelector('#genres > .configtable');
+        if (!cfg) { return; }
+        var row = document.createElement('div'), col = document.createElement('div'), n = 0;
+        row.className = 'row'; col.className = 'col-md-12'; row.appendChild(col);
+        ['genreold', 'genreexclude', 'genreexcludeparts', 'genrelimit'].forEach(function (id) {
+          var el = document.getElementById(id), fs = el && el.closest('fieldset');
+          if (fs && cfg.contains(fs)) { col.appendChild(fs); n++; }
+        });
+        if (!n) { return; }
+        // Comic Genres sits with the file formats in bookstrap; it is a list of genres, it goes to Genre Settings
+        var cg = document.getElementById('comic_genres'), cgg = cg && cg.closest('.form-group');
+        var gl = document.getElementById('genrelimit'), gs = gl && gl.closest('fieldset');
+        if (cgg && gs) { (gs.querySelector(':scope > .section-body') || gs).appendChild(cgg); }
+        Array.prototype.slice.call(cfg.children).forEach(function (c) {
+          if (!c.querySelector('input, select, textarea, legend')) { c.remove(); }
+        });
+        cfg.insertBefore(row, cfg.firstChild);
+      })();
+      // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
+      (function () {
+        var TOK = /\$\$|\$[A-Za-z]+/g, insertTip = ${_js('Insert at the cursor')};
+        // what each variable stands for, shown on its button; the variable itself is in the tooltip
+        var NAMES = {
+          '$Author': ${_js('Author')}, '$SortAuthor': ${_js('Author, surname first')}, '$Title': ${_js('Title')},
+          '$SortTitle': ${_js('Title for sorting')}, '$Language': ${_js('Language')}, '$Series': ${_js('Series (pattern)')},
+          '$SerName': ${_js('Series name')}, '$SerNum': ${_js('Series number')}, '$FmtName': ${_js('Formatted series name')},
+          '$FmtNum': ${_js('Formatted series number')}, '$PadNum': ${_js('Padded series number')},
+          '$PubYear': ${_js('Publication year')}, '$SerYear': ${_js('Series year')}, '$Abridged': ${_js('Abridged')},
+          '$Part': ${_js('Part')}, '$Total': ${_js('Number of parts')}, '$$': ${_js('$ sign')},
+          '$IssueDate': ${_js('Issue date')}, '$IssueYear': ${_js('Year')}, '$IssueVol': ${_js('Volume')},
+          '$IssueNum': ${_js('Issue number')}, '$IssueMonth': ${_js('Month name')}, '$IssueMNum': ${_js('Month number')},
+          '$IssueDay': ${_js('Day')}, '$Issue': ${_js('Issue')}, '$Publisher': ${_js('Publisher')}
+        };
+        form.querySelectorAll('.tab-pane .help-block').forEach(function (help) {
+          var field = help.previousElementSibling;
+          while (field && !field.matches('input[type="text"], textarea')) { field = field.previousElementSibling; }
+          if (!field) { return; }
+          var walker = document.createTreeWalker(help, NodeFilter.SHOW_TEXT), nodes = [];
+          while (walker.nextNode()) {
+            // the limitation notes (in <strong>) name variables too, they stay text
+            if (!walker.currentNode.parentNode.closest('strong') && TOK.test(walker.currentNode.nodeValue)) { nodes.push(walker.currentNode); }
+            TOK.lastIndex = 0;
+          }
+          nodes.forEach(function (node) {
+            var text = node.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+            TOK.lastIndex = 0;
+            while ((m = TOK.exec(text))) {
+              if (m.index > last) { frag.appendChild(document.createTextNode(text.slice(last, m.index))); }
+              var b = document.createElement('button');
+              b.type = 'button'; b.className = 'llc-token'; b.dataset.token = m[0];
+              b.textContent = NAMES[m[0]] || m[0]; b.title = m[0] + ' · ' + insertTip;
+              frag.appendChild(b);
+              last = m.index + m[0].length;
+            }
+            if (last < text.length) { frag.appendChild(document.createTextNode(text.slice(last))); }
+            node.parentNode.replaceChild(frag, node);
+          });
+          if (!nodes.length) { return; }
+          help.addEventListener('click', function (e) {
+            var b = e.target.closest('.llc-token');
+            if (!b) { return; }
+            e.preventDefault();
+            var s = field.selectionStart, end = field.selectionEnd;
+            if (s === null || s === undefined) { s = end = field.value.length; }
+            field.focus();
+            field.setRangeText(b.dataset.token, s, end, 'end');
+            field.dispatchEvent(new Event('input', {bubbles: true}));
+            field.dispatchEvent(new Event('change', {bubbles: true}));
+          });
+        });
       })();
       // headings bookstrap puts straight in a column (Categories, one per provider) get the same card as the
       // fieldset sections elsewhere; the fold keeps working, its click handler is delegated
@@ -682,7 +1022,7 @@
           var r = parseInt(v.substr(1, 2), 16), g = parseInt(v.substr(3, 2), 16), b = parseInt(v.substr(5, 2), 16);
           var dark = root.getAttribute('data-bs-theme') === 'dark';
           root.style.setProperty('--ll-accent', dark ? 'color-mix(in srgb, ' + v + ' 55%, #fff)' : v);
-          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.6 ? '#111' : '#fff'));
+          root.style.setProperty('--ll-accent-contrast', dark ? '#0c1a20' : ((0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.55 ? '#111' : '#fff'));
           swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === v.toLowerCase()); });
         };
         swatches.forEach(function (s) {
@@ -692,8 +1032,12 @@
         acc.addEventListener('input', paint);
         swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === acc.value.toLowerCase()); });
       }
-      var active = ul && ul.querySelector('li.active');
+      var stored = null, back = null;
+      try { stored = sessionStorage.getItem('llc-tab'); back = JSON.parse(sessionStorage.getItem('llc-scroll') || 'null'); sessionStorage.removeItem('llc-scroll'); } catch (e) {}
+      var active = ul && ((stored && ul.querySelector('li[aria-controls="' + stored + '"]')) || ul.querySelector('li.active'));
       if (active) { show(active); } else if (ul) { show(ul.querySelector('li[role="presentation"]')); }
+      // a reload a moment ago (an info source switch) returns to where the page was
+      if (back && Date.now() - back.t < 15000) { requestAnimationFrame(function () { window.scrollTo(0, back.y); }); }
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading
       form.querySelectorAll('.help-block:not(.help-keep)').forEach(function (help) {
         var anchor = null, prev = help.previousElementSibling;

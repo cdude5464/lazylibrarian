@@ -1,0 +1,43 @@
+<%inherit file="modern_base.html" />
+<%!
+    page_id = 'shutdown'
+%>
+<%def name="headIncludes()">
+<style>
+  .lls { max-width: 560px; margin: 3rem auto 0; text-align: center; }
+  .lls-icon { font-size: 2rem; color: var(--ll-accent); }
+</style>
+</%def>
+<%def name="body()">
+<div id="shutdown" class="lls card shadow-sm">
+  <div class="card-body py-4">
+    <div class="lls-icon mb-3">
+      %if timer == 0:
+      <i class="fas fa-power-off" aria-hidden="true"></i>
+      %else:
+      <i class="fas fa-circle-notch fa-spin" aria-hidden="true"></i>
+      %endif
+    </div>
+    <h1 class="h4 mb-2">${title | h}</h1>
+    <p class="mb-0">${prefix} ${message}</p>
+    <p id="countdown" class="small text-warning-emphasis mt-3 mb-0" hidden>${_('Server is taking longer than expected to respond. Check the log.')}</p>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+(function () {
+  // like bookstrap: once a second, see if the server answers again and go to the home page when it does
+  var countdown = ${int(timer or 0)};
+  if (countdown <= 0) { return; }
+  var timer = setInterval(function () {
+    countdown--;
+    var img = new Image();
+    img.onload = function () { clearInterval(timer); window.location = 'index'; };
+    img.src = 'cache/alive.png?t=' + Date.now();
+    if (countdown <= 10) { document.getElementById('countdown').hidden = false; }
+    if (countdown <= 0) { clearInterval(timer); window.location = 'index'; }
+  }, 1000);
+})();
+</script>
+</%def>

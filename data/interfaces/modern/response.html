@@ -1,0 +1,30 @@
+<%inherit file="modern_base.html" />
+<%!
+    page_id = 'response'
+%>
+<%def name="headIncludes()">
+<style>
+  .llr { max-width: 720px; margin: 2rem auto 0; }
+  .llr pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: .85rem; }
+</style>
+</%def>
+<%def name="body()">
+<div class="llr card shadow-sm">
+  <div class="card-body">
+    <h1 class="h5 card-title mb-3">${title | h}</h1>
+    <pre class="bg-body-tertiary rounded p-3">${prefix} ${message}</pre>
+  </div>
+  <div class="card-footer bg-transparent border-0 d-flex justify-content-end pb-3">
+    <button type="button" class="btn btn-primary rounded-pill px-4" onclick="window.history.back()" autofocus>${_('Close')}</button>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+(function () {
+  // like bookstrap: go back to the previous page after the timer, if there is one
+  var countdown = ${int(timer or 0)};
+  if (countdown > 0) { setTimeout(function () { window.history.back(); }, countdown * 1000); }
+})();
+</script>
+</%def>

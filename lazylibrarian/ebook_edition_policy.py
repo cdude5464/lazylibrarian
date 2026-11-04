@@ -14,6 +14,8 @@ def _identity(value):
 def filter_edition_reject_words(words, download_id, author, title):
     """Only relax approved edition words; never format, language or content gates."""
     original = list(words)
+    if not all(isinstance(value, str) for value in (download_id, author, title)):
+        return original
     if (not DIRS.DATADIR or not re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", download_id or "")
             or not _identity(author) or not _identity(title)):
         return original

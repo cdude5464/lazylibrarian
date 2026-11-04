@@ -23,7 +23,8 @@ class EditionExceptionTest(TestCase):
             write([item])
             self.assertEqual(policy.filter_edition_reject_words(words, "a" * 40, "Author", "Book"),
                              ["spanish", "mp3"])
-            for h, a, t in [("b" * 40, "Author", "Book"), ("a" * 40, "Other", "Book"),
+            for h, a, t in [(7, "Author", "Book"), ("a" * 40, None, "Book"),
+                            ("a" * 40, "Author", []), ("b" * 40, "Author", "Book"), ("a" * 40, "Other", "Book"),
                             ("a" * 40, "Author", "Other"), ("", "Author", "Book")]:
                 self.assertEqual(policy.filter_edition_reject_words(words, h, a, t), words)
             for entries in ([item, item], [dict(item, approved=False)],

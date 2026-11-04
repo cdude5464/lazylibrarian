@@ -1500,6 +1500,14 @@ def _row_matches_helper_startdir(
     if best_percent >= match_threshold:
         return True, best_percent
 
+    # Nested archive members may be entirely obfuscated. Reuse the same
+    # singleton, exact-job metadata gate as the later file matching stage.
+    if book_type == BookType.EBOOK and startdir:
+        files = ([startdir] if path_isfile(startdir)
+                 else _ebook_files_in_directory(startdir, recurse=True))
+        if len(files) == 1 and _exact_helper_ebook_metadata_match(book_state, files[0]):
+            return True, 100.0
+
     logger.warning(
         f"Skipping helper-scoped wanted row {book_state.book_id}/{book_state.download_title}: "
         f"startdir evidence did not match above {match_threshold}% "

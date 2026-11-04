@@ -102,3 +102,17 @@ def test_database_connection_closes_on_metadata_error(helper_book):
     db = postprocess.database.DBConnection.return_value
     assert not postprocess._exact_helper_ebook_metadata_match(state, str(payload))
     db.close.assert_called_once()
+
+
+@pytest.mark.parametrize("correct_title", [True, False])
+def test_scoped_row_gate_accepts_obfuscated_archive_only_with_exact_metadata(helper_book, correct_title):
+    state, payload, metadata = helper_book
+    if not correct_title:
+        metadata.return_value["title"] = "Different Book"
+    logger = logging.getLogger("test.helper-metadata")
+    with mock.patch.object(postprocess.BookState, "from_db_row", return_value=state), \
+            mock.patch.object(postprocess, "_populate_local_book_title"), \
+            mock.patch.object(postprocess, "_best_candidate_match", return_value=(0, "")):
+        matched, _ = postprocess._row_matches_helper_startdir(
+            {}, mock.Mock(), str(payload.parents[2]), logger)
+    assert matched is correct_title

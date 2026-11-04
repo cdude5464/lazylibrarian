@@ -1283,6 +1283,26 @@ def _best_candidate_match(
     return best_percent, best_title
 
 
+def _same_metadata_work_title(expected, observed):
+    # A leading article and a generic novel subtitle are metadata conventions,
+    # not volume identity. Only accept series words already present in the
+    # requested provider display; preserve all other work words/numerals.
+    base = _work_title(expected)
+    clean = re.sub(r"\s*\((?:97[89]\d{10}|\d{9}[\dXx])\)\s*$", "", observed or "").strip()
+    head, separator, subtitle = clean.partition(":")
+    def words(value):
+        result = match_tokens(value)
+        return result[1:] if result and result[0] in {"a", "an", "the"} else result
+    if not words(base) or words(base) != words(head):
+        return False
+    if separator:
+        series = expected[len(base):]
+        allowed = {"a", "an", "the", "novel"} | {w for w in match_tokens(series) if not w.isdigit()}
+        if not match_tokens(subtitle) or any(w not in allowed for w in match_tokens(subtitle)):
+            return False
+    return True
+
+
 def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> bool:
     """Identify obfuscated helper ebooks by exact DB title/author metadata."""
     if (book_state.get_book_type_enum() != BookType.EBOOK
@@ -1296,9 +1316,24 @@ def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> 
     real_root, real_file = os.path.realpath(job_root), os.path.realpath(filepath)
     if os.path.commonpath([real_root, real_file]) != real_root:
         return False
-    # Do not let a nested directory hide other ebook candidates in the same job.
+    # One work may ship in several formats. Require one exact basename and
+    # parent, unique extensions, and only the preferred format as candidate.
     ebook_files = _ebook_files_in_directory(job_root, recurse=True)
-    if len(ebook_files) != 1 or os.path.realpath(ebook_files[0]) != real_file:
+    if not ebook_files or real_file not in {os.path.realpath(p) for p in ebook_files}:
+        return False
+    if any(os.path.commonpath([real_root, os.path.realpath(p)]) != real_root for p in ebook_files):
+        return False
+    groups = {(os.path.realpath(os.path.dirname(p)), os.path.splitext(os.path.basename(p))[0].casefold())
+              for p in ebook_files}
+    extensions = [os.path.splitext(p)[1].lower().lstrip(".") for p in ebook_files]
+    if len(groups) != 1 or len(set(extensions)) != len(extensions):
+        return False
+    preferred = get_list(CONFIG["EBOOK_TYPE"])
+    ranks = {ext: index for index, ext in enumerate(preferred)}
+    if any(ext not in ranks for ext in extensions):
+        return False
+    selected = min(ebook_files, key=lambda p: ranks[os.path.splitext(p)[1].lower().lstrip(".")])
+    if os.path.realpath(selected) != real_file:
         return False
     db = None
     try:
@@ -1310,8 +1345,8 @@ def _exact_helper_ebook_metadata_match(book_state: BookState, filepath: str) -> 
             return False
         author_tokens, title_tokens = match_tokens(author), match_tokens(_work_title(title))
         if (not author_tokens or not title_tokens
-                or author_tokens != match_tokens(metadata.get("creator", ""))
-                or title_tokens != match_tokens(metadata.get("title", ""))):
+                or sorted(author_tokens) != sorted(match_tokens(metadata.get("creator", "")))
+                or not _same_metadata_work_title(title, metadata.get("title", ""))):
             return False
         conflict, _ = _ebook_language_conflict(metadata.get("language", ""), row["BookLang"])
         return not conflict
@@ -1350,6 +1385,8 @@ def _file_name_matches_book_state(
         )
         if match_percent > best_percent:
             best_percent = match_percent
+    if best_percent < match_threshold and _exact_helper_ebook_metadata_match(book_state, filepath):
+        return True, 100.0
     return best_percent >= match_threshold, best_percent
 
 
@@ -1510,7 +1547,7 @@ def _row_matches_helper_startdir(
     if book_type == BookType.EBOOK and startdir:
         files = ([startdir] if path_isfile(startdir)
                  else _ebook_files_in_directory(startdir, recurse=True))
-        if len(files) == 1 and _exact_helper_ebook_metadata_match(book_state, files[0]):
+        if any(_exact_helper_ebook_metadata_match(book_state, file) for file in files):
             return True, 100.0
 
     logger.warning(
@@ -2208,6 +2245,9 @@ def _try_match_candidate_file(
         book_state, normalized_candidate, fuzzlogger
     )
     is_match = match_percent >= match_threshold
+    if (not is_match and path_isfile(book_state.candidate_ptr or "")
+            and _exact_helper_ebook_metadata_match(book_state, book_state.candidate_ptr)):
+        match_percent, is_match = 100.0, True
     if is_match:
         if path_isdir(book_state.candidate_ptr or ""):
             book_state.candidate_match_kind = "directory_name"
@@ -2267,12 +2307,14 @@ def _try_match_candidate_file(
                 match_percent = file_match_percent
 
     # A helper job can contain an obfuscated ebook inside a scene release whose
-    # punctuation makes filename matching fail. Require one file and exact
-    # embedded identity; never broaden the fuzzy threshold or select a collection.
+    # punctuation makes filename matching fail. Require one work/format group
+    # and strict embedded identity; never broaden the fuzzy threshold or select a collection.
     if not is_match and path_isdir(book_state.candidate_ptr or ""):
         ebook_files = _ebook_files_in_directory(book_state.candidate_ptr, recurse=True)
-        if len(ebook_files) == 1 and _exact_helper_ebook_metadata_match(book_state, ebook_files[0]):
-            book_state.update_candidate(ebook_files[0], "inner_file_name")
+        selected = next((file for file in ebook_files
+                         if _exact_helper_ebook_metadata_match(book_state, file)), "")
+        if selected:
+            book_state.update_candidate(selected, "inner_file_name")
             is_match, match_percent = True, 100.0
 
     return is_match, match_percent

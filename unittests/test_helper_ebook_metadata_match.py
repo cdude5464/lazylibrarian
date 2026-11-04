@@ -129,3 +129,21 @@ def test_work_title_retains_non_series_work_text():
     assert postprocess._work_title("Book (Part One)") == "Book (Part One)"
     assert postprocess._work_title("Book 2") == "Book 2"
     assert postprocess._work_title("Book (Series, #2.5)") == "Book"
+
+
+def test_same_work_multiformat_selects_only_preferred_ebook(helper_book):
+    state, payload, metadata = helper_book
+    alternate = payload.with_suffix(".mobi")
+    alternate.write_bytes(b"mobi placeholder")
+    metadata.return_value = {"title": "Lost Metal : A Mistborn Novel (9780765391209)",
+                             "creator": "Sanderson, Brandon", "language": "en-US"}
+    with mock.patch.object(postprocess, "_requested_context_for_content_check",
+                           return_value=("Brandon Sanderson", "The Lost Metal (Mistborn, #7)")):
+        assert postprocess._exact_helper_ebook_metadata_match(state, str(payload))
+        assert not postprocess._exact_helper_ebook_metadata_match(state, str(alternate))
+
+
+@pytest.mark.parametrize("observed", ["Lost Metal 2", "Lost Metal: Journal", "Lost Metal: A Guide",
+                                      "Lost Metal (2)", "Lost Metal: Mistborn 8"])
+def test_metadata_work_normalization_preserves_distinct_work_and_volume(observed):
+    assert not postprocess._same_metadata_work_title("The Lost Metal (Mistborn, #7)", observed)

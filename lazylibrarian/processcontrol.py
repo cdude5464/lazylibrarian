@@ -75,7 +75,10 @@ def get_threads():
     if PSUTIL:
         myproc = psutil.Process(os.getpid())
         return get_threads_cpu_percent(myproc)
-    return {'Success': False, 'Data': '', 'Error': {'Code': 501, 'Message': 'Needs psutil module'}}
+    # Thread names come from Python itself; psutil is only needed for CPU
+    # measurements. Preserve the API's (name, percent) shape with unmeasured
+    # CPU values represented as 0.0 so readiness checks still see live names.
+    return [(thread.name, 0.0) for thread in threading.enumerate()]
 
 
 def track_resource_usage(func):

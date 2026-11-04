@@ -14,6 +14,7 @@
 import datetime
 import logging
 import os
+import re
 import string
 import time
 import traceback
@@ -23,12 +24,98 @@ from shutil import copyfile
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.bookwork import set_genres
+from lazylibrarian.box_helper_handoff import (
+    BOX_HELPER_HANDOFF_PROTOCOL,
+    configured_handoff_protocol,
+    configured_qbittorrent_lifecycle_owner,
+)
 from lazylibrarian.common import path_exists, pwd_generator
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, setperm, splitext, syspath
 from lazylibrarian.formatter import check_int, get_list, md5_utf8, plural
 from lazylibrarian.importer import update_totals
 from lazylibrarian.scheduling import SchedulerCommand, restart_jobs
+
+
+def _latest_wanted_media(db, bookid, media_type):
+    return db.match(
+        "SELECT rowid,Source,Status,DownloadID,DLResult FROM wanted "
+        "WHERE BookID=? AND AuxInfo=? ORDER BY rowid DESC LIMIT 1",
+        (bookid, media_type),
+    )
+
+
+def _helper_rejection_row(row, media_type):
+    if media_type not in {"eBook", "AudioBook"}:
+        raise ValueError("Unsupported startup rejection media type")
+    if (configured_handoff_protocol() != BOX_HELPER_HANDOFF_PROTOCOL
+            or configured_qbittorrent_lifecycle_owner() != "helper" or not row):
+        return False
+    prefixes = ("Rejected ", "LazyLibrarian rejected source after qBittorrent add:")
+    if media_type == "AudioBook":
+        prefixes += ("Audiobook validation failed: Rejected ",)
+    else:
+        prefixes += ("LazyLibrarian ebook import verification timed out:",)
+    return bool(
+        str(row["Source"] or "").upper() == "QBITTORRENT"
+        and row["Status"] == "Failed"
+        and re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", str(row["DownloadID"] or ""))
+        and str(row["DLResult"] or "").startswith(prefixes)
+    )
+
+
+def _defer_helper_rejection(db, bookid, media_type="AudioBook"):
+    """Retain current rejected ownership; do not authorize a search or deletion."""
+    return _helper_rejection_row(_latest_wanted_media(db, bookid, media_type), media_type)
+
+
+def _reconcile_orphan_status(db, logger, media_type="AudioBook"):
+    """Do not hide in-flight helper rejections during startup maintenance."""
+    columns = {"AudioBook": ("AudioStatus", "audiobook"), "eBook": ("Status", "ebook")}
+    if media_type not in columns:
+        raise ValueError("Unsupported startup rejection media type")
+    column, label = columns[media_type]
+    snatches = db.select(
+        f"SELECT BookID FROM books WHERE {column}='Snatched' EXCEPT SELECT BookID FROM wanted "
+        "WHERE Status='Snatched' AND AuxInfo=?", (media_type,)
+    )
+    if snatches:
+        logger.warning("Found %s snatched %s not snatched in wanted", len(snatches), label)
+    for orphan in snatches:
+        latest = _latest_wanted_media(db, orphan[0], media_type)
+        if _helper_rejection_row(latest, media_type):
+            logger.warning(
+                "Deferring orphan %s cleanup for BookID %s: "
+                "latest rejected download remains owned by the paired box helper",
+                label, orphan[0],
+            )
+            continue
+        # Recheck current media ownership inside the write. A new wanted row,
+        # or an in-place rejection transition, must not be erased by our stale
+        # SELECT snapshot while the book itself still says Snatched.
+        guard = (
+            " AND NOT EXISTS (SELECT 1 FROM wanted WHERE wanted.BookID=books.BookID "
+            "AND AuxInfo=? AND Status='Snatched')"
+        )
+        params = [orphan[0], media_type]
+        if latest:
+            guard += (
+                " AND (SELECT rowid FROM wanted WHERE wanted.BookID=books.BookID "
+                "AND AuxInfo=? ORDER BY rowid DESC LIMIT 1) IS ?"
+                " AND EXISTS (SELECT 1 FROM wanted WHERE rowid=? AND Status IS ? "
+                "AND Source IS ? AND DownloadID IS ? AND DLResult IS ?)"
+            )
+            params.extend([media_type, latest["rowid"], latest["rowid"], latest["Status"],
+                           latest["Source"], latest["DownloadID"], latest["DLResult"]])
+        else:
+            guard += " AND NOT EXISTS (SELECT 1 FROM wanted WHERE wanted.BookID=books.BookID AND AuxInfo=?)"
+            params.append(media_type)
+        db.action(
+            f"UPDATE books SET {column}='Skipped' WHERE BookID=? AND {column}='Snatched'" + guard,
+            tuple(params),
+        )
+    return len(snatches)
+
 
 # database version history:
 # 0 original version or new empty database
@@ -733,25 +820,8 @@ def check_db(upgradelog=None):
 
             # reset any snatched entries in books table that don't match history/wanted
             lazylibrarian.UPDATE_MSG = 'Syncing Snatched entries'
-            cmd = ("select bookid from books where status='Snatched' except select bookid from wanted "
-                   "where status='Snatched' and auxinfo='eBook'")
-            snatches = db.select(cmd)
-            if snatches:
-                cnt += len(snatches)
-                msg = f'Found {len(snatches)} snatched ebook not snatched in wanted'
-                logger.warning(msg)
-                for orphan in snatches:
-                    db.action("UPDATE books SET status='Skipped' WHERE bookid=?", (orphan[0],))
-
-            cmd = ("select bookid from books where audiostatus='Snatched' except select bookid from wanted "
-                   "where status='Snatched' and auxinfo='AudioBook'")
-            snatches = db.select(cmd)
-            if snatches:
-                cnt += len(snatches)
-                msg = f'Found {len(snatches)} snatched audiobook not snatched in wanted'
-                logger.warning(msg)
-                for orphan in snatches:
-                    db.action("UPDATE books SET audiostatus='Skipped' WHERE bookid=?", (orphan[0],))
+            cnt += _reconcile_orphan_status(db, logger, "eBook")
+            cnt += _reconcile_orphan_status(db, logger, "AudioBook")
 
             # all authors with no books in the library and no books marked wanted unless series contributor
             cmd = ("select authorid from authors where havebooks=0 and totalbooks>0 and instr(Reason, 'Series') = 0 "

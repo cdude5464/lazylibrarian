@@ -1004,8 +1004,8 @@ def serve_template(templatename, **kwargs):
             return template.render(perm=0, message=i18n.gettext("Database upgrade in progress, please wait..."),
                                    title=i18n.gettext("Database Upgrade"), timer=5, style=style, **i18n_vars)
 
-        adminlogger.debug(f"Request headers: {str(cherrypy.request.headers)}")
-        adminlogger.debug(f"Request cookie: {str(cherrypy.request.cookie)}")
+        adminlogger.debug("Request header count: %d", len(cherrypy.request.headers))
+        adminlogger.debug("Request cookie present: %s", bool(cherrypy.request.cookie))
         if not CONFIG.get_bool('USER_ACCOUNTS'):
             adminlogger.debug("User accounts are NOT active")
             perm = lazylibrarian.perm_admin
@@ -1015,7 +1015,7 @@ def serve_template(templatename, **kwargs):
                 clear_mako_cache()
                 template = _hplookup.get_template(templatename)
         else:
-            adminlogger.debug(f"User accounts are active, Login user is {lazylibrarian.LOGINUSER}")
+            adminlogger.debug("User accounts are active; login user present: %s", bool(lazylibrarian.LOGINUSER))
             username = ''  # anyone logged in yet?
             userid = 0
             perm = 0
@@ -1047,17 +1047,17 @@ def serve_template(templatename, **kwargs):
             else:
                 authorization = cherrypy.request.headers.get('Authorization')
                 if authorization:
-                    adminlogger.debug(f"Authorization header: {authorization}")
+                    adminlogger.debug("Authorization header received")
                 cookie = cherrypy.request.cookie
                 if cookie and 'll_uid' in list(cookie.keys()):
-                    adminlogger.debug(f"Cookie UserID: {cookie['ll_uid'].value}")
+                    adminlogger.debug("User cookie received")
                     res = db.match('SELECT * from users where UserID=?', (cookie['ll_uid'].value,))
                     if res:
                         cherrypy.response.cookie['ll_uid'] = res['UserID']
                         cherrypy.response.cookie['ll_prefs'] = res['Prefs']
                         cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
                     else:
-                        adminlogger.debug(f"No user for uid {cookie['ll_uid'].value}")
+                        adminlogger.debug("Cookie user is not registered")
                         clear_our_cookies()
                 elif authorization and authorization.startswith('Basic '):
                     auth_bytes = authorization.split('Basic ')[1].encode('ascii')
@@ -1305,16 +1305,27 @@ class WebInterface:
         else:
             perm = 0
             cookie = cherrypy.request.cookie
-            if cookie and 'll_uid' in list(cookie.keys()):
-                cookie_userid = cookie['ll_uid'].value
-                db = database.DBConnection()
-                res = db.match('SELECT * from users where UserID=?', (cookie_userid,))
+            cookie_userid = cookie['ll_uid'].value if cookie and 'll_uid' in cookie else ''
+            db = database.DBConnection()
+            try:
+                res = db.match('SELECT * from users where UserID=?', (cookie_userid,)) if cookie_userid else None
+                if not res and CONFIG.get_bool('PROXY_AUTH'):
+                    # The upstream page guard runs before template login. Bind
+                    # only an existing proxy user, including stale-cookie recovery.
+                    proxy_user = cherrypy.request.headers.get(CONFIG.get_str('PROXY_AUTH_USER'))
+                    if proxy_user:
+                        res = db.match('SELECT * FROM users WHERE UserName=?', (proxy_user,))
+                        if res:
+                            cookie['ll_uid'] = res['UserID']
+                            cherrypy.response.cookie['ll_uid'] = res['UserID']
+                            cherrypy.response.cookie['ll_uid']['path'] = '/'
                 if res:
                     perm = check_int(res['Perms'], 0)
                     userid = res['UserID']
-                else:
-                    adminlogger.debug(f"No match for userid [{cookie_userid}]")
+                elif cookie_userid:
+                    adminlogger.debug("Cookie user is no longer registered")
                     clear_our_cookies()
+            finally:
                 db.close()
 
         if perm & required_perm:

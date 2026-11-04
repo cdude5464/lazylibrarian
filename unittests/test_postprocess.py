@@ -34,6 +34,8 @@ from lazylibrarian.postprocess import (
     _complete_snatched_if_recent_bookfile_exists,
     _normalize_title,
     _resolve_book_state_id_after_destination,
+    _process_destination,
+    _process_matched_directory,
     _should_delete_processed_files,
     _tokenize_file,
     _try_match_candidate_file,
@@ -440,7 +442,8 @@ class BookStateTest(LLTestCaseWithStartup):
                 book_state.enrich_with_download_info(db)
 
             # Verify enrichment
-            self.assertEqual(book_state.download_folder, "/downloads/test_folder")
+            # enrich to parent folder for single file torrent
+            self.assertEqual(book_state.download_folder, "/downloads")
             self.assertIn("test author", book_state.book_title.lower())
             self.assertIn("test book", book_state.book_title.lower())
         finally:
@@ -481,6 +484,69 @@ class BookStateTest(LLTestCaseWithStartup):
             self.assertIn("test author", book_state.book_title.lower())
         finally:
             db.close()
+
+    def test_enrich_single_file_torrent_from_other_clients(self):
+        """Issue #2771: Deluge and others give the save path and the torrent name, which for a
+        single-file torrent is the file itself. The targeted pass gets its folder and the file
+        name, so it isolates just that file instead of failing to list the file as a folder."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "ll-incoming")
+            os.makedirs(shared)
+            fname = "The_Sunlit_Man_by_Brandon_Sanderson.epub"
+            for name in (fname, "The_Sunlit_Man_by_Brandon_Sanderson.epub.part", "Another Book.epub"):
+                with open(os.path.join(shared, name), "w") as f:
+                    f.write(name)
+            db = mock.Mock()
+            db.match.return_value = None
+            logger = logging.getLogger("test")
+
+            # the torrent name is the file, or the client renamed it and gives the content path
+            for name, content in ((fname, None), ("The Sunlit Man", os.path.join(shared, fname))):
+                book_state = BookState(book_id="book123", download_title="The Sunlit Man by Brandon Sanderson",
+                                       aux_type="eBook", source="DELUGEWEBUI", download_id="dl123")
+                with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value=shared), \
+                        mock.patch("lazylibrarian.postprocess.get_download_name", return_value=name), \
+                        mock.patch("lazylibrarian.postprocess.get_download_content_path", return_value=content):
+                    book_state.enrich_with_download_info(db)
+                self.assertEqual((book_state.download_folder, book_state.download_title), (shared, fname))
+
+                book_state.update_candidate(book_state.download_folder)
+                with mock.patch("lazylibrarian.postprocess.CONFIG.get_bool", return_value=True):
+                    is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+                self.assertTrue(is_valid, skip_reason)
+                self.assertEqual(os.listdir(book_state.candidate_ptr), [fname])
+                shutil.rmtree(book_state.candidate_ptr)
+            self.assertEqual(sorted(os.listdir(shared)),
+                             sorted([fname, "The_Sunlit_Man_by_Brandon_Sanderson.epub.part", "Another Book.epub"]))
+
+    def test_enrich_missing_content_path_keeps_the_title(self):
+        """A content path that isn't there (a wrong path mapping) only gives the folder."""
+        book_state = BookState(book_id="book123", download_title="Some Book", aux_type="eBook",
+                               source="TRANSMISSION", download_id="dl123")
+        db = mock.Mock()
+        db.match.return_value = None
+        with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value="/nowhere"), \
+                mock.patch("lazylibrarian.postprocess.get_download_name", return_value="Some Book"), \
+                mock.patch("lazylibrarian.postprocess.get_download_content_path",
+                           return_value="/nowhere/else/Some Book.epub"):
+            book_state.enrich_with_download_info(db)
+        self.assertEqual((book_state.download_folder, book_state.download_title), ("/nowhere/else", "Some Book"))
+
+    def test_enrich_prefers_the_client_content_path_to_a_file_by_name(self):
+        """A torrent renamed in the client, with an unrelated file left under its old name."""
+        with tempfile.TemporaryDirectory() as root:
+            for name in ("Old Name.epub", "Real Book.epub"):
+                open(os.path.join(root, name), "w").close()
+            book_state = BookState(book_id="book123", download_title="Real Book", aux_type="eBook",
+                                   source="DELUGEWEBUI", download_id="dl123")
+            db = mock.Mock()
+            db.match.return_value = None
+            with mock.patch("lazylibrarian.postprocess.get_download_folder", return_value=root), \
+                    mock.patch("lazylibrarian.postprocess.get_download_name", return_value="Old Name.epub"), \
+                    mock.patch("lazylibrarian.postprocess.get_download_content_path",
+                               return_value=os.path.join(root, "Real Book.epub")):
+                book_state.enrich_with_download_info(db)
+            self.assertEqual((book_state.download_folder, book_state.download_title), (root, "Real Book.epub"))
 
     def test_enrich_with_download_info_magazine(self):
         """Test enrichment for magazine gets title"""
@@ -875,7 +941,7 @@ class PostprocessHelperTest(LLTestCaseWithStartup):
         test_cases = [
             ("Test_Book_Title", "Test Book Title"),
             ("Book LL.(12345)", "Book"),
-            ("Über_Book_Name", "Uber Book Name"),
+            ("Über_Book_Name", "Über Book Name"),
             ("  Spaces   Everywhere  ", "Spaces   Everywhere"),
             ("Book/With:Special*Chars", "Book_WithSpecialChars"),
             # Test extension stripping (new behavior)
@@ -950,6 +1016,54 @@ class PostprocessHelperTest(LLTestCaseWithStartup):
         for filepath, expected in test_cases:
             stem, ext = _tokenize_file(filepath)
             self.assertEqual((stem, ext), expected)
+
+    def test_tokenize_file_interior_periods(self):
+        """A period inside a name (author initials) must NOT be treated as a
+        file extension. Regression for download folders like
+        'Rhett C. Bruno, Jaime Castle - An Unexpected Hero A LitRPG Adventure'
+        where Path.stem chopped everything after 'C.' down to 'Rhett C',
+        destroying the title and dropping the fuzzy match below threshold."""
+        test_cases = [
+            # (name, expected_stem, expected_ext)
+            # Interior period, no real extension -> whole name is the stem
+            (
+                "Rhett C. Bruno, Jaime Castle - An Unexpected Hero A LitRPG Adventure",
+                "Rhett C. Bruno, Jaime Castle - An Unexpected Hero A LitRPG Adventure",
+                "",
+            ),
+            ("J.R.R. Tolkien - The Hobbit", "J.R.R. Tolkien - The Hobbit", ""),
+            ("Robert A. Caro - The Path to Power", "Robert A. Caro - The Path to Power", ""),
+            # Real media extension is still stripped, even with interior periods
+            (
+                "Rhett C. Bruno - An Unexpected Hero.m4b",
+                "Rhett C. Bruno - An Unexpected Hero",
+                "m4b",
+            ),
+            # Special/skip extensions must still be recognized (used elsewhere)
+            ("isolated.unpack", "isolated", "unpack"),
+            ("incomplete.part", "incomplete", "part"),
+        ]
+        for name, expected_stem, expected_ext in test_cases:
+            stem, ext = _tokenize_file(name)
+            self.assertEqual(
+                (stem, ext), (expected_stem, expected_ext), f"Failed for: {name}"
+            )
+
+    def test_tokenize_then_match_author_initial_folder(self):
+        """End-to-end: a folder named author-first with an initial must still
+        clear the match threshold against a title-first download name once it
+        is tokenized and normalized (the real-world stuck-Snatched case)."""
+        download_title = (
+            "An Unexpected Hero A LitRPG Adventure - Rhett C. Bruno, Jaime Castle"
+        )
+        folder = "Rhett C. Bruno, Jaime Castle - An Unexpected Hero A LitRPG Adventure"
+
+        stem, _ext = _tokenize_file(folder)
+        normalized_candidate = _normalize_title(stem)
+        match = _calculate_fuzzy_match(download_title, normalized_candidate, None)
+        # Same tokens, just reordered -> token_set_ratio should be ~100%,
+        # and must beat the default DLOAD_RATIO/NAME_RATIO of 90.
+        self.assertGreaterEqual(match, 90)
 
     def test_calculate_fuzzy_match(self):
         """Test fuzzy matching calculation"""
@@ -1086,6 +1200,157 @@ class PostprocessFileOperationsTest(LLTestCaseWithStartup):
         # Should delegate to CONFIG methods
         result = _is_valid_media_file("test.epub", book_type="ebook")
         self.assertTrue(result)
+
+    def test_process_matched_directory_finds_nested_audiobook(self):
+        """Test that _process_matched_directory recurses into subfolders for nested media.
+
+        Torrent clients often place multi-part audiobooks under a year subfolder, e.g.:
+          <Title>/
+            <Title> (2009)/
+              Part1.mp3
+        The non-recursive first-pass finds nothing; the fix must recurse before giving up.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            sub = os.path.join(root, "Good Omens (2009)")
+            os.makedirs(sub)
+            open(os.path.join(sub, "Good Omens Unabridged~Part1.mp3"), "w").close()
+
+            book_state = BookState(
+                book_id="434342", download_title="Good Omens", aux_type="AudioBook"
+            )
+            book_state.update_candidate(root)
+
+            logger = logging.getLogger("test")
+            download_dir = os.path.dirname(root)
+            is_valid, skip_reason = _process_matched_directory(
+                book_state, download_dir, 100.0, logger, logger
+            )
+
+            self.assertTrue(
+                is_valid,
+                f"expected nested audiobook to validate, got: {skip_reason}",
+            )
+            self.assertEqual(book_state.candidate_ptr, sub)
+
+    def test_process_matched_directory_nested_ebook_not_recursed(self):
+        """Test that the recursive fallback is scoped to audiobooks only.
+
+        The recursive find returns the first valid-extension file with no sample
+        filtering or name matching, so eBooks must NOT recurse into subfolders here:
+        they keep the original bail and let the archive/collection best-match logic
+        handle nested layouts. A nested eBook with no top-level file must fail.
+        """
+        with tempfile.TemporaryDirectory() as root:
+            sub = os.path.join(root, "Some Book (2009)")
+            os.makedirs(sub)
+            open(os.path.join(sub, "Some Book.epub"), "w").close()
+
+            book_state = BookState(
+                book_id="999", download_title="Some Book", aux_type="eBook"
+            )
+            book_state.update_candidate(root)
+
+            logger = logging.getLogger("test")
+            download_dir = os.path.dirname(root)
+            is_valid, skip_reason = _process_matched_directory(
+                book_state, download_dir, 100.0, logger, logger
+            )
+
+            self.assertFalse(
+                is_valid,
+                "eBooks must not recurse into subfolders in the no-archive fallback",
+            )
+            self.assertEqual(skip_reason, "No valid file or archives found")
+
+    def test_single_file_torrent_in_shared_folder_is_isolated(self):
+        """A single-file torrent saved into a folder shared with other downloads (a
+        qBittorrent category path) must only bring its own file, not whichever
+        magazine in that folder is found first."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "magazines")
+            os.makedirs(shared)
+            # other torrents, two of them sharing our name as a prefix or stem
+            for name in ("Raspberry Pi 2026 163.pdf", "Raspberry Pi 2026 1634.pdf", "Raspberry Pi 2026 163.epub",
+                         "Another Book.epub", "Some Other Mag 12.epub"):
+                with open(os.path.join(shared, name), "w") as f:
+                    f.write(name)
+
+            # enrich_with_download_info sets these for a qBittorrent single-file torrent
+            book_state = BookState(book_id="Raspberry Pi", download_title="Raspberry Pi 2026 163.pdf",
+                                   aux_type="magazine")
+            book_state.update_candidate(shared)
+            logger = logging.getLogger("test")
+            with mock.patch("lazylibrarian.postprocess.CONFIG.get_bool", return_value=True):
+                is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+
+            self.assertTrue(is_valid, skip_reason)
+            self.assertTrue(book_state.candidate_ptr.endswith(".unpack"), book_state.candidate_ptr)
+            self.assertEqual(os.path.dirname(book_state.candidate_ptr), shared)
+            self.assertEqual(os.listdir(book_state.candidate_ptr), ["Raspberry Pi 2026 163.pdf"])
+            # copied, the other downloads and our seeding file are untouched
+            self.assertEqual(len(os.listdir(shared)), 6)
+            # cleanup removes only the isolated copy, never the shared folder
+            self.assertEqual(_should_delete_processed_files(book_state.candidate_ptr, root),
+                             (True, book_state.candidate_ptr))
+
+    def test_shared_folder_isolation_needs_a_plain_media_file_name(self):
+        """An archive keeps the folder search so it can be extracted, and a title
+        that is a path is never followed out of the folder."""
+        with tempfile.TemporaryDirectory() as root:
+            shared = os.path.join(root, "magazines")
+            os.makedirs(shared)
+            open(os.path.join(shared, "Raspberry Pi 2026 163.zip"), "w").close()
+            open(os.path.join(root, "outside.pdf"), "w").close()
+            logger = logging.getLogger("test")
+            for title in ("Raspberry Pi 2026 163.zip", "../outside.pdf"):
+                book_state = BookState(book_id="Raspberry Pi", download_title=title, aux_type="magazine")
+                book_state.update_candidate(shared)
+                with mock.patch("lazylibrarian.postprocess._transfer_matching_files") as transfer, \
+                        mock.patch("lazylibrarian.postprocess._extract_archives_in_directory",
+                                   return_value=(shared, False)):
+                    _process_matched_directory(book_state, root, 100.0, logger, logger)
+                transfer.assert_not_called()
+                self.assertFalse(any(n.endswith(".unpack") for n in os.listdir(shared)))
+
+    def test_multi_file_torrent_folder_is_not_isolated(self):
+        """A torrent's own folder is used as it is."""
+        with tempfile.TemporaryDirectory() as root:
+            folder = os.path.join(root, "Raspberry Pi 2026 163")
+            os.makedirs(folder)
+            open(os.path.join(folder, "Raspberry Pi 2026 163.pdf"), "w").close()
+            book_state = BookState(book_id="Raspberry Pi", download_title="Raspberry Pi 2026 163",
+                                   aux_type="magazine")
+            book_state.update_candidate(folder)
+            logger = logging.getLogger("test")
+            is_valid, skip_reason = _process_matched_directory(book_state, root, 100.0, logger, logger)
+            self.assertTrue(is_valid, skip_reason)
+            self.assertEqual(book_state.candidate_ptr, folder)
+
+    def test_destination_does_not_overwrite_with_a_second_file(self):
+        """Two files renamed to the same name must not replace each other."""
+        with tempfile.TemporaryDirectory() as root:
+            src = os.path.join(root, "abc.unpack")
+            dest = os.path.join(root, "library")
+            os.makedirs(src)
+            for name in ("a first.pdf", "b second.pdf"):
+                with open(os.path.join(src, name), "w") as f:
+                    f.write(name)
+            metadata = mock.Mock(book_type="magazine", book_id="Raspberry Pi", dest_path=dest,
+                                 global_name="Raspberry Pi 163")
+            metadata.get_processing_fields.return_value = dict.fromkeys(
+                ("authorname", "bookname", "issueid", "title", "issuedate", "mag_genres", "cover"), "")
+            logger = logging.getLogger("test")
+            with mock.patch("lazylibrarian.postprocess._handle_magazine_comic_metadata"), \
+                    mock.patch("lazylibrarian.postprocess._should_use_calibre", return_value=False), \
+                    self.assertLogs(logger, level="WARNING") as logs:
+                success, _, _ = _process_destination(metadata, src, logger, preprocess=False)
+
+            self.assertTrue(success)
+            self.assertEqual(os.listdir(dest), ["Raspberry Pi 163.pdf"])
+            with open(os.path.join(dest, "Raspberry Pi 163.pdf")) as f:
+                kept = f.read()
+            self.assertIn(kept, ("a first.pdf", "b second.pdf"))
+            self.assertTrue(any("would overwrite" in m for m in logs.output))
 
 
 class PostprocessIntegrationTest(LLTestCaseWithStartup):
@@ -1373,6 +1638,91 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         )
         self.assertTrue(should_abort)  # Now abort
 
+    def test_stall_detection_aborts_zero_progress_after_stall_age(self):
+        book_state = BookState(
+            download_title="Test Book",
+            source="QBITTORRENT",
+            download_id="dl123",
+            progress=0,
+            aux_type="eBook",
+            book_id="book123",
+        )
+        mock_logger = mock.Mock()
+        with mock.patch("lazylibrarian.postprocess.CONFIG") as mock_config:
+            mock_config.get_int.side_effect = lambda k: {'STALL_AGE': 72, 'TASK_AGE': 0}[k]
+            should_abort, _ = _handle_snatched_timeout(
+                book_state, 73, 4380, 0, mock_logger
+            )
+        self.assertTrue(should_abort)
+
+    def test_stall_detection_does_not_abort_before_stall_age(self):
+        book_state = BookState(
+            download_title="Test Book",
+            source="QBITTORRENT",
+            download_id="dl123",
+            progress=0,
+            aux_type="eBook",
+            book_id="book123",
+        )
+        mock_logger = mock.Mock()
+        with mock.patch("lazylibrarian.postprocess.CONFIG") as mock_config:
+            mock_config.get_int.side_effect = lambda k: {'STALL_AGE': 72, 'TASK_AGE': 0}[k]
+            should_abort, _ = _handle_snatched_timeout(
+                book_state, 48, 2880, 0, mock_logger
+            )
+        self.assertFalse(should_abort)
+
+    def test_stall_detection_ignores_nonzero_progress(self):
+        book_state = BookState(
+            download_title="Test Book",
+            source="QBITTORRENT",
+            download_id="dl123",
+            progress=5,
+            aux_type="eBook",
+            book_id="book123",
+        )
+        mock_logger = mock.Mock()
+        with mock.patch("lazylibrarian.postprocess.CONFIG") as mock_config:
+            mock_config.get_int.side_effect = lambda k: {'STALL_AGE': 72, 'TASK_AGE': 0}[k]
+            should_abort, _ = _handle_snatched_timeout(
+                book_state, 73, 4380, 0, mock_logger
+            )
+        self.assertFalse(should_abort)
+
+    def test_stall_detection_disabled_when_zero(self):
+        book_state = BookState(
+            download_title="Test Book",
+            source="QBITTORRENT",
+            download_id="dl123",
+            progress=0,
+            aux_type="eBook",
+            book_id="book123",
+        )
+        mock_logger = mock.Mock()
+        with mock.patch("lazylibrarian.postprocess.CONFIG") as mock_config:
+            mock_config.get_int.side_effect = lambda k: {'STALL_AGE': 0, 'TASK_AGE': 0}[k]
+            should_abort, _ = _handle_snatched_timeout(
+                book_state, 200, 12000, 0, mock_logger
+            )
+        self.assertFalse(should_abort)
+
+    def test_stall_age_overrides_task_age_for_zero_progress(self):
+        book_state = BookState(
+            download_title="Test Book",
+            source="QBITTORRENT",
+            download_id="dl123",
+            progress=0,
+            aux_type="eBook",
+            book_id="book123",
+        )
+        mock_logger = mock.Mock()
+        with mock.patch("lazylibrarian.postprocess.CONFIG") as mock_config:
+            mock_config.get_int.side_effect = lambda k: {'STALL_AGE': 72, 'TASK_AGE': 2}[k]
+            should_abort, _ = _handle_snatched_timeout(
+                book_state, 3, 180, 2, mock_logger
+            )
+        self.assertFalse(should_abort)
+
     @mock.patch("lazylibrarian.postprocess.custom_notify_snatch")
     @mock.patch("lazylibrarian.postprocess.notify_snatch")
     @mock.patch("lazylibrarian.postprocess.CONFIG.get_bool")
@@ -1445,6 +1795,37 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
         book_state = BookState(
             book_id="book123",
             download_title="Test Book",
+            source="TRANSMISSION",
+            download_id="dl123",
+            status="Aborted",
+            aux_type="eBook",
+            download_url="http://test.com/book.nzb",
+            progress=50,
+        )
+
+        mock_db = mock.Mock()
+        mock_db.match.return_value = None
+        mock_logger = mock.Mock()
+
+        _handle_aborted_download(book_state, 12, mock_db, mock_logger)
+
+        # Should delete from client, and not be held for seeding it never did
+        mock_delete_task.assert_called_once_with(
+            "TRANSMISSION", "dl123", True, abandoned=True
+        )
+
+    @mock.patch("lazylibrarian.postprocess.delete_task")
+    @mock.patch("lazylibrarian.postprocess.CONFIG.get_bool")
+    def test_handle_aborted_qbit_is_retained_for_helper_even_if_delete_configured(
+        self, mock_get_bool, mock_delete_task
+    ):
+        """Native aborted handling cannot take deletion authority from the helper."""
+
+        mock_get_bool.return_value = True  # DEL_FAILED = True
+
+        book_state = BookState(
+            book_id="book123",
+            download_title="Test Book",
             source="QBITTORRENT",
             download_id="dl123",
             status="Aborted",
@@ -1459,8 +1840,7 @@ class UnprocessedDownloadsTest(LLTestCaseWithStartup):
 
         _handle_aborted_download(book_state, 12, mock_db, mock_logger)
 
-        # Should delete from client
-        mock_delete_task.assert_called_once_with("QBITTORRENT", "dl123", True)
+        mock_delete_task.assert_not_called()
 
     @mock.patch("lazylibrarian.postprocess.schedule_job")
     def test_check_and_schedule_next_run_stop_when_empty(self, mock_schedule):
@@ -2898,7 +3278,7 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         mock_get_folder.return_value = None
         CONFIG.set_bool("DEL_FAILED", True)
 
-        def process_side_effect(book_state, *_args):
+        def process_side_effect(book_state, *_args, **_kwargs):
             if book_state.book_id == "failed_book":
                 book_state.mark_failed("matching", "forced failure")
             return 0
@@ -2995,3 +3375,59 @@ class ProcessDirEndToEndTest(LLTestCaseWithStartup):
         self.assertEqual("Snatched", sibling_row["Status"])
         self.assertIsNone(sibling_row["DLResult"])
         mock_delete_task.assert_not_called()
+    @mock.patch('lazylibrarian.postprocess._is_valid_media_file')
+    @mock.patch('lazylibrarian.postprocess.CONFIG.get_bool')
+    @mock.patch('lazylibrarian.postprocess.check_contents')
+    @mock.patch('lazylibrarian.postprocess.get_download_progress')
+    @mock.patch('lazylibrarian.postprocess.get_download_name')
+    def test_audiobook_in_download_root_does_not_copy_everything(
+        self, mock_get_name, mock_get_progress, mock_check_contents,
+        mock_get_bool, mock_is_valid_media
+    ):
+        """Regression test for #2901: loose audiobook in download root must not
+        cause copy_tree to copy the entire download directory.
+
+        When candidate_ptr is the download root itself and book_file(recurse=True)
+        finds a .m4b there, pp_path becomes the download root and copy_tree copies
+        everything in it.  The guard should reject the download root as a candidate
+        before book_file ever runs.
+        """
+        mock_check_contents.return_value = None
+        mock_get_progress.return_value = (100, True)
+        mock_get_name.return_value = None
+        mock_is_valid_media.return_value = True
+
+        def get_bool_side_effect(key):
+            if key == "AUDIO_TAB":
+                return True
+            if key == "DESTINATION_COPY":
+                return True
+            return False
+
+        mock_get_bool.side_effect = get_bool_side_effect
+
+        book_id = "audio_root_001"
+        author_name = "Joe Dunthorne"
+        book_name = "Children of Radium"
+        download_title = "Joe_Dunthorne-Children_of_Radium"
+
+        self.create_test_author_and_book(book_id, author_name, book_name)
+        self.create_snatched_download(book_id, download_title, "AudioBook")
+
+        # Place a loose .m4b in the download root (no subfolder)
+        loose_m4b = os.path.join(self.download_dir, "Children of Radium.m4b")
+        with open(loose_m4b, 'w') as f:
+            f.write("audiobook data")
+
+        # Other unrelated files that must survive
+        other_epub = os.path.join(self.download_dir, "Unrelated_Book.epub")
+        with open(other_epub, 'w') as f:
+            f.write("unrelated ebook")
+
+        process_dir(ignoreclient=True)
+
+        # The unrelated file must still be in the download root untouched
+        self.assertTrue(
+            os.path.exists(other_epub),
+            "Unrelated files in download root must not be copied or moved"
+        )

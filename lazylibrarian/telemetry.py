@@ -28,7 +28,7 @@ from http.client import responses
 
 import requests
 
-from lazylibrarian import database
+from lazylibrarian import database, i18n
 from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG, LLConfigHandler
 from lazylibrarian.formatter import thread_name
@@ -125,7 +125,7 @@ class LazyTelemetry:
             'TOR_DOWNLOADER_RTORRENT', 'TOR_DOWNLOADER_UTORRENT',
             'TOR_DOWNLOADER_QBITTORRENT', 'TOR_DOWNLOADER_BLACKHOLE',
             # Providers
-            'BOK', 'SLSK', 'ANNA',
+            'BOK', 'SLSK', 'ANNA', 'WEBSHARE', 'AUDNEXUS',
             # Processing
             'CALIBRE_USE_SERVER', 'OPF_TAGS', 'MULTI_SOURCE',
             # Notifiers
@@ -146,9 +146,11 @@ class LazyTelemetry:
             cfg_telemetry["params"] += "PRIMARY_HC "
         elif _config['BOOK_API'] == 'OpenLibrary':
             cfg_telemetry["params"] += "PRIMARY_OL "
+        cfg_telemetry["params"] += f"UI_LANG_{_config['UI_LANGUAGE']} "
+        cfg_telemetry["params"] += f"UI_LOOK_{_config['HTTP_LOOK']} "
 
         # Record whether these are configured differently from the default
-        for key in ['GR_API', 'GB_API', 'OL_API', 'DNB_API', 'HC_API', 'GR_SYNC', 'HC_SYNC', 'LT_DEVKEY',
+        for key in ['GR_API', 'GB_API', 'OL_API', 'DNB_API', 'BN_API', 'DBK_API', 'RAN_API', 'HC_API', 'GR_SYNC', 'HC_SYNC', 'LT_DEVKEY',
                     'IMP_PREFLANG', 'IMP_CALIBREDB', 'DOWNLOAD_DIR', 'ONE_FORMAT', 'API_KEY']:
             item = _config.get_item(key)
             if item and not item.is_default():
@@ -228,8 +230,8 @@ class LazyTelemetry:
         except Exception as e:
             return f"Exception {type(e).__name__}: {str(e)}", False
 
-        if str(r.status_code).startswith('2'):  # (200 OK etc)
-            return r.text, True  # Success
+        if r.status_code == 200:
+            return r.text, True
         msg = responses.get(r.status_code, r.text)
         return f"Response status {r.status_code}: {msg}", False
 
@@ -251,10 +253,10 @@ class LazyTelemetry:
                 # Use just the first line of both, in case there is an error
                 id1 = serverid.split('\n')[0]
                 status1 = status.split('\n')[0] if status else ''
-                return f"Server ID: {id1}\n\nStatus:\n{status1}"
-            return f"Error connecting to server: {serverid}"
+                return i18n.gettext('Server ID: %(id)s\n\nStatus:\n%(status)s') % {'id': id1, 'status': status1}
+            return i18n.gettext('Error connecting to server: %(error)s') % {'error': serverid}
         except requests.exceptions.RequestException:
-            return "Error connecting to server"
+            return i18n.gettext('Error connecting to server')
 
 
 # Global functions
@@ -269,12 +271,11 @@ def record_usage_data(counter: str | None = None):
 
 def telemetry_send() -> str:
     """ Routine called by scheduler, to regularly send telemetry data """
-    threadname = thread_name()
-    if "Thread" in threadname:
-        thread_name("TELEMETRYSEND")
+    thread_name("TELEMETRYSEND")
     logger = logging.getLogger(__name__)
     db = database.DBConnection()
     try:
+        logger.info(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
         TELEMETRY.set_install_data(CONFIG, testing=False)
         TELEMETRY.set_config_data(CONFIG)
@@ -289,7 +290,8 @@ def telemetry_send() -> str:
                 result = result.splitlines()[0]  # Return only the first line
         logger.debug(f'Telemetry data sending: {result}, {status}')
     finally:
+        logger.info(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
         db.close()
-        thread_name(threadname)
+        thread_name("WEBSERVER")
     return result

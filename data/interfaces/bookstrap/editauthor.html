@@ -1,15 +1,79 @@
 <%inherit file="base.html"/>
 <%!
     import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.startup import prioritized_infosources
 %>
 <%def name="headerIncludes()">
     <div id="subhead_container">
-        <div id="subhead_menu">
-        </div>
+        <form id="subhead_menu" class="form-inline">
+        <a href="author_page?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Books')}</a>
+        <a href="author_detail?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-info-circle"></i> ${_('Detail')}</a>
+        %if perm&lazylibrarian.perm_status:
+            %if config['Status'] == 'Paused':
+                <a href="resume_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-pause"></i> ${_('Paused')}</a>
+            %else:
+              %if config['Status'] == 'Active':
+                <a href="want_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-play"></i> ${_('Active')}</a>
+              %else:
+                %if config['Status'] == 'Wanted':
+                  <a href="ignore_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-plus"></i> ${_('Wanted')}</a>
+                %else:
+                  <a href="pause_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Ignored')}</a>
+                %endif
+              %endif
+            %endif
+        %endif
+        %if perm&lazylibrarian.perm_force:
+            <a href="refresh_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('Refresh Author')}</a>
+            <a href="library_scan_author?authorid=${config['AuthorID']}&library=eBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('eBook Scan')}</a>
+            %if CONFIG.get_int('AUDIO_TAB') > 0:
+                <a href="library_scan_author?authorid=${config['AuthorID']}&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('AudioBook Scan')}</a>
+            %endif
+        %endif
+        %if perm&lazylibrarian.perm_edit:
+            <button class="button btn btn-sm btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> ${_('Remove Author')}</button>
+        %endif
+        %if showseries >= 1:
+            %if perm&lazylibrarian.perm_series:
+              <a href="series?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Series')}</a>
+              %endif
+        %endif
+        %if CONFIG['GR_FOLLOW']:
+            %if config['GRfollow']:
+              %if config['GRfollow'] != '0':
+                <a href="unfollow_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-check"></i> ${_('Following')}</a>
+              %else:
+                <a href="follow_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
+              %endif
+            %else:
+              <a href="follow_author?authorid=${config['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
+            %endif
+        %endif
+        %if lazylibrarian.PRIMARY_AUTHORS == True:
+            <a href="toggle_primary?page=edit_author&authorid=${config['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-star"></i></a>
+        %else:
+            <a href="toggle_primary?page=edit_author&authorid=${config['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-handshake"></i></a>
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+          %if CONFIG['RSS_ENABLED']:
+            %if CONFIG.get_int('EBOOK_TAB') > 0:
+            <a href="rss_feed?user=${user}&type=eBook&authorid=${config['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent ebooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-book"></i></a>
+            %endif
+            %if CONFIG.get_int('AUDIO_TAB') > 0:
+            <a href="rss_feed?user=${user}&type=AudioBook&authorid=${config['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent audiobooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-headphones"></i></a>
+            %endif
+          %endif
+        %endif
+        </form>
     </div>
 </%def>
 <%def name="body()">
-<button class="hidden" onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Searching, please wait...</button>
+<%
+    linkable_sources = [(name, src['author_key'], src['enabled'])
+                        for name, src in prioritized_infosources() if src.get('author_link')]
+%>
+<button class="hidden" onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Searching, please wait...')}</button>
 <form accept-charset="UTF-8" action="author_update" method="post">
     <div class="configtable">
         <input name="utf8" type="hidden" value="&#x2713;" />
@@ -19,53 +83,119 @@
                 <input type="text" id="authorid" name="authorid" value="${config['AuthorID']}" class="hidden">
             </div>
             <div class="form-group">
-                <label for="authorname" class="control-label">Author Name:</label>
-                <input type="text" id="authorname" name="authorname" value="${config['AuthorName']}" class="form-control" placeholder="Author Name">
+                <label for="authorname" class="control-label">${_('Author Name:')}</label>
+                <input type="text" id="authorname" name="authorname" value="${config['AuthorName']}" class="form-control" placeholder="${_('Author Name') | h}">
             </div>
             <div class="row">
               <div class="form-group col-md-6">
-                <label for="authorborn" class="control-label">Born:</label>
-                <input type="text" id="authorborn" name="authorborn" value="${config['AuthorBorn']}" class="form-control" placeholder="Born (yyyy/mm/dd)">
+                <label for="authorborn" class="control-label">${_('Born:')}</label>
+                <input type="text" id="authorborn" name="authorborn" value="${config['AuthorBorn']}" class="form-control" placeholder="${_('Born (yyyy/mm/dd)') | h}">
               </div>
               <div class="form-group col-md-6">
-                <label for="authordeath" class="control-label">Died:</label>
-                <input type="text" id="authordeath" name="authordeath" value="${config['AuthorDeath']}" class="form-control" placeholder="Died (yyyy/mm/dd)">
+                <label for="authordeath" class="control-label">${_('Died:')}</label>
+                <input type="text" id="authordeath" name="authordeath" value="${config['AuthorDeath']}" class="form-control" placeholder="${_('Died (yyyy/mm/dd)') | h}">
               </div>
             </div>
             <div class="row">
             <div class="form-group col-md-6">
-                <label for="reason" class="control-label">Added by:</label>
-                <input type="text" id="reason" name="reason" value="${config['Reason']}" readonly class="form-control" placeholder="Reason for inclusion">
+                <label for="reason" class="control-label">${_('Added by:')}</label>
+                <input type="text" id="reason" name="reason" value="${config['Reason']}" readonly class="form-control" placeholder="${_('Reason for inclusion') | h}">
             </div>
               <div class="form-group col-md-6">
-                <label for="aka" class="control-label">AKA:</label>
+                <label for="aka" class="control-label">${_('AKA:')}</label>
                 <input type="text" id="aka" name="aka" value="${config['aka']}" class="form-control">
               </div>
             </div>
             <div class="row">
-              <div class="form-group col-md-6">
-                <label for="gr_id" class="control-label">GoodReads:</label>
-                <input type="text" id="gr_id" name="gr_id" value="${config['gr_id']}" readonly class="form-control">
+              <div class="form-group col-md-12">
+                <label for="amazonauthorurl" class="control-label">${_('Amazon Author Page:')}</label>
+                <input type="text" id="amazonauthorurl" name="amazonauthorurl" value="${config['AmazonAuthorURL'] or ''}" class="form-control" placeholder="${_('https://www.amazon.com/stores/.../author/... - no free lookup exists for this, paste it if you find it') | h}">
               </div>
-              <div class="form-group col-md-6">
-                <label for="ol_id" class="control-label">OpenLibrary:</label>
-                <input type="text" id="ol_id" name="ol_id" value="${config['ol_id']}" readonly class="form-control">
-              </div>
-              <div class="form-group col-md-6">
-                <label for="ol_id" class="control-label">HardCover:</label>
-                <input type="text" id="hc_id" name="hc_id" value="${config['hc_id']}" readonly class="form-control">
+            </div>
+            <div class="row">
+              <div class="form-group col-md-12">
+                <label class="control-label">${_('Source IDs:')}</label>
+                <%
+                    # Same fallback used on the author page's badge: if nobody's
+                    # explicitly chosen a primary yet, treat whichever linked source
+                    # comes first in priority order as the (implicit) primary, so the
+                    # radio here agrees with what the author page is actually showing.
+                    effective_primary = config['PrimarySource']
+                    if not effective_primary:
+                        for fallback_name, fallback_col, _enabled in linkable_sources:
+                            if config[fallback_col]:
+                                effective_primary = fallback_name
+                                break
+                %>
+                <table class="table table-condensed table-bordered" id="source_ids_table">
+                  <thead>
+                    <tr><th>${_('Source')}</th><th>${_('ID')}</th><th>${_('Primary')}</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    %for src_name, src_col, src_enabled_key in linkable_sources:
+                    <tr data-source="${src_name}">
+                      <td>${src_name}</td>
+                      <td><input type="text" id="${src_col}" value="${config[src_col] or ''}" readonly class="form-control input-sm"></td>
+                      <td class="text-center">
+                        %if config[src_col]:
+                        <input type="radio" name="primary_source_radio" value="${src_name}"
+                              ${'checked' if effective_primary==src_name else ''}
+                              onchange="setPrimarySource('${config['AuthorID']}', '${src_name}')">
+                        %endif
+                      </td>
+                      <td>
+                        %if not config[src_col] and CONFIG[src_enabled_key]:
+                        <button type="button" class="btn btn-xs btn-info"
+                                onclick="searchAuthorSource('${config['AuthorID']}', '${src_name}')">
+                          <i class="fa fa-search"></i> ${_('Search %(source)s') % {'source': src_name}}
+                        </button>
+                        <input type="text" id="${src_col}_manual" class="form-control input-sm"
+                              style="display:inline-block;width:110px" placeholder="${_('or enter ID') | h}">
+                        <button type="button" class="btn btn-xs btn-default"
+                                onclick="linkAuthorSourceManual('${config['AuthorID']}', '${src_name}', '${src_col}_manual')">
+                          <i class="fa fa-link"></i> ${_('Link')}
+                        </button>
+                        %elif not config[src_col]:
+                        <span class="text-muted"><small>${_('%(source)s not enabled') % {'source': src_name}}</small></span>
+                        %else:
+                        <button type="button" class="btn btn-xs btn-danger"
+                                onclick="removeAuthorSource('${config['AuthorID']}', '${src_name}')">
+                          <i class="fa fa-times"></i> ${_('Remove')}
+                        </button>
+                        %endif
+                        <span id="${src_col}_status"></span>
+                      </td>
+                    </tr>
+                    %endfor
+                  </tbody>
+                </table>
+                %if CONFIG['GB_API'] or CONFIG['DNB_API'] or CONFIG['BN_API']:
+                <label class="control-label">${_('Search for additional titles (book search only, no author linking):')}</label><br>
+                %if CONFIG['GB_API']:
+                <a class="btn btn-sm btn-default" href="search?searchfor=${config['AuthorName']}" target="_blank">
+                  <i class="fa fa-search"></i> ${_('Search Google Books')}</a>
+                %endif
+                %if CONFIG['DNB_API']:
+                <a class="btn btn-sm btn-default" href="search?searchfor=${config['AuthorName']}" target="_blank">
+                  <i class="fa fa-search"></i> ${_('Search DNB')}</a>
+                %endif
+                %if CONFIG['BN_API']:
+                <a class="btn btn-sm btn-default" href="search?searchfor=${config['AuthorName']}" target="_blank">
+                  <i class="fa fa-search"></i> ${_('Search BN')}</a>
+                %endif
+                %endif
               </div>
             </div>
         <div class="form-group">
           <!--div><p>${config['About']}</p></div-->
-          <label for="summernote" class="control-label">Author Description</label>
-          <textarea id="summernote" name="editordata" class="form-control" rows="10" placeholder="Nothing to see here...">${config['About']}</textarea>
+          <label for="summernote" class="control-label">${_('Author Description')}</label>
+          <textarea id="summernote" name="editordata" class="form-control" rows="10" placeholder="${_('Nothing to see here...') | h}">${config['About']}</textarea>
         </div>
             <div class="form-group">
-                <label for="authorimg" class="control-label">Current Image:</label>
+                <label for="authorimg" class="control-label">${_('Current Image:')}</label>
                 <img src="${config['AuthorImg']}" class="box-shadow img-responsive" alt="${config['AuthorName']}" title="${config['AuthorName']}">
-                <input type="text" id="authorimg" name="authorimg" value="" class="form-control" placeholder="New Image file or URL">
-                <span class="help-block">Filenames must be full path to file or a URL, or put none to remove author image<br>Filename and URL need to end with .jpg/.jpeg/.png/.webp</span>
+                <input type="text" id="authorimg" name="authorimg" value="" class="form-control" placeholder="${_('New Image file or URL') | h}">
+                <span class="help-block">${_('Filenames must be full path to file or a URL, or put none to remove author image')}<br>${_('Filename and URL need to end with .jpg/.jpeg/.png/.webp')}</span>
             </div>
         <div class="form-group">
             <table class="display table table-bordered" id="img_table">
@@ -79,7 +209,7 @@
               <tbody>
                 <tr>
                 %for item in images:
-                  <td class="bookart text-center"><a href="${item[1]}" target="_blank" rel="noreferrer"><img src="${item[1]}" alt="cover" class="bookcover-sm"></a><br></td>
+                  <td class="bookart text-center"><a href="${item[1]}" target="_blank" rel="noreferrer"><img src="${item[1]}" alt="${_('cover') | h}" class="bookcover-sm"></a><br></td>
                 %endfor
                 </tr>
               </tbody>
@@ -87,10 +217,10 @@
         </div>
         <div class="form-group">
             %if len(images) > 0:
-                <label for="changeCover" class="control-label">Change image to: </label>
+                <label for="changeCover" class="control-label">${_('Change image to:')} </label>
                 <select id="changeCover" class="changeCover form-control input" name="cover">
-                <option value="current" selected="selected">No change</option>
-                <option value="manual">File/URL</option>
+                <option value="current" selected="selected">${_('No change')}</option>
+                <option value="manual">${_('File/URL')}</option>
                 %for item in images:
                     <option value="${item[1]}"
                     >${item[0]}</option>
@@ -98,7 +228,7 @@
                 </select>
             %endif
             %if len(images) == 0:
-                <a class="btn-success btn" onclick="$('#myAlert').removeClass('hidden')" href="edit_author?authorid=${config['AuthorID']}&images=True">Find Images</a>
+                <a class="btn-success btn" onclick="$('#myAlert').removeClass('hidden')" href="edit_author?authorid=${config['AuthorID']}&images=True">${_('Find Images')}</a>
             %endif
         </div>
             <div class="checkbox">
@@ -110,11 +240,11 @@
                 %>
 <label for="manual" class="control-label">
   <input type="checkbox" id="manual" name="manual" value="1" ${checked} />
-  Lock settings</label>
+  ${_('Lock settings')}</label>
 </div>
 </fieldset>
 <div class="table_wrapper_button">
-  <input type="submit" value="Save changes" id="add" class="btn btn-primary">
+  <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
 </div>
 <p>&nbsp;</p>
 </div>
@@ -129,7 +259,109 @@
     }
     $(document).ready(function() {
         initThisPage();
+        $('#removeme').click(function () {
+            bootbox.confirm({
+                message: ${_js('Are you sure you want to permanently delete the author?')},
+                buttons: {
+                    confirm: { label: ${_js('Yes')}, className: 'btn-success' },
+                    cancel: { label: ${_js('No')}, className: 'btn-danger' }
+                },
+                callback: function (result) {
+                  if (result) {
+                      $.get("remove_author", {'authorid': '${config['AuthorID']}' });
+                      window.location = "authors";
+                  }
+                }
+            });
+        });
     });
+
+    function linkAuthorSourceManual(authorid, source, inputId) {
+        // Search only finds a match by fuzzy name - some authors (renamed, pen names,
+        // ambiguous common names) never turn up that way even though you can find the
+        // correct page yourself. link_author_source itself doesn't require having
+        // searched first - it just needs a real id - so this skips straight to it.
+        var sourceid = $('#' + inputId).val().trim();
+        if (!sourceid) { bootbox.alert(${_js('Enter an ID first')}); return; }
+        bootbox.confirm({
+            message: ${_js('Link this author to %(source)s id "%(id)s"? This is not verified against the name - double-check the id is correct before confirming.')}
+                .replace('%(source)s', source).replace('%(id)s', sourceid),
+            buttons: {
+                confirm: { label: ${_js('Yes, link it')}, className: 'btn-success' },
+                cancel: { label: ${_js('No')}, className: 'btn-danger' }
+            },
+            callback: function (result) {
+                if (result) {
+                    $.get('link_author_source', {authorid: authorid, source: source, sourceid: sourceid}, function (linkdata) {
+                        if (linkdata.error) { bootbox.alert(linkdata.error); return; }
+                        location.reload();
+                    }, 'json').fail(function () {
+                        bootbox.alert(${_js('Link failed - check the logs')});
+                    });
+                }
+            }
+        });
+    }
+
+    function searchAuthorSource(authorid, source) {
+        $('#myAlert').removeClass('hidden');
+        $.get('search_author_source', {authorid: authorid, source: source}, function (data) {
+            $('#myAlert').addClass('hidden');
+            if (data.error) { bootbox.alert(data.error); return; }
+            if (!data.found) { bootbox.alert(${_js('No match found on %(source)s')}.replace('%(source)s', source)); return; }
+            bootbox.confirm({
+                message: ${_js('Found on %(source)s: "%(name)s" (id: %(id)s)')}.replace('%(source)s', source)
+                    .replace('%(name)s', data.authorname).replace('%(id)s', data.authorid) +
+                    '<br>' + ${_js('Link this author to that entry?')},
+                buttons: {
+                    confirm: { label: ${_js('Yes, link it')}, className: 'btn-success' },
+                    cancel: { label: ${_js('No')}, className: 'btn-danger' }
+                },
+                callback: function (result) {
+                    if (result) {
+                        $.get('link_author_source', {authorid: authorid, source: source, sourceid: data.authorid}, function (linkdata) {
+                            if (linkdata.error) { bootbox.alert(linkdata.error); return; }
+                            location.reload();
+                        }, 'json').fail(function () {
+                            bootbox.alert(${_js('Link failed - check the logs')});
+                        });
+                    }
+                }
+            });
+        }, 'json').fail(function () {
+            $('#myAlert').addClass('hidden');
+            bootbox.alert(${_js('Search failed - check the logs')});
+        });
+    }
+
+    function setPrimarySource(authorid, source) {
+        $.get('set_primary_source', {authorid: authorid, source: source}, function (data) {
+            if (data.error) { bootbox.alert(data.error); return; }
+            $.notify({ message: source + ' set as primary source' }, { type: 'success' });
+        }, 'json').fail(function () {
+            bootbox.alert(${_js('Failed to set primary source - check the logs')});
+        });
+    }
+
+    function removeAuthorSource(authorid, source) {
+        bootbox.confirm({
+            message: ${_js('Remove the %(source)s link for this author? You can search and re-link it afterward.')}.replace('%(source)s', source),
+            buttons: {
+                confirm: { label: ${_js('Yes, remove')}, className: 'btn-danger' },
+                cancel: { label: ${_js('Cancel')}, className: 'btn-default' }
+            },
+            callback: function (result) {
+                if (result) {
+                    $.get('unlink_author_source', {authorid: authorid, source: source}, function (data) {
+                        if (data.error) { bootbox.alert(data.error); return; }
+                        location.reload();
+                    }, 'json').fail(function () {
+                        bootbox.alert(${_js('Remove failed - check the logs')});
+                    });
+                }
+            }
+        });
+    }
   </script>
 </%def>
 <html><head></head><body></body></html>

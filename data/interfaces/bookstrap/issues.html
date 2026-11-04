@@ -7,17 +7,17 @@
   <div id="subhead_container">
     <div id="subhead_menu">
       %if perm&lazylibrarian.perm_force:
-        <a href="force_search?source=magazines&title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> Search</a>
-        <a href="force_process?source=magazines" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> Run Post-Processor</a>
-        <a href="magazine_scan?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> Library Scan</a>
-        <a href="import_issues?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> Import Issues</a>
-        <a href="past_issues?mag=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-alt"></i> Past Issues</a>
+        <a href="force_search?source=magazines&title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> ${_('Search')}</a>
+        <a href="force_process?source=magazines" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> ${_('Run Post-Processor')}</a>
+        <a href="magazine_scan?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> ${_('Library Scan')}</a>
+        <a href="import_issues?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> ${_('Import Issues')}</a>
+        <a href="past_issues?mag=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-alt"></i> ${_('Past Issues')}</a>
       %endif
-      <a href="mag_wall?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> Recent Issues</a>
+      <a href="mag_wall?title=${title | u}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> ${_('Recent Issues')}</a>
       %if CONFIG['USER_ACCOUNTS']:
         %if CONFIG['RSS_ENABLED']:
            <a href="rss_feed?user=${user}&type=Magazine&onetitle=${title | u}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="rss feed of ${title} recent issues"><i class="fa fa-rss"></i></a>
-           <link rel="alternate" type="application/rss+xml" title="${title} latest issues" href="rss_feed?user=${user}&type=Magazine&onetitle=${title | u}&limit=10.xml">
+           <link rel="alternate" type="application/rss+xml" title="${_('%(title)s latest issues') % {'title': title} | h}" href="rss_feed?user=${user}&type=Magazine&onetitle=${title | u}&limit=10.xml">
          %endif
        %endif
     </div>
@@ -27,31 +27,31 @@
 <%def name="body()">
   <h1>${title}
     %if perm&lazylibrarian.perm_edit:
-        <a href="edit_mag?mag=${title | u}" class="button btn btn-sm btn-primary"></i>Rename</a>
+        <a href="edit_mag?mag=${title | u}" class="button btn btn-sm btn-primary"></i>${_('Rename')}</a>
     %endif
   </h1>
     %if lazylibrarian.MAG_UPDATE == True:
     <p>
-    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Libraryscan in progress ...</button>
+    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Libraryscan in progress ...')}</button>
     </p>
     %endif
     <form name="mark_issues" id="mark_issues" action="mark_issues" method="get" class="form-inline" onsubmit="return false;">
       <div class="form-group">
-        <label for="action" class="control-label">Selected issues:</label>
+        <label for="action" class="control-label">${_('Selected issues:')}</label>
         <select name="action" id="action" class="form-control input-sm">
-          <option value="Remove" selected>Remove</option>
-          <option value="Delete">Delete</option>
-        <option value="coverswap">Swap Pages 1/2</option>
-        <option value="reCover1">Cover from Page 1</option>
-        <option value="reCover2">Cover from Page 2</option>
-        <option value="tag">Tag issue</option>
+          <option value="Remove" selected>${_('Remove')}</option>
+          <option value="Delete">${_('Delete')}</option>
+        <option value="coverswap">${_('Swap Pages 1/2')}</option>
+        <option value="reCover1">${_('Cover from Page 1')}</option>
+        <option value="reCover2">${_('Cover from Page 2')}</option>
+        <option value="tag">${_('Tag issue')}</option>
         </select>
-        <button type="submit" class=" btn btn-m btn-primary" onclick="validateForm()">Go</button>
+        <button type="submit" class=" btn btn-m btn-primary" onclick="validateForm()">${_('Go')}</button>
         %if CONFIG['TOGGLES']:
-        &nbsp;&nbsp;Toggle: <a class="toggle-vis" data-column="1"> Cover</a>
-        <a class="toggle-vis" data-column="2"> Issue</a>
-        <a class="toggle-vis" data-column="3"> Added</a>
-        <a class="toggle-vis" data-column="4"> Select</a>
+        &nbsp;&nbsp;${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Cover')}</a>
+        <a class="toggle-vis" data-column="2"> ${_('Issue')}</a>
+        <a class="toggle-vis" data-column="3"> ${_('Added')}</a>
+        <a class="toggle-vis" data-column="4"> ${_('Select')}</a>
         %endif
       </div>
       <p>&nbsp;</p>
@@ -65,13 +65,13 @@
             <th class="hidden"></th>
           %endif
           % if covercount > 0:
-            <th class="bookart text-center no-sort" width=20%>Cover</th>
+            <th class="bookart text-center no-sort" width=20%>${_('Cover')}</th>
           % else:
-            <th class="bookart hidden">Cover</th>
+            <th class="bookart hidden">${_('Cover')}</th>
           % endif
-            <th class="issuedate text-center">Issue</th>
-            <th class="lastacquired text-center">Added</th>
-            <th class="issue text-center">Select</th>
+            <th class="issuedate text-center">${_('Issue')}</th>
+            <th class="lastacquired text-center">${_('Added')}</th>
+            <th class="issue text-center">${_('Select')}</th>
         </tr>
         </thead>
         </table>
@@ -91,7 +91,7 @@
         if (nmsg != '') {
           $.notify({
               icon: "images/ll48.png",
-              title: '<strong>Issue Update</strong>',
+              title: '<strong>' + ${_js('Issue Update')} + '</strong>',
               message: nmsg
           },{
               icon_type: 'image',
@@ -106,7 +106,10 @@
         var table = $('#book_table').DataTable(
             {
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "order": [[ 2, 'desc']],
                 "rowId": 4,
                 "columnDefs": [{ targets: 'no-sort', orderable: false },
@@ -119,32 +122,27 @@
                     { targets: [1],
                         'class': 'text-center',
                         'render': function(data, type, row) {
-                        return '<a href="' + row[5] + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="Cover" class="bookcover-sm img-responsive"></a>';} },
+                        return '<a href="' + row[5] + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="' + ${_js('Cover')} + '" class="bookcover-sm img-responsive"></a>';} },
                     { targets: [2, 3],
                         'class': 'text-center'},
                     { targets: [4],
                         'class': 'text-center',
                         'render': function(data, type, row) {
                         btn = '<a class="button green btn btn-xs btn-warning" href="open_mag?bookid=' + data +
-                                '" target="_self"><i class="fa fa-book"></i> Open</a>'
+                                '" target="_self"><i class="fa fa-book"></i> ' + ${_js('Open')} + '</a>'
                             %if len(email):
                                 btn += '<a class="button green btn btn-xs btn-info" href="send_mag?bookid=' + data +
-                                    '" target="_self">Send</a>'
+                                    '" target="_self">' + ${_js('Send')} + '</a>'
                             %endif
                         return btn;} },
                 ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"Show _MENU_ issues per page",
-                    "sEmptyTable": "No issues found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ results",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 issues",
-                    "sInfoFiltered":"(filtered from _MAX_ total issues)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No issues found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[2, 'desc']],
                 "bServerSide": true,
                 "sAjaxSource": 'get_issues?title=${title | u}',
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "bFilter": true,
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
@@ -181,12 +179,12 @@
               };
             });
 
-            var page = oTable.page();
+            var page = table.page();
             if ( page != '0' ) {
-                if (${firstpage}) { oTable.page( 'first' ).draw( 'page' ); }
+                if (${firstpage}) { table.page( 'first' ).draw( 'page' ); }
             }
 
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();
                 var column = table.column( $(this).attr('data-column') );
@@ -200,17 +198,17 @@
         var all_check = document.getElementById("allcheck").checked;
         if (all_check) { c -= 1};
         if (c > 0 && x == "Delete") {
-            if (c == 1) {msg = "Are you sure you want to permanently delete the selected issue?"}
-            if (c > 1) {msg = "Are you sure you want to permanently delete the " + c + " selected issues?"}
+            msg = llNgettext(${_jsn('Are you sure you want to permanently delete the selected issue?',
+                                    'Are you sure you want to permanently delete the %(count)s selected issues?')}, c);
             bootbox.confirm({
                 message: msg,
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
@@ -231,7 +229,7 @@
                     $("#progressbar").html(data);
             });
                 $.get('issues_progress', function (data) {
-                    $("#myAlert").html('<div class="text-center">Scanning Magazine Issues<br></div>' + data);
+                    $("#myAlert").html('<div class="text-center">' + ${_js('Scanning Magazine Issues')} + '<br></div>' + data);
             });
             }, timer );
         }
@@ -249,7 +247,7 @@
 
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div><span id="progressbar"></span>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div><span id="progressbar"></span>',
             size: 'small',
             backdrop: false,
             closeButton: false,
@@ -283,22 +281,22 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
 
             bootbox.dialog({
-                title: 'Operation Complete',
+                title: ${_js('Operation Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             // Refresh the page to show updated data
@@ -314,11 +312,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-danger'
                     }
                 }

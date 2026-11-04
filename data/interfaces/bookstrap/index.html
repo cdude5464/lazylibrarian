@@ -8,30 +8,25 @@
       <form action="search" method="get">
         <div id="subhead_menu"  class="col-xs-12 col-md-8">
             %if perm&lazylibrarian.perm_force:
-            <a href="force_update" class="btn btn-sm btn-primary" id="refresh"><i class="fa fa-sync"></i> Refresh Authors</a>
+            <a href="force_update" class="btn btn-sm btn-primary" id="refresh"><i class="fa fa-sync"></i> ${_('Refresh Authors')}</a>
             %endif
             %if lazylibrarian.IGNORED_AUTHORS == True:
-              <a href="toggle_auth" class="button btn btn-sm btn-primary"><i class="fa fa-user"></i> Show Active Authors</a>
+              <a href="toggle_auth" class="button btn btn-sm btn-primary"><i class="fa fa-user"></i> ${_('Show Active Authors')}</a>
             %else:
-              <a href="toggle_auth" class="button btn btn-sm btn-primary"><i class="fa fa-user-secret"></i> Show Inactive Authors</a>
+              <a href="toggle_auth" class="button btn btn-sm btn-primary"><i class="fa fa-user-secret"></i> ${_('Show Inactive Authors')}</a>
             %endif
             %if CONFIG['USER_ACCOUNTS']:
               %if pref&lazylibrarian.pref_myauthors:
-                <a href="toggle_my_auth" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-user-circle"></i></a>
+                <a href="toggle_my_auth" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-user-circle"></i></a>
               %else:
-                <a href="toggle_my_auth" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-users"></i></a>
+                <a href="toggle_my_auth" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-users"></i></a>
               %endif
-            %endif
-            %if lazylibrarian.IGNORED_AUTHORS == True:
-                <a href="author_wall?have=0" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Grid view"><i class="fa fa-th"></i></a>
-            %else:
-                <a href="author_wall?have=1" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Grid view"><i class="fa fa-th"></i></a>
             %endif
             %if CONFIG['CONTRIBUTING_AUTHORS']:
                 %if lazylibrarian.PRIMARY_AUTHORS == True:
-                    <a href="toggle_primary" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Primary Author, or All Contributors"><i class="fa fa-star"></i></a>
+                    <a href="toggle_primary" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or All Contributors') | h}"><i class="fa fa-star"></i></a>
                 %else:
-                    <a href="toggle_primary" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Primary Author, or All Contributors"><i class="fa fa-handshake"></i></a>
+                    <a href="toggle_primary" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or All Contributors') | h}"><i class="fa fa-handshake"></i></a>
                 %endif
             %endif
         </div>
@@ -39,11 +34,11 @@
         %if perm&lazylibrarian.perm_search:
         <div class="col-xs-12 col-md-4">
         <div class="form-group">
-          <label class="sr-only">Search</label>
+          <label class="sr-only">${_('Search')}</label>
           <div class="input-group">
-            <input type="search" id="searchfor" name="searchfor" placeholder="Title / Author / ISBN" class="form-control input-sm col-xs-12">
+            <input type="search" id="searchfor" name="searchfor" placeholder="${_('Title / Author / ISBN') | h}" class="form-control input-sm col-xs-12">
             <span class="input-group-btn">
-              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="index" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="Search for author/book"><i class="fa fa-search"></i></button>
+              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="index" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="${_('Search for author/book') | h}"><i class="fa fa-search"></i></button>
             </span>
           </div>
         </div>
@@ -57,16 +52,16 @@
 <h1>${title}</h1>
   %if lazylibrarian.AUTHORS_UPDATE == 1:
     <p>
-    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Author Refresh in progress ...</button>
+    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Author Refresh in progress ...')}</button>
     </p>
   %else:
     %if lazylibrarian.SEARCHING == 1:
       <p>
-      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %else:
       <p>
-      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %endif
   %endif
@@ -76,34 +71,35 @@
     %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
       <div class="col-xs-12 col-sm-5">
           <div class="form-group">
-            <label for="mark_authors" class="control-label">Mark selected as</label>
+            <label for="mark_authors" class="control-label">${_('Mark selected as')}</label>
             <select class="mark_authors form-control input-sm" id="action" name="action">
               %if perm&lazylibrarian.perm_status:
-              <option value="Active">Active</option>
-              <option value="Wanted">Wanted</option>
-              <option value="Ignored">Ignored</option>
-              <option value="Paused">Paused</option>
-              <option value="Remove">Remove</option>
-              <option value="Delete">Delete</option>
+              <option value="Active">${_('Active')}</option>
+              <option value="Wanted">${_('Wanted')}</option>
+              <option value="Ignored">${_('Ignored')}</option>
+              <option value="Paused">${_('Paused')}</option>
+              <option value="Remove">${_('Remove')}</option>
+              <option value="Delete">${_('Delete')}</option>
+              <option value="Delete+Ignore">${_('Delete + Ignore')}</option>
               %endif
               %if CONFIG['USER_ACCOUNTS']:
-                <option value="Subscribe">Subscribe</option>
-                <option value="Unsubscribe">Unsubscribe</option>
+                <option value="Subscribe">${_('Subscribe')}</option>
+                <option value="Unsubscribe">${_('Unsubscribe')}</option>
               %endif
             </select>
           </div>
-          <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">Go</button>
+          <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">${_('Go')}</button>
       </div>
     %endif
     %if CONFIG['TOGGLES']:
       <div class="toggles col-xs-12 col-sm-7 text-right">
-        Toggle: <a class="toggle-vis" data-column="1"> Image</a>
-        <a class="toggle-vis" data-column="2"> Author</a>
-        <a class="toggle-vis" data-column="3"> Added</a>
-        <a class="toggle-vis" data-column="4"> Latest</a>
-        <a class="toggle-vis" data-column="5"> Released</a>
-        <a class="toggle-vis" data-column="6"> Downloaded</a>
-        <a class="toggle-vis" data-column="7"> Status</a>
+        ${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Image')}</a>
+        <a class="toggle-vis" data-column="2"> ${_('Author')}</a>
+        <a class="toggle-vis" data-column="3"> ${_('Added')}</a>
+        <a class="toggle-vis" data-column="4"> ${_('Latest')}</a>
+        <a class="toggle-vis" data-column="5"> ${_('Released')}</a>
+        <a class="toggle-vis" data-column="6"> ${_('Downloaded')}</a>
+        <a class="toggle-vis" data-column="7"> ${_('Status')}</a>
       </div>
     %endif
   </div>
@@ -117,13 +113,13 @@
             %else:
             <th class="hidden"></th>
             %endif
-          <th class="authorimg no-sort">Image</th>
-          <th class="authorname">Author</th>
-          <th class="date text-center">Added</th>
-          <th class="bookname">Latest Book</th>
-          <th class="date text-center">Released</th>
-          <th class="have text-center">Downloaded</th>
-          <th class="status text-center">Status</th>
+          <th class="authorimg no-sort">${_('Image')}</th>
+          <th class="authorname">${_('Author')}</th>
+          <th class="date text-center">${_('Added')}</th>
+          <th class="bookname">${_('Latest Book')}</th>
+          <th class="date text-center">${_('Released')}</th>
+          <th class="have text-center">${_('Downloaded')}</th>
+          <th class="status text-center">${_('Status')}</th>
         </tr>
       </thead>
     </table>
@@ -163,7 +159,10 @@
                 "dom": "<'row'<'col-xs-6'l><'col-xs-6'f>><'row'<'col-sm-12'tr>><'row'<'col-sm-5'i><'col-sm-7'p>>",
                 "responsive": true,
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "order": [[ 2, 'asc']],
                 "rowId": 10,
                 "displayStart": 0,
@@ -177,13 +176,14 @@
                             return '<input type="checkbox" id="I' + row[10] + '" name="' + row[10] + '" class="checkbox" />';} },
                      { targets: [1],
                          'render': function(data, type, row) {
-                            return '<a href="' + row[0] + '" target="_blank" rel="noreferrer"><img src="' + row[0] + '" alt="Cover" class="author-thumb"></a>';} },
+                            return '<a href="' + row[0] + '" target="_blank" rel="noreferrer"><img src="' + row[0] + '" alt="' + ${_js('Cover')} + '" class="author-thumb"></a>';} },
                      { targets: [2], 'render': function(data, type, row) {
                      %if perm&lazylibrarian.perm_authorbooks:
                         btn = '<a href=\'author_page?authorid=' + row[10] + '\'">' + row[1] + '</a>'
                      %else:
                         btn = '<a>' + row[1] + '</a>'
                      %endif
+                     if (row[15]) { btn = btn + '<br>' + row[15]; }
                      return btn ;}
                      },
                      { targets: [3],
@@ -212,7 +212,7 @@
                         css + ' progress-bar progress-bar-striped" role="progressbar" aria-valuenow="' + percent +
                         '" aria-valuemin="0" aria-valuemax="100" style="width: ' + percent +
                         '%;"><span class="sr-only">' + percent +
-                        '% Complete</span><span class="progressbar-front-text">' + have + '/' + tot +
+                        '% ' + ${_js('Complete')} + '</span><span class="progressbar-front-text">' + have + '/' + tot +
                         '</span></div></div>';
                         return bar;} },
                      { targets: [7],
@@ -220,24 +220,19 @@
                         'render': function(data, type, row) {
                           %if perm&lazylibrarian.perm_status:
                             bar = '<button onclick="reason(\'' + row[14] +
-                            '\')" class="button btn btn-xs btn-primary" type="button">' + row[5] +
+                            '\')" class="button btn btn-xs btn-primary" type="button">' + llStatus(row[5]) +
                             '</button>';
                           %else:
-                            bar = row[5];
+                            bar = llStatus(row[5]);
                           %endif
                           return bar;} },
                      { type: 'natural-nohtml', targets: [3,5] }],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No authors found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                    "sEmptyTable": ${_js('No authors found')}}),
                 "bServerSide": true,
                 "sAjaxSource": 'get_index',
                 "bFilter": true,
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "sPaginationType": "full_numbers",
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
@@ -275,7 +270,7 @@
               };
             });
 
-        $('.dataTables_filter input').attr("placeholder", "Results filter");
+        $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
         $('a.toggle-vis').click(function (e) {
             e.preventDefault();
             var column = table.column( $(this).attr('data-column') );
@@ -289,25 +284,28 @@
         var c = ($(":checkbox:checked").length);
         var all_check = document.getElementById("allcheck").checked;
         if (all_check) { c -= 1};
-        if (c > 0 && (x == "Delete" || x == "Remove")) {
+        if (c > 0 && (x == "Delete" || x == "Remove" || x == "Delete+Ignore")) {
             if (x == "Delete") {
-                if (c == 1){ msg = "Are you sure you want to permanently delete the selected author and their media?"}
-                if (c > 1){ msg = "Are you sure you want to permanently delete the " + c +
-                            " selected authors and their media?"}
+                msg = llNgettext(${_jsn('Are you sure you want to permanently delete the selected author and their media?',
+                                        'Are you sure you want to permanently delete the %(count)s selected authors and their media?')}, c);
+                };
+            if (x == "Delete+Ignore") {
+                msg = llNgettext(${_jsn('Are you sure you want to delete media for the selected author and ignore them?',
+                                        'Are you sure you want to delete media for the %(count)s selected authors and ignore them?')}, c);
                 };
             if (x == "Remove") {
-                if (c == 1){ msg = "Are you sure you want to remove the selected author?"}
-                if (c > 1){ msg = "Are you sure you want to remove the " + c + " selected authors?"}
+                msg = llNgettext(${_jsn('Are you sure you want to remove the selected author?',
+                                        'Are you sure you want to remove the %(count)s selected authors?')}, c);
                 };
             bootbox.confirm({
                 message: msg,
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
@@ -320,28 +318,11 @@
         else { submitFormAjax(); }
     }
 
-    function bookinfo(bookid) {
-        $.get('bookdesc', {'bookid': bookid},
-        function(data) {
-            var $textAndPic = $('<div></div>');
-            $textAndPic.append('<img src="./cache/book/' + bookid + '.jpg" />');
-            var res = data.split('^');
-            var title = res[0]
-            var desc = res[1]
-            $textAndPic.append('<br>' + desc + ' <br />');
-            bootbox.dialog({
-                size: "large",
-                title: title,
-                message: $textAndPic,
-                buttons: {
-                   primary: {
-                        label: "Close",
-                        className: 'btn-primary'
-                    }
-                }
-            });
-        });
-    };
+    // bookinfo() is defined globally in base.html - not redefined here. This copy
+    // parsed bookdesc()'s response as 2 parts (title/desc); the actual response is
+    // 3 parts (img/title/desc), so this copy was already broken - dead code, since
+    // base.html declares its own version later in the DOM and JS redeclaration
+    // means that's the one that actually runs on every page. See base.html.
 
     var timer = 2000;
     if( timer > 0 )
@@ -359,7 +340,7 @@
 
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div>',
             size: 'small',
             backdrop: false,
             closeButton: false
@@ -386,21 +367,21 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
             bootbox.dialog({
-                title: 'Mark Authors Complete',
+                title: ${_js('Mark Authors Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             window.location.reload();
@@ -415,11 +396,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload('series'); }
                         },

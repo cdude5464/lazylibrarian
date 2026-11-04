@@ -1,0 +1,409 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    page_id = 'books'
+%>
+<%def name="headIncludes()">
+<style>
+  .llb-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 22px 18px; }
+  @media (max-width: 480px) {
+    .llb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px 10px; }
+    .llb-cover { border-radius: 8px !important; }
+    .llb-ct { font-size: .8rem !important; } .llb-ca { font-size: .58rem !important; }
+    .llb-title { font-size: .8rem !important; } .llb-sub { font-size: .7rem !important; }
+    .llb-pill { font-size: .66rem !important; padding: 2px 7px !important; } .llb-act { font-size: .7rem !important; }
+    .llb-check { width: 22px !important; height: 22px !important; top: 5px !important; right: 5px !important; }
+  }
+  .llb-search { flex: 0 1 300px; min-width: 0; }
+  .llb-search .llb-scope { border: var(--bs-border-width) solid var(--bs-border-color); background: transparent; color: inherit;
+                           display: flex; align-items: center; gap: .35rem; padding-left: .8rem; }
+  .llb-search .llb-scope:hover, .llb-search .llb-scope.show { background: var(--bs-tertiary-bg); }
+  .llb-search .llb-scope::after { margin-left: .1rem; }
+  .llb-search .dropdown-item.active { background: var(--ll-accent); color: var(--ll-accent-contrast); }
+  @media (max-width: 640px) { .llb-search { flex: 1 1 100%; order: 5; } }
+  .llb-card { cursor: pointer; min-width: 0; }
+  .llb-card:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: 3px; border-radius: 10px; }
+  .llb-cover { position: relative; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden; background: var(--bs-secondary-bg);
+               box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 8px 20px -12px rgba(0,0,0,.4); transition: transform .2s ease; }
+  .llb-card:hover .llb-cover { transform: translateY(-3px); }
+  .llb-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .llb-gen { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 10px; color: #fff; }
+  .llb-gen::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 6px; background: rgba(0,0,0,.18); }
+  .llb-ct { font-family: Georgia, "Times New Roman", serif; font-size: 1rem; line-height: 1.15; }
+  .llb-ca { font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; opacity: .85; }
+  .llb-title { font-weight: 600; font-size: .9rem; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .llb-sub { font-size: .78rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .llb-sub a { color: inherit; }
+  .llb-pill { font-size: .72rem; font-weight: 600; padding: 3px 9px; }
+  .llb-act { font-size: .78rem; font-weight: 600; padding: 0; text-decoration: underline; text-underline-offset: 2px; color: inherit; }
+  /* open the file: an icon, so it doesn't read like a second "Open" next to the status */
+  .llb-open { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; flex: none;
+              background: var(--ll-accent); color: var(--ll-accent-contrast); font-size: .68rem; text-decoration: none; }
+  .llb-open:hover { color: var(--ll-accent-contrast); filter: brightness(1.1); }
+  .llb-v-list .llb-open { width: 20px; height: 20px; font-size: .58rem; }
+  .llb-check { position: absolute; top: 8px; right: 8px; width: 28px; height: 28px; border-radius: 50%; background: rgba(255,255,255,.92);
+               border: 2px solid #fff; display: flex; align-items: center; justify-content: center; color: var(--ll-accent); }
+  .llb-card.llb-sel .llb-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+  .llb-card.llb-sel .llb-cover { outline: 3px solid var(--ll-accent); outline-offset: 2px; }
+  .llb-skel .llb-cover { box-shadow: none; animation: llb-pulse 1.2s ease-in-out infinite; }
+  @keyframes llb-pulse { 50% { opacity: .5; } }
+  .llb-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+             padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); transition: transform .25s ease; }
+  .llb-bar-hidden { transform: translateY(110%); }
+  .llb-chips { overflow-x: auto; scrollbar-width: none; }
+  .llb-views .btn { width: 34px; padding-left: 0; padding-right: 0; }
+
+  /* compact: smaller covers, title and status only */
+  .llb-v-compact.llb-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 14px 12px; }
+  .llb-v-compact .llb-sub, .llb-v-compact .llb-act { display: none !important; }
+  .llb-v-compact .llb-title { font-size: .8rem; -webkit-line-clamp: 1; }
+  .llb-v-compact .llb-ct { font-size: .78rem; } .llb-v-compact .llb-ca { font-size: .55rem; }
+  .llb-v-compact .llb-pill { font-size: .64rem; padding: 2px 7px; }
+  @media (max-width: 480px) {
+    .llb-v-compact.llb-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
+    .llb-v-compact .llb-title { font-size: .7rem !important; }
+    .llb-v-compact .llb-pill { font-size: .58rem !important; padding: 2px 6px !important; }
+    .llb-v-compact .llb-gen { padding: 6px; } .llb-v-compact .llb-ct { font-size: .65rem !important; }
+    .llb-v-compact .llb-ca { display: none; }
+  }
+
+  /* list: one compact row per book, status tags on the right */
+  .llb-v-list.llb-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .llb-v-list .llb-card { display: grid !important; gap: 0 10px !important; align-items: center;
+                          grid-template-columns: 28px minmax(0, max-content) minmax(0, 1fr) auto;
+                          grid-template-areas: "cover title title status" "cover author series status";
+                          padding: 6px 4px; border-bottom: 1px solid var(--bs-border-color-translucent); }
+  .llb-v-list .llb-cover { grid-area: cover; width: 28px; border-radius: 3px !important; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .llb-v-list .llb-card:hover .llb-cover { transform: none; }
+  .llb-v-list .llb-card:hover, .llb-v-list .llb-card.llb-sel { background: var(--bs-tertiary-bg); }
+  .llb-v-list .llb-gen { padding: 0; } .llb-v-list .llb-gen > span { display: none; }
+  .llb-v-list .llb-title { grid-area: title; -webkit-line-clamp: 1; font-size: .88rem !important; line-height: 1.25; }
+  .llb-v-list .llb-sub { font-size: .75rem !important; line-height: 1.3; }
+  .llb-v-list .llb-author { grid-area: author; }
+  .llb-v-list .llb-series { grid-area: series; margin-left: -6px; }
+  .llb-v-list .llb-series::before { content: "\00b7"; margin-right: 4px; }
+  .llb-v-list .llb-status { grid-area: status; flex-direction: column; align-items: flex-end !important; gap: 2px !important;
+                            margin: 0 !important; padding: 0 !important; }
+  .llb-v-list .llb-pill { font-size: .66rem !important; padding: 2px 7px !important; }
+  .llb-v-list .llb-act { font-size: .7rem !important; }
+  .llb-v-list .llb-check { width: 16px !important; height: 16px !important; top: -3px !important; right: -3px !important; font-size: .5rem; border-width: 1px; }
+  .llb-v-list .llb-card.llb-sel .llb-cover { outline-width: 2px; outline-offset: 1px; }
+  .llb-v-list .llb-skel { display: block !important; padding: 6px 4px; }
+  .llb-v-list .llb-skel .llb-cover { width: 28px; }
+  @media (prefers-reduced-motion: reduce) { .llb-cover, .llb-bar { transition: none; } .llb-skel .llb-cover { animation: none; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    # audio.html inherits this page and only changes page_id
+    audio = self.attr.page_id == 'audio'
+    lib = 'AudioBook' if audio else 'eBook'
+%>
+<div x-data="llBooks" x-init="start()">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llb-search">
+      <button type="button" class="btn llb-scope dropdown-toggle rounded-start-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              :title="T.searchIn + ' ' + scopeObj.label" :aria-label="T.searchIn + ' ' + scopeObj.label">
+        <i class="fa fa-search" aria-hidden="true"></i><span class="small" x-show="scope !== 'all'" x-text="scopeObj.label" x-cloak></span>
+      </button>
+      <ul class="dropdown-menu">
+        <template x-for="o in scopes" :key="o.id">
+          <li><button type="button" class="dropdown-item" :class="scope === o.id && 'active'" :aria-pressed="scope === o.id"
+                      @click="scope = o.id; $nextTick(function () { document.getElementById('llb-q').focus(); })" x-text="o.label"></button></li>
+        </template>
+      </ul>
+      <input type="search" id="llb-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             :placeholder="scopeObj.placeholder" autocomplete="off" aria-label="${_('Search') | h}">
+    </div>
+    <div class="btn-group btn-group-sm llb-views" role="group" aria-label="${_('View') | h}">
+      <template x-for="v in views" :key="v.id">
+        <button type="button" class="btn" :class="view === v.id ? 'btn-secondary' : 'btn-outline-secondary'"
+                :aria-pressed="view === v.id" :title="v.label" :aria-label="v.label" @click="setView(v.id)">
+          <i class="fa" :class="v.icon" aria-hidden="true"></i>
+        </button>
+      </template>
+    </div>
+    <select id="llb-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="2:asc">${_('Author')}</option>
+      <option value="3:asc">${_('Title')}</option>
+      <option value="7:desc">${_('Added')}</option>
+      <option value="6:desc">${_('Released')}</option>
+    </select>
+    %if len(languages) > 1:
+    <select id="llb-lang" class="form-select form-select-sm w-auto rounded-pill" aria-label="${_('Language') | h}"
+            @change="window.location = '${'audio' if audio else 'books'}?booklang=' + encodeURIComponent($event.target.value)">
+      <option value="">${_('All')}</option>
+      %for language in languages:
+      <option value="${language['BookLang'] | h}" ${'selected' if language['BookLang'] == booklang else ''}>${language['BookLang']}</option>
+      %endfor
+    </select>
+    %endif
+    %if perm&lazylibrarian.perm_status:
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
+            x-text="selecting ? T.done : T.select"></button>
+    %endif
+    %if perm&lazylibrarian.perm_force:
+    <a class="btn btn-sm btn-ll rounded-pill" href="force_search?source=${'audio' if audio else 'books'}"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search wanted')}</a>
+    %endif
+  </div>
+
+  <div class="d-flex gap-2 llb-chips pb-1 mb-3" role="group" aria-label="${_('Status') | h}">
+    <template x-for="c in chips" :key="c.f">
+      <button type="button" class="btn btn-sm rounded-pill text-nowrap"
+              :class="f === c.f ? 'btn-secondary' : 'btn-outline-secondary'"
+              :aria-pressed="f === c.f" @click="f = c.f" x-text="c.label"></button>
+    </template>
+  </div>
+
+  <div class="llb-grid" :class="'llb-v-' + view">
+    <template x-for="b in books" :key="b.id">
+      <article class="llb-card d-flex flex-column gap-1" :class="sel[b.id] && 'llb-sel'" tabindex="0"
+               @click="open(b, $event)" @keydown.enter.prevent="open(b, $event)" @keydown.space.prevent="open(b, $event)">
+        <div class="llb-cover">
+          <template x-if="b.cover"><img loading="lazy" :src="b.cover" alt=""></template>
+          <template x-if="!b.cover">
+            <div class="llb-gen" :style="'background:hsl(' + b.hue + ' 38% 32%)'">
+              <span class="llb-ca" x-text="b.author"></span><span class="llb-ct" x-text="b.title"></span>
+            </div>
+          </template>
+          <span class="llb-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        </div>
+        <span class="llb-title" :title="b.title" x-text="b.title"></span>
+        <span class="llb-sub llb-author text-body-secondary">
+          %if perm&lazylibrarian.perm_authorbooks:
+          <a :href="'author_page?library=${lib}&authorid=' + encodeURIComponent(b.authorId)" x-text="b.author"></a>
+          %else:
+          <span x-text="b.author"></span>
+          %endif
+        </span>
+        <template x-if="b.series">
+          <span class="llb-sub llb-series text-body-secondary"><a :href="'series_members?seriesid=' + encodeURIComponent(b.series.id)" x-text="b.series.name"></a></span>
+        </template>
+        <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
+          <span class="badge rounded-pill llb-pill" :class="pillClass(b.status)" x-text="llStatus(b.status)"></span>
+          <template x-if="b.status === 'Open'">
+            <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'"
+               title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa ${'fa-headphones' if audio else 'fa-book-open'}" aria-hidden="true"></i></a>
+          </template>
+          <template x-if="b.status === 'Wanted'">
+            %if perm&lazylibrarian.perm_force:
+            <button type="button" class="btn btn-link llb-act" data-do="search">${_('Search now')}</button>
+            %else:
+            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Request')}</a>
+            %endif
+          </template>
+          <template x-if="['Open', 'Wanted', 'Snatched', 'Matched'].indexOf(b.status) < 0">
+            %if perm&lazylibrarian.perm_status:
+            <button type="button" class="btn btn-link llb-act" data-do="want">+ ${_('Want')}</button>
+            %else:
+            <a class="btn btn-link llb-act" :href="'request_book?bookid=' + encodeURIComponent(b.id) + '&library=${lib}'">${_('Request')}</a>
+            %endif
+          </template>
+        </div>
+      </article>
+    </template>
+    <template x-for="n in (loading ? (books.length ? 6 : 12) : 0)" :key="'s' + n">
+      <div class="llb-card llb-skel"><div class="llb-cover"></div></div>
+    </template>
+    <div class="text-center text-body-secondary py-5" style="grid-column: 1 / -1" x-show="!loading && done && !books.length" x-cloak>${_('No books found')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && books.length ? T.allShown : ''"></div>
+
+  %if perm&lazylibrarian.perm_status:
+  <div class="llb-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llb-bar-hidden'" role="region" aria-label="${_('Selected books') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    <template x-for="a in ['Wanted', 'Have', 'Skipped', 'Ignored']" :key="a">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk(a)" x-text="llStatus(a)"></button>
+    </template>
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+  %endif
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    audio = self.attr.page_id == 'audio'
+    lib = 'AudioBook' if audio else 'eBook'
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 30;
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')},
+    pickFirst: ${_js('Select at least one book first')}, searching: ${_js('Searching...')},
+    failed: ${_js('Something went wrong, try again')}, all: ${_js('All')},
+    grid: ${_js('Covers')}, compact: ${_js('Compact')}, list: ${_js('List')},
+    searchIn: ${_js('Search in:')}, everything: ${_js('Title, author and series')},
+    title: ${_js('Title')}, author: ${_js('Author')}, series: ${_js('Series')},
+    phAll: ${_js('Title, author, series')}, phTitle: ${_js('Search titles')},
+    phAuthor: ${_js('Search authors')}, phSeries: ${_js('Search series')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')},
+    books: ${_jsn('%(count)s book', '%(count)s books')}
+  };
+  var booklang = ${js(booklang or '')};
+  var LIB = ${js(lib)}, SOURCE = ${js('Audio' if audio else 'Books')}, PAGE_NAME = ${js('audio' if audio else 'books')};
+
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
+
+  // get_books row: 1 cover, 2 author, 3 title html, 8 authorid, 9 bookid, 11 status, 12 series "id~name #n^..."
+  function toBook(r) {
+    var title = String(r[3] || '').split('<')[0].trim();
+    var author = r[2] || '';
+    var series = null;
+    if (r[12]) { var s = String(r[12]).split('^')[0].split('~'); if (s.length > 1) { series = {id: s[0], name: s[1]}; } }
+    var img = r[1] || '';
+    return {
+      id: String(r[9]), title: title, author: author, authorId: r[8], status: String(r[11] || ''), series: series,
+      cover: (img && !/nocover|no_cover|nophoto/i.test(img)) ? img : '', hue: hue(title + author)
+    };
+  }
+
+  Alpine.data('llBooks', function () {
+    return {
+      T: T, books: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
+      q: '', f: '', sort: '2:asc', selecting: false, sel: {}, toastText: '', view: 'grid',
+      scope: 'all', broad: false,
+      scopes: [{id: 'all', label: T.everything, placeholder: T.phAll}, {id: 'title', label: T.title, placeholder: T.phTitle},
+               {id: 'author', label: T.author, placeholder: T.phAuthor}, {id: 'series', label: T.series, placeholder: T.phSeries}],
+      get scopeObj() { var s = this.scope; return this.scopes.filter(function (o) { return o.id === s; })[0] || this.scopes[0]; },
+      views: [{id: 'grid', icon: 'fa-th-large', label: T.grid}, {id: 'compact', icon: 'fa-th', label: T.compact},
+              {id: 'list', icon: 'fa-list', label: T.list}],
+      chips: [{f: '', label: T.all}].concat(['Open', 'Wanted', 'Snatched', 'Have', 'Skipped'].map(function (s) {
+        return {f: s, label: llStatus(s)};
+      })),
+      get countText() { return this.total || this.done ? llNgettext(T.books, this.total) : ''; },
+      get selCount() { return Object.keys(this.sel).length; },
+
+      start: function () {
+        var self = this;
+        try { var v = localStorage.getItem('llb-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
+        try {
+          var saved = JSON.parse(sessionStorage.getItem('llb-' + PAGE_NAME) || 'null');
+          if (saved) {
+            this.q = saved.q || ''; this.f = saved.f || ''; this.sort = saved.sort || this.sort;
+            if (['all', 'title', 'author', 'series'].indexOf(saved.scope) >= 0) { this.scope = saved.scope; }
+          }
+        } catch (e) {}
+        var bf = getUrlVars()['book_filter'];
+        // a genre link from another page searches every field, like the bookstrap table
+        if (bf) { this.q = decodeURIComponent(bf); this.broad = true; }
+        ['q', 'f', 'sort'].forEach(function (k) { self.$watch(k, function () { if (k === 'q') { self.broad = false; } self.reset(); }); });
+        this.$watch('scope', function () { self.broad = false; if (self.q) { self.reset(); } else { self.save(); } });
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'})
+          .observe(this.$refs.sentinel);
+        this.load();
+      },
+
+      url: function () {
+        var p = this.sort.split(':');
+        var src = this.f ? 'source=Manage&whichStatus=' + encodeURIComponent(this.f) : 'source=' + SOURCE;
+        return 'get_books?' + src + '&library=' + LIB + '&booklang=' + encodeURIComponent(booklang) +
+          '&iDisplayStart=' + this.start_ + '&iDisplayLength=' + PAGE + '&iSortCol_0=' + p[0] + '&sSortDir_0=' + p[1] +
+          '&sSearch=' + encodeURIComponent(this.q) + (this.broad ? '' : '&searchfield=' + this.scope) + '&_=' + Date.now();
+      },
+
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.books = self.books.concat(rows.map(toBook));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.books = []; this.done = false; this.loading = false;
+        this.save();
+        this.load();
+      },
+
+      save: function () {
+        try { sessionStorage.setItem('llb-' + PAGE_NAME, JSON.stringify({q: this.q, f: this.f, sort: this.sort, scope: this.scope})); } catch (e) {}
+      },
+
+      pillClass: function (s) {
+        return {Open: 'text-bg-success', Have: 'bg-success-subtle text-success-emphasis', Wanted: 'text-bg-warning',
+                Snatched: 'text-bg-info', Matched: 'text-bg-info'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+
+      open: function (b, e) {
+        if (this.selecting) {
+          if (this.sel[b.id]) { delete this.sel[b.id]; } else { this.sel[b.id] = true; }
+          this.sel = Object.assign({}, this.sel);
+          return;
+        }
+        if (e.target.closest('a')) { return; }
+        var d = e.target.closest('[data-do]');
+        if (d && d.dataset.do === 'want') { this.mark([b.id], 'Wanted'); return; }
+        if (d && d.dataset.do === 'search') {
+          this.toast(T.searching);
+          fetch('search_for_book?bookid=' + encodeURIComponent(b.id) + '&library=' + LIB, {credentials: 'same-origin'});
+          return;
+        }
+        bookinfo(b.id, LIB);
+      },
+
+      setView: function (v) {
+        this.view = v;
+        try { localStorage.setItem('llb-view', v); } catch (e) {}
+        var self = this;
+        // a smaller view can leave the end of the list on screen, so fetch more if needed
+        this.$nextTick(function () {
+          if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+        });
+      },
+
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+
+      bulk: function (action) {
+        var ids = Object.keys(this.sel);
+        if (!ids.length) { this.toast(T.pickFirst); return; }
+        this.stopSelect();
+        this.mark(ids, action);
+      },
+
+      mark: function (ids, action) {
+        var self = this;
+        var body = new URLSearchParams({action: action, redirect: PAGE_NAME, library: LIB});
+        ids.forEach(function (id) { body.append(id, 'on'); });
+        return fetch('mark_books_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            var tmp = document.createElement('div'); tmp.innerHTML = d.summary || '';
+            self.toast(tmp.textContent || llStatus(action));
+            self.reset();
+          })
+          .catch(function () { self.toast(T.failed); });
+      },
+
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

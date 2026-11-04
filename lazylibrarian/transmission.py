@@ -16,6 +16,7 @@ from urllib.parse import urlparse, urlunparse
 
 import requests
 
+from lazylibrarian import i18n
 from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG
 
@@ -39,7 +40,15 @@ def move_torrent(torrentid, directory):
 
 
 def add_torrent(link, directory=None, metainfo=None, provider_options=None):
+    """ Send a url, magnet or metainfo to Transmission.
+
+    :return: (torrent id, '', adopted) on success, or (False, message, False).
+             Transmission answers torrent-duplicate when it already holds the
+             torrent, and adopted is True for that, as the torrent and its data
+             belong to whoever added it first.
+    """
     logger = logging.getLogger(__name__)
+    provider_options = provider_options or {}
     method = 'torrent-add'
     if metainfo:
         arguments = {'metainfo': metainfo}
@@ -55,39 +64,67 @@ def add_torrent(link, directory=None, metainfo=None, provider_options=None):
     response, res = torrent_action(method, arguments)  # type: dict
 
     if not response:
-        return False, res
+        return False, res, False
 
     if response['result'] == 'success':
+        adopted = False
         if 'torrent-added' in response['arguments']:
             retid = response['arguments']['torrent-added']['id']
         elif 'torrent-duplicate' in response['arguments']:
             retid = response['arguments']['torrent-duplicate']['id']
+            adopted = True
         else:
             retid = False
         if retid:
-            logger.debug("Torrent sent to Transmission successfully")
+            if adopted:
+                logger.info("Torrent already exists in Transmission; using the existing torrent")
+            else:
+                logger.debug("Torrent sent to Transmission successfully")
 
             if "seed_ratio" in provider_options:
                 set_seed_ratio(retid, provider_options["seed_ratio"])
+            # no seed_duration here: Transmission has no wall clock seeding
+            # limit, only an idle one, which is a different thing. A duration is
+            # held to by refusing to remove the torrent until it is met instead.
 
-            return retid, ''
+            return retid, '', adopted
 
     res = f"Transmission returned {response['result']}"
     logger.debug(res)
-    return False, res
+    return False, res, False
+
+
+def metadata_ready(torrent):
+    """ Whether Transmission knows what is in a torrent yet.
+
+    A magnet has no name or file list until its metadata arrives, and until then
+    Transmission answers with the infohash as the name, so there is something to
+    wait for. What there is to wait for is the metadata, not the download:
+    metadataPercentComplete reaches 1 as soon as the torrent is understood,
+    while percentDone stays at 0 until pieces actually arrive. Waiting on the
+    latter withholds the name of a perfectly well described torrent that simply
+    has no peers yet.
+
+    A daemon too old to report metadataPercentComplete keeps the old answer,
+    where progress is the only signal available.
+    """
+    complete = torrent.get('metadataPercentComplete')
+    if isinstance(complete, (int, float)):
+        return complete >= 1
+    return bool(torrent.get('percentDone'))
 
 
 def get_torrent_name(torrentid):  # uses hashid
     logger = logging.getLogger(__name__)
     method = 'torrent-get'
-    arguments = {'ids': [torrentid], 'fields': ['name', 'percentDone', 'labels']}
+    arguments = {'ids': [torrentid], 'fields': ['name', 'metadataPercentComplete', 'percentDone', 'labels']}
     retries = 3
     while retries:
         response, _ = torrent_action(method, arguments)  # type: dict
         if response and len(response['arguments']['torrents']):
-            percentdone = response['arguments']['torrents'][0]['percentDone']
-            if percentdone:
-                return response['arguments']['torrents'][0]['name']
+            torrent = response['arguments']['torrents'][0]
+            if metadata_ready(torrent):
+                return torrent['name']
         else:
             logger.debug('get_torrent_name: No response from transmission')
             return ''
@@ -102,14 +139,14 @@ def get_torrent_name(torrentid):  # uses hashid
 def get_torrent_folder(torrentid):  # uses hashid
     logger = logging.getLogger(__name__)
     method = 'torrent-get'
-    arguments = {'ids': [torrentid], 'fields': ['downloadDir', 'percentDone']}
+    arguments = {'ids': [torrentid], 'fields': ['downloadDir', 'metadataPercentComplete', 'percentDone']}
     retries = 3
     while retries:
         response, _ = torrent_action(method, arguments)  # type: dict
         if response and len(response['arguments']['torrents']):
-            percentdone = response['arguments']['torrents'][0]['percentDone']
-            if percentdone:
-                return response['arguments']['torrents'][0]['downloadDir']
+            torrent = response['arguments']['torrents'][0]
+            if metadata_ready(torrent):
+                return torrent['downloadDir']
         else:
             logger.debug('get_torrent_folder: No response from transmission')
             return ''
@@ -124,19 +161,14 @@ def get_torrent_folder(torrentid):  # uses hashid
 def get_torrent_folder_by_id(torrentid):  # uses transmission id
     logger = logging.getLogger(__name__)
     method = 'torrent-get'
-    arguments = {'fields': ['name', 'percentDone', 'id']}
+    arguments = {'fields': ['name', 'metadataPercentComplete', 'percentDone', 'id']}
     retries = 3
     while retries:
         response, _ = torrent_action(method, arguments)  # type: dict
         if response and len(response['arguments']['torrents']):
-            tor = 0
-            while tor < len(response['arguments']['torrents']):
-                percentdone = response['arguments']['torrents'][tor]['percentDone']
-                if percentdone:
-                    torid = response['arguments']['torrents'][tor]['id']
-                    if str(torid) == str(torrentid):
-                        return response['arguments']['torrents'][tor]['name']
-                tor += 1
+            for torrent in response['arguments']['torrents']:
+                if metadata_ready(torrent) and str(torrent['id']) == str(torrentid):
+                    return torrent['name']
         else:
             logger.debug('get_torrent_folder: No response from transmission')
             return ''
@@ -148,6 +180,20 @@ def get_torrent_folder_by_id(torrentid):  # uses transmission id
     return ''
 
 
+def seed_state(torrentid):
+    """ What a torrent has seeded so far, as (ratio, seconds), or None. """
+    logger = logging.getLogger(__name__)
+    arguments = {'ids': [torrentid], 'fields': ['uploadRatio', 'secondsSeeding']}
+    response, _ = torrent_action('torrent-get', arguments)  # type: dict
+    if not response:
+        logger.debug('seed_state: No response from transmission')
+        return None
+    torrents = response.get('arguments', {}).get('torrents') or []
+    if not torrents:
+        return None
+    return torrents[0].get('uploadRatio') or 0, torrents[0].get('secondsSeeding') or 0
+
+
 def get_torrent_files(torrentid):  # uses hashid
     logger = logging.getLogger(__name__)
     dlcommslogger = logging.getLogger('special.dlcomms')
@@ -156,13 +202,22 @@ def get_torrent_files(torrentid):  # uses hashid
     retries = 3
     while retries:
         response, _ = torrent_action(method, arguments)  # type: dict
-        if response:
-            if len(response['arguments']['torrents'][0]['files']):
-                dlcommslogger.debug(f"get_torrent_files: {str(response['arguments']['torrents'][0]['files'])}")
-                return response['arguments']['torrents'][0]['files']
-        else:
+        if not response:
             logger.debug('get_torrent_files: No response from transmission')
             return []
+
+        torrents = response['arguments']['torrents']
+        if not torrents:
+            # transmission answers with an empty list for an id it doesn't
+            # hold, eg the torrent was removed while we were processing it
+            logger.debug(f'get_torrent_files: {torrentid} not found at transmission')
+            return []
+
+        # an empty file list is worth another look: the metadata for a magnet
+        # may not have arrived yet
+        if len(torrents[0]['files']):
+            dlcommslogger.debug(f"get_torrent_files: {str(torrents[0]['files'])}")
+            return torrents[0]['files']
 
         retries -= 1
         if retries:
@@ -299,8 +354,8 @@ def check_link():
     tr_version = 0
     response, _ = torrent_action(method, arguments)  # type: dict
     if response:
-        return f"Transmission login successful, v{tr_version}, rpc v{rpc_version}"
-    return "Transmission login FAILED\nCheck debug log"
+        return i18n.gettext('%(name)s login successful, v%(version)s, rpc v%(rpc)s') % {'name': 'Transmission', 'version': tr_version, 'rpc': rpc_version}, True
+    return i18n.gettext('%(name)s login FAILED\nCheck debug log') % {'name': 'Transmission'}, False
 
 
 def torrent_action(method, arguments):
@@ -395,7 +450,7 @@ def torrent_action(method, arguments):
         response = requests.post(host_url, json=data, headers=headers, proxies=proxies,
                                  auth=auth, timeout=timeout)
 
-        if response and str(response.status_code).startswith('2'):
+        if response and response.status_code == 200:
             res = response.json()
             tr_version = res['arguments']['version']
             rpc_version = res['arguments']['rpc-version']
@@ -414,7 +469,7 @@ def torrent_action(method, arguments):
             headers = {'x-transmission-session-id': session_id}
             response = requests.post(host_url, json=data, headers=headers, proxies=proxies,
                                      auth=auth, timeout=timeout)
-        if not str(response.status_code).startswith('2'):
+        if response.status_code != 200:
             res = f"Expected a response from Transmission, got {response.status_code}"
             logger.error(res)
             return False, res

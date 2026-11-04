@@ -17,9 +17,11 @@ import re
 import tempfile
 import threading
 import time
+import traceback
 import unicodedata
 from base64 import b16encode, b32decode, b64encode
-from hashlib import sha1
+from hashlib import sha1, sha256
+from urllib.parse import urlsplit
 
 # noinspection PyBroadException
 try:
@@ -29,8 +31,8 @@ except Exception:  # magic might fail for multiple reasons
 
 import logging
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests
 from deluge_client import DelugeRPCClient
 
 from lazylibrarian import (
@@ -54,11 +56,12 @@ from lazylibrarian.box_helper_handoff import (
     PRE_REJECTED_PREFIX,
 )
 from lazylibrarian.cache import fetch_url
-from lazylibrarian.common import get_user_agent, proxy_list
+from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.directparser import bok_grabs, bok_login, session_get
-from lazylibrarian.download_client import check_contents
+from lazylibrarian.download_client import check_contents, delete_task, seed_requirement
+
 from lazylibrarian.filesystem import (
     DIRS,
     get_directory,
@@ -73,14 +76,18 @@ from lazylibrarian.filesystem import (
 from lazylibrarian.formatter import (
     clean_name,
     get_list,
+    make_bytestr,
     make_unicode,
     md5_utf8,
+    redact_url,
     sanitize,
     unaccented,
 )
 from lazylibrarian.ircbot import irc_query
 from lazylibrarian.soulseek import SLSKD
 from lazylibrarian.telemetry import record_usage_data
+from lazylibrarian.webshare import valid_ident, webshare_download
+
 from lib.bencode import BencodeDecodeError, bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
@@ -289,8 +296,8 @@ def irc_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', prov
         db.action(cmd, (source, download_id, msg, dl_url, dl_title))
         db.close()
         return False, msg
-    except Exception as e:
-        logger.debug(str(e))
+    except Exception:
+        logger.error(f"Error in irc_dl_method: {traceback.format_exc()}")
         db.close()
         return False, msg
 
@@ -433,7 +440,11 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         wanted = [{'username': slsk_username, 'directory': directory}]
         hashid = sha1(bencode(dl_url)).hexdigest()
         db = database.DBConnection()
-        res = slsk.download(wanted)
+        try:
+            res = slsk.download(wanted)
+        except Exception as e:
+            logger.error(f"slsk download error: {e}")
+            res = None
         if res:
             if library == 'eBook':
                 db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
@@ -477,8 +488,13 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         db = database.DBConnection()
         res = db.match('SELECT bookname from books WHERE bookid=?', (bookid,))
         if res and res['bookname']:
-            folder = res['bookname']
-        success, fname = annas_download(dl_url, folder, title, extn)
+            folder = sanitize(res['bookname'], is_folder_or_file=True)
+        try:
+            success, fname = annas_download(dl_url, folder, title, extn)
+        except Exception as e:
+            logger.error(f"Annas download error: {e}")
+            success = False
+            fname = ''
 
         if success:
             if library == 'eBook':
@@ -510,6 +526,41 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         db.close()
         return False, fname
 
+    if provider == 'webshare':
+        if not valid_ident(dl_url):
+            return False, f"Invalid webshare ident [{dl_url}]"
+        folder = ''
+        db = database.DBConnection()
+        res = db.match('SELECT bookname from books WHERE bookid=?', (bookid,))
+        if res and res['bookname']:
+            folder = sanitize(res['bookname'], is_folder_or_file=True)
+        try:
+            success, fname = webshare_download(dl_url, folder, dl_title)
+        except Exception as e:
+            success = False
+            fname = f"Webshare download error: {e}"
+        if not success:
+            logger.error(fname)
+
+        status = 'Snatched' if success else 'Failed'
+        dlresult = '' if success else fname
+        if success:
+            if library == 'eBook':
+                db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
+            elif library == 'AudioBook':
+                db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
+        if auxinfo:  # magazine issue
+            cmd = ("UPDATE wanted SET status=?, dlresult=?, Source=?, DownloadID=?, completed=? "
+                   "WHERE NZBUrl=?")
+            db.action(cmd, (status, dlresult, source, dl_url, int(time.time()), dl_url))
+        else:
+            cmd = ("UPDATE wanted SET status=?, dlresult=?, Source=?, DownloadID=?, completed=? "
+                   "WHERE BookID=? and NZBProv=?")
+            db.action(cmd, (status, dlresult, source, dl_url, int(time.time()), bookid, provider))
+        db.close()
+        record_usage_data(f'Download/Direct/{provider}/{"Success" if success else "Failed"}')
+        return success, dlresult
+
     if provider == 'zlibrary':
         zlib = bok_login()
         if not zlib:
@@ -533,7 +584,11 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
 
         hashid = sha1(bencode(dl_url)).hexdigest()
         db = database.DBConnection()
-        filename, filecontent = zlib.downloadBook({"id": zlib_bookid, "hash": zlib_hash})
+        try:
+            filename, filecontent = zlib.downloadBook({"id": zlib_bookid, "hash": zlib_hash})
+        except Exception as e:
+            logger.error(f"Zlib download error: {e}")
+            filename = None
         if not filename:
             logger.error(filecontent)
             if auxinfo:  # magazine issue
@@ -558,11 +613,9 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             _ = make_dirs(destdir)
         _, extn = splitext(filename)
         destfile = os.path.join(destdir, basename + extn)
-        if os.name == 'nt':  # Windows has max path length of 256
-            destfile = '\\\\?\\' + destfile
         logger.debug(f"Saving as {destfile}")
         try:
-            with open(destfile, "wb") as bookfile:
+            with open(syspath(destfile), "wb") as bookfile:
                 bookfile.write(filecontent)
         except Exception as e:
             res = f"{type(e).__name__} writing book to {destfile}, {e}"
@@ -598,7 +651,7 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         return True, ''
 
     # libgen...
-    headers = {'Accept-encoding': 'gzip', 'User-Agent': get_user_agent()}
+    headers = {'Accept-encoding': 'gzip', 'Referer': dl_url}
     dl_url = make_unicode(dl_url)
     s = requests.Session()
     proxies = proxy_list()
@@ -620,9 +673,9 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             logger.warning(res)
             return False, res
 
-        if str(r.status_code) in ['502', '504']:
+        if r.status_code in [502, 504]:
             time.sleep(2)
-        elif not str(r.status_code).startswith('2'):
+        elif r.status_code != 200:
             res = f"Got a {r.status_code} response for {dl_url}"
             logger.debug(res)
             return False, res
@@ -686,9 +739,6 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
 
             destfile = os.path.join(destdir, basename + '.' + extn)
 
-            if os.name == 'nt':  # Windows has max path length of 256
-                destfile = '\\\\?\\' + destfile
-
             db = database.DBConnection()
             try:
                 with open(syspath(destfile), 'wb') as bookfile:
@@ -730,7 +780,7 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
             # see if there is a redirect...
             redirect = False
             if 'text/html' in r.headers['Content-Type']:
-                result, success = fetch_url(dl_url)
+                result, success = r.text, True
                 if success:
                     newsoup = BeautifulSoup(result, 'html5lib')
                     data = newsoup.find_all('a')
@@ -781,6 +831,19 @@ def torrent_contains_only_audio(torrent):
     return bool(extensions & audio and extensions <= audio | sidecars)
 
 
+def helper_unsupported_torrent_identity(link, data):
+    """The exact-hash durable helper protocol cannot attest v2/hybrid aliases."""
+    if MAGNET_BTMH.search(make_unicode(link or '')):
+        return True
+    if data:
+        try:
+            info = bdecode(data).get('info', {})
+            return isinstance(info, dict) and info.get('meta version') == 2
+        except (BencodeDecodeError, ValueError, TypeError, AttributeError, RecursionError):
+            return False  # the regular torrent-data validation reports malformed payloads
+    return False
+
+
 def previously_rejected_archive(bookid, hashid):
     """Block the same bad payload even when its release title or URL changes."""
     if not bookid or not hashid:
@@ -805,6 +868,13 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
     source = ''
     torrent = ''
     policy_quarantine_reason = ''
+    # a torrent the client already held before we asked for it is not ours to
+    # delete, however this request turns out
+    adopted = False
+    # the downloader category we actually asked for, recorded so a later run can
+    # tell our torrent from one that happens to share the id
+    snatch_category = ''
+
 
     full_url = tor_url  # keep the url as stored in "wanted" table
     tor_url = make_unicode(tor_url)
@@ -833,50 +903,88 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
         if not tor_url.endswith('.torrent') and '.torrent' in tor_url:
             tor_url = tor_url.split('.torrent')[0] + '.torrent'
 
-        headers = {'Accept-encoding': 'gzip', 'User-Agent': get_user_agent()}
+        headers = {'Accept-encoding': 'gzip'}
         proxies = proxy_list()
+        safe_url = redact_url(tor_url)
 
         try:
-            logger.debug(f"Fetching {tor_url}")
+            logger.debug(f"Fetching {safe_url}")
             if tor_url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
-                r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies,
+                r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies, impersonate='chrome',
                                  verify=CONFIG['SSL_CERTS']
                                  if CONFIG['SSL_CERTS'] else True)
             else:
-                r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies, verify=False)
-            if str(r.status_code).startswith('2'):
+                r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies, impersonate='chrome', verify=False)
+            if r.status_code == 200:
                 torrent = r.content
+                content_type = r.headers.get('Content-Type', 'unknown')
                 if not len(torrent):
-                    res = f"Got empty response for {tor_url}"
+                    res = f"Provider returned invalid torrent data for {safe_url}: empty response"
                     logger.warning(res)
                     return False, res
                 if len(torrent) < 100:
-                    res = f"Only got {len(torrent)} bytes for {tor_url}"
+                    res = (f"Provider returned invalid torrent data for {safe_url}: "
+                           f"only got {len(torrent)} bytes")
                     logger.warning(res)
                     return False, res
-                logger.debug(f"Got {len(torrent)} bytes for {tor_url}")
+                logger.debug(f"Got {len(torrent)} bytes ({content_type}) for {safe_url}")
             else:
-                res = f"Got a {r.status_code} response for {tor_url}"
+                res = f"Got a {r.status_code} response for {safe_url}"
                 logger.warning(res)
                 return False, res
 
         except requests.exceptions.Timeout:
-            res = f"Timeout fetching file from url: {tor_url}"
+            res = f"Timeout fetching file from url: {safe_url}"
             logger.warning(res)
             return False, res
         except Exception as e:
             # some jackett providers redirect internally using http 301 to a magnet link
             # which requests can't handle, so throws an exception
-            logger.debug(f"Requests exception: {e}")
+            logger.debug(f"Requests exception: {redact_url(str(e))}")
+            if "magnet:?" not in str(e):
+                # curl_cffi doesn't include the redirect target in its error,
+                # so ask again without following redirects to find it
+                try:
+                    if tor_url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
+                        verify = CONFIG['SSL_CERTS'] if CONFIG['SSL_CERTS'] else True
+                    else:
+                        verify = False
+                    r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies, impersonate='chrome',
+                                     verify=verify, allow_redirects=False)
+                    location = r.headers.get('Location', '')
+                    if location.startswith('magnet:?'):
+                        e = Exception(location)
+                except Exception:
+                    pass
             if "magnet:?" in str(e):
                 tor_url = 'magnet:?' + str(e).split('magnet:?')[1].strip("'")
-                logger.debug(f"Redirecting to {tor_url}")
+                logger.debug("Redirecting to magnet link")
             else:
-                res = f"{type(e).__name__} fetching file from url: {tor_url}, {e}"
+                res = f"{type(e).__name__} fetching file from url: {safe_url}, {redact_url(str(e))}"
                 logger.warning(res)
                 return False, res
 
-    if not torrent and not tor_url.startswith('magnet:?'):
+    # A provider that hands back an error page, an interstitial, or a
+    # truncated file gives us something that looks like data but isn't a
+    # torrent. Say so here rather than reporting it as a hashing failure, and
+    # never pass it on to a downloader.
+    cache_hash = ''
+    if torrent:
+        invalid = torrent_data_error(torrent)
+        if invalid:
+            res = f"Provider returned invalid torrent data for {tor_title}: {invalid}"
+            logger.warning(res)
+            logger.debug(f"url: {redact_url(tor_url)}, {len(torrent)} bytes")
+            torrent = ''
+            if not CONFIG.get_bool('TOR_DOWNLOADER_BLACKHOLE'):
+                # the downloader may have better luck fetching it than we did,
+                # but only if we can tell which torrent it should end up with
+                cache_hash = hash_from_cache_url(tor_url)
+            if not cache_hash:
+                return False, res
+            logger.debug(f"Sending url to the downloader, expecting hash {cache_hash}")
+
+    if not torrent and not cache_hash and not tor_url.startswith('magnet:?'):
         res = "No magnet or data, cannot continue"
         logger.warning(res)
         return False, res
@@ -940,15 +1048,24 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 return False, res
 
     else:
-        hashid = calculate_torrent_hash(tor_url, torrent)
+        hashid = cache_hash or calculate_torrent_hash(tor_url, torrent)
         if not hashid:
             res = "Unable to calculate torrent hash from url/data"
             logger.error(res)
-            logger.debug(f"url: {tor_url}")
+            logger.debug(f"url: {redact_url(tor_url)}")
             logger.debug(f"data: {make_unicode(str(torrent[:50]))}")
             return False, res
 
         provider_options = torrent_provider_options(provider)
+        if not provider_options:
+            # Retain upstream seeding requirements for other downloader/provider
+            # groups. Box qBittorrent still needs an exact approved TORZNAB policy.
+            seed_ratio, seed_duration = seed_requirement(provider)
+            if seed_ratio:
+                provider_options['seed_ratio'] = seed_ratio
+            if seed_duration:
+                provider_options['seed_duration'] = seed_duration
+
 
         if CONFIG.get_bool('TOR_DOWNLOADER_UTORRENT') and CONFIG['UTORRENT_HOST']:
             logger.debug(f"Sending {tor_title} to Utorrent")
@@ -986,37 +1103,62 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
 
         if CONFIG.get_bool('TOR_DOWNLOADER_QBITTORRENT') and CONFIG['QBITTORRENT_HOST']:
             source = "QBITTORRENT"
-            if library == "eBook":
-                if torrent_contains_only_audio(torrent):
-                    return False, "Rejected audio-only torrent payload before ebook grab"
-                if previously_rejected_archive(bookid, hashid):
-                    return False, "Refusing previously rejected ebook archive by torrent hash"
-            if not qbittorrent.provider_share_limits(provider_options):
-                res = "Refusing qBittorrent add without an explicit provider share policy"
-                logger.error(res)
-                return False, res
-            try:
-                emit_box_helper_spool(
-                    hashid, tor_title, bookid, library, provider, 'intent'
-                )
-            except Exception as e:
-                res = f"Mandatory box helper add-intent spool failed before qBittorrent add: {e}"
-                logger.error(res)
-                return False, res
+            qb_label = label or use_label(source, library)
+            if qbittorrent.helper_owns_qbittorrent_lifecycle():
+                provider_options = torrent_provider_options(provider)
+                if library == "eBook":
+                    if torrent_contains_only_audio(torrent):
+                        return False, "Rejected audio-only torrent payload before ebook grab"
+                    if previously_rejected_archive(bookid, hashid):
+                        return False, "Refusing previously rejected ebook archive by torrent hash"
+                # Upstream supports aliased v2/hybrid ids. The helper's current
+                # durable protocol binds exactly one hash before add, so these
+                # formats must wait for an explicit alias-aware protocol revision.
+                if helper_unsupported_torrent_identity(tor_url, torrent):
+                    return False, "Unsupported v2/hybrid torrent for the exact-hash box helper protocol"
+                if not qbittorrent.provider_share_limits(provider_options):
+                    res = "Refusing qBittorrent add without an explicit provider share policy"
+                    logger.error(res)
+                    return False, res
+                try:
+                    qbittorrent.validate_box_helper_handoff_config()
+                except RuntimeError:
+                    return False, 'Refusing qBittorrent add without the paired durable helper ownership configuration'
+                client = qbittorrent.get_client()
+                if not client:
+                    return False, 'Cannot verify qBittorrent ownership before add: login unavailable'
+                ownership_error = qbittorrent.helper_add_preflight(client, hashid)
+                if ownership_error:
+                    return False, ownership_error
+                try:
+                    emit_box_helper_spool(hashid, tor_title, bookid, library, provider, 'intent')
+                except Exception as exc:
+                    res = f"Mandatory box helper add-intent spool failed before qBittorrent add: {type(exc).__name__}"
+                    logger.error(res)
+                    return False, res
+
             if torrent:
                 logger.debug(f"Sending {tor_title} data to qBittorrent")
-                status, res = qbittorrent.add_file(torrent, hashid, tor_title, provider_options)
-                # returns True or False
+                download_id, res, adopted = qbittorrent.add_file(torrent, hashid, tor_title,
+                                                                 provider_options, label=qb_label)
             else:
                 logger.debug(f"Sending {tor_title} url to qBittorrent")
-                status, res = qbittorrent.add_torrent(tor_url, hashid, provider_options)  # returns True or False
-            if status:
-                download_id = hashid
-                if str(res).startswith(qbittorrent.POLICY_QUARANTINE_PREFIX):
-                    policy_quarantine_reason = str(res)[
-                        len(qbittorrent.POLICY_QUARANTINE_PREFIX):
-                    ].strip()
-                tor_title = qbittorrent.get_name(hashid)
+                download_id, res, adopted = qbittorrent.add_torrent(tor_url, hashid,
+                                                                    provider_options, label=qb_label)
+            if download_id and adopted and qbittorrent.helper_owns_qbittorrent_lifecycle():
+                return False, 'Refusing fresh helper adoption of a pre-existing qBittorrent torrent'
+            if download_id and qbittorrent.helper_owns_qbittorrent_lifecycle() and str(res).startswith(qbittorrent.POLICY_QUARANTINE_PREFIX):
+                policy_quarantine_reason = str(res)[len(qbittorrent.POLICY_QUARANTINE_PREFIX):].strip()
+            # qBittorrent files v2 and hybrid torrents under their truncated v2
+            # hash, so the id it returns is not always the hash we calculated
+            if download_id:
+                snatch_category = qb_label
+                # keep the name we already have if the client has none for us:
+                # an empty title skips the content checks further down
+                client_name = qbittorrent.get_name(download_id)
+                if client_name:
+                    tor_title = client_name
+
 
         if CONFIG.get_bool('TOR_DOWNLOADER_TRANSMISSION') and CONFIG['TRANSMISSION_HOST']:
             source = "TRANSMISSION"
@@ -1029,19 +1171,23 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
             if torrent:
                 logger.debug(f"Sending {tor_title} data to Transmission:{directory}")
                 # transmission needs b64encoded metainfo to be unicode, not bytes
-                download_id, res = transmission.add_torrent(None, directory=directory,
-                                                            metainfo=make_unicode(b64encode(torrent)),
-                                                            provider_options=provider_options)
+                download_id, res, adopted = transmission.add_torrent(
+                    None, directory=directory, metainfo=make_unicode(b64encode(torrent)),
+                    provider_options=provider_options)
             else:
                 logger.debug(f"Sending {tor_title} url to Transmission:{directory}")
-                download_id, res = transmission.add_torrent(tor_url, directory=directory,
-                                                            provider_options=provider_options)  # returns id or False
+                download_id, res, adopted = transmission.add_torrent(
+                    tor_url, directory=directory,
+                    provider_options=provider_options)  # returns id or False
             if download_id:
                 # transmission returns its own int, but we store hashid instead
                 download_id = hashid
-                if label:
+                snatch_category = label
+                if label and not adopted:
                     transmission.set_label(download_id, label)
-                tor_title = transmission.get_torrent_name(download_id)
+                client_name = transmission.get_torrent_name(download_id)
+                if client_name:
+                    tor_title = client_name
                 tor_folder = transmission.get_torrent_folder(download_id)
                 tor_files = transmission.get_torrent_files(download_id)
                 logger.debug(f"{tor_title}: Folder is {tor_folder}")
@@ -1055,9 +1201,13 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                         in_subdir = False
                         break
                 if filenames and not in_subdir:
-                    directory = os.path.join(tor_folder, tor_title)
-                    logger.debug(f"{tor_title}: Moving torrent to {directory}")
-                    transmission.move_torrent(download_id, directory)
+                    if adopted:
+                        # someone else is seeding this from where it already is
+                        logger.debug(f"{tor_title}: existing torrent, leaving it in {tor_folder}")
+                    else:
+                        directory = os.path.join(tor_folder, tor_title)
+                        logger.debug(f"{tor_title}: Moving torrent to {directory}")
+                        transmission.move_torrent(download_id, directory)
 
         if CONFIG.get_bool('TOR_DOWNLOADER_SYNOLOGY') and CONFIG.get_bool('USE_SYNOLOGY') and \
                 CONFIG['SYNOLOGY_HOST']:
@@ -1146,7 +1296,13 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
 
     if download_id:
         db = database.DBConnection()
+        # record how we got the torrent before anything can reject it, so that
+        # delete_task knows whose data it would be deleting
+        origin = 'adopted' if adopted else 'new'
         try:
+            db.action("UPDATE wanted SET Source=?,DownloadID=?,Origin=?,Category=? "
+                      "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                      (source, download_id, origin, snatch_category, full_url, bookid, library))
             if bookid and (not requested_title or not requested_author):
                 bookdata = db.match(
                     "SELECT BookName,AuthorName FROM books,authors "
@@ -1157,7 +1313,7 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                         requested_title = bookdata['BookName']
                     if not requested_author:
                         requested_author = bookdata['AuthorName']
-            if source == 'QBITTORRENT' and policy_quarantine_reason:
+            if source == 'QBITTORRENT' and qbittorrent.helper_owns_qbittorrent_lifecycle() and policy_quarantine_reason:
                 quarantine_result = (
                     qbittorrent.POLICY_QUARANTINE_PREFIX + policy_quarantine_reason
                 )
@@ -1217,21 +1373,24 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                                                   requested_author=requested_author,
                                                   requested_title=requested_title)
                     if rejected:
+                        if source != 'QBITTORRENT' or not qbittorrent.helper_owns_qbittorrent_lifecycle():
+                            # Source and DownloadID go in even though this failed:
+                            # delete_task looks the row up by them to find out
+                            # whether the torrent was ours to delete
+                            db.action("UPDATE wanted SET status='Failed',DLResult=?,Source=?,DownloadID=?,"
+                                      "Origin=?,Category=? WHERE NZBurl=?",
+                                      (rejected, source, download_id, origin, snatch_category, full_url))
+                            if CONFIG.get_bool('DEL_FAILED') and not adopted:
+                                delete_task(source, download_id, True)
+                            return False, rejected
                         protection_warning = ''
-                        if source == 'QBITTORRENT':
-                            if not qbittorrent.preserve_rejected_torrent(
-                                    download_id, provider_options):
-                                protection_warning = (
-                                    f"; provider share policy for {download_id[:8]} was not verified"
-                                )
-                                logger.error(
-                                    f"Rejected torrent {download_id[:8]} was retained, but its private-tracker "
-                                    "share limits could not be protected"
-                                )
-                        else:
-                            logger.warning(
-                                f"Preserving rejected torrent {download_id} in {source} to avoid a "
-                                "private-tracker hit-and-run"
+                        if not qbittorrent.preserve_rejected_torrent(download_id, provider_options):
+                            protection_warning = (
+                                f"; provider share policy for {download_id[:8]} was not verified"
+                            )
+                            logger.error(
+                                f"Rejected torrent {download_id[:8]} was retained, but its private-tracker "
+                                "share limits could not be protected"
                             )
                         # The downloader already owns this exact hash. Keep the
                         # wanted row on the normal Snatched path so resultlist
@@ -1261,6 +1420,7 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                             return False, res
                         db.close()
                         return True, helper_rejection
+
                     logger.debug(f"{source} setting torrent name to [{tor_title}]")
                     db.action('UPDATE wanted SET NZBtitle=? WHERE NZBurl=?', (tor_title, full_url))
 
@@ -1268,14 +1428,15 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 db.action("UPDATE books SET status='Snatched' WHERE BookID=?", (bookid,))
             elif library == 'AudioBook':
                 db.action("UPDATE books SET audiostatus='Snatched' WHERE BookID=?", (bookid,))
-            if source == 'QBITTORRENT':
-                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?,DLResult=? "
-                          "WHERE NZBurl=?",
-                          (source, download_id, DURABLE_OWNED_RESULT, full_url))
+            if source == 'QBITTORRENT' and qbittorrent.helper_owns_qbittorrent_lifecycle():
+                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?,DLResult=?,Origin=?,Category=? "
+                          "WHERE NZBurl=? AND BookID=? AND AuxInfo=?",
+                          (source, download_id, DURABLE_OWNED_RESULT, origin, snatch_category,
+                           full_url, bookid, library))
             else:
-                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=? WHERE NZBurl=?",
-                          (source, download_id, full_url))
-            if source == 'QBITTORRENT':
+                db.action("UPDATE wanted SET status='Snatched', Source=?, DownloadID=?,Origin=?,Category=? WHERE NZBurl=?",
+                          (source, download_id, origin, snatch_category, full_url))
+            if source == 'QBITTORRENT' and qbittorrent.helper_owns_qbittorrent_lifecycle():
                 try:
                     emit_box_helper_spool(
                         download_id, tor_title, bookid, library, provider, 'final'
@@ -1287,11 +1448,12 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                               (res, source, download_id, full_url, bookid, library))
                     db.close()
                     return False, res
+
             record_usage_data(f'Download/TOR/{source}/Success')
             db.close()
             return True, ''
-        except Exception as e:
-            logger.debug(str(e))
+        except Exception:
+            logger.error(f"Error in tor_dl_method: {traceback.format_exc()}")
             db.close()
 
     res = f"Failed to send torrent to {source}"
@@ -1300,28 +1462,142 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
     return False, res
 
 
+def torrent_data_error(data):
+    """
+    Check that a provider response really is a torrent file before we do
+    anything with it. Providers hand back error pages, empty bodies and
+    interstitial html often enough that "couldn't hash it" is a misleading
+    thing to report.
+    Returns an empty string if the data is a torrent, else a short reason. The
+    reason is logged and kept in the history table, so it describes the shape
+    of the response and never quotes it: an error body can carry an api key.
+    """
+    if not data:
+        return "empty response"
+    if isinstance(data, str):
+        data = make_bytestr(data)
+    if not data.startswith(b'd'):
+        return f"not a bencoded dictionary ({len(data)} bytes)"
+    try:
+        decoded = bdecode(data)
+    except (BencodeDecodeError, ValueError, IndexError, KeyError, RecursionError) as e:
+        return f"invalid bencode, {type(e).__name__}"
+    if not isinstance(decoded, dict):
+        return f"bencoded {type(decoded).__name__}, not a torrent dictionary"
+
+    info = decoded.get('info')
+    if not isinstance(info, dict):
+        return "no info dictionary"
+    if 'name' not in info:
+        return "info dictionary has no name"
+    # v1 keeps its piece hashes in "pieces", v2 in a "file tree" (BEP 52), and
+    # a hybrid torrent carries both. Anything with neither is not a torrent.
+    if 'pieces' not in info and 'file tree' not in info:
+        return "info dictionary has no pieces or file tree"
+    return ''
+
+
+# Caches that name the torrent file after its infohash. The hash in one of
+# these urls is worth having as a fallback, but only for hosts we recognise:
+# any other 40 character string in a url is just a 40 character string.
+TORRENT_CACHE_HOSTS = ('btcache.me', 'itorrents.net', 'itorrents.org',
+                       'torcache.net', 'torrage.info')
+
+
+def hash_from_cache_url(url):
+    """
+    Return the v1 infohash a recognised torrent cache url is named after, or an
+    empty string. Only used when the cache serves us something that isn't a
+    torrent, so the downloader can be asked to fetch the url itself.
+    """
+    if not url:
+        return ''
+    url = make_unicode(url)
+    if not isinstance(url, str):
+        return ''
+    parts = urlsplit(url)
+    if parts.scheme not in ('http', 'https'):
+        return ''
+    if (parts.hostname or '').lower() not in TORRENT_CACHE_HOSTS:
+        return ''
+    name = parts.path.rsplit('/', 1)[-1]
+    if not name.lower().endswith('.torrent'):
+        return ''
+    candidate = name[:-len('.torrent')]
+    if not re.fullmatch(r'[0-9a-fA-F]{40}', candidate):
+        return ''
+    return candidate.lower()
+
+
+MAGNET_BTIH = re.compile(r"urn:btih:([0-9a-fA-F]{40}|[A-Za-z2-7]{32})")
+# A v2 magnet carries a multihash rather than a bare hash: 1220 is the prefix
+# for sha256 (function 0x12) of length 32 (0x20), then the hash itself.
+MAGNET_BTMH = re.compile(r"urn:btmh:1220([0-9a-fA-F]{64})")
+
+# Clients identify a v2 torrent by the first 40 hex characters of its sha256
+# infohash, so a v2 id is the same width as a v1 one.
+V2_ID_LENGTH = 40
+
+
+def torrent_info_hashes(data):
+    """
+    Return the (v1, v2) infohashes of torrent data, either of which may be ''.
+
+    A v1 torrent has only the sha1 hash, a v2 torrent (BEP 52) only the
+    sha256, and a hybrid torrent carries both over the same info dictionary.
+    """
+    info = bdecode(data)["info"]
+    # noinspection PyTypeChecker
+    encoded = bencode(info)
+    is_v2 = info.get('meta version') == 2
+    # a hybrid torrent is a v2 torrent that also keeps the v1 piece list
+    v1 = sha1(encoded).hexdigest() if not is_v2 or 'pieces' in info else ''
+    v2 = sha256(encoded).hexdigest() if is_v2 else ''
+    return v1, v2
+
+
 def calculate_torrent_hash(link, data=None):
     """
     Calculate the torrent hash from a magnet link or data. Returns empty string
     when it cannot create a torrent hash given the input data.
+
+    Prefers the v1 hash where a torrent has one, including hybrid torrents:
+    it is what most downloaders key on. Only a v2 only torrent, which has no
+    v1 hash at all, gets the truncated sha256 that clients use as its id.
     """
     logger = logging.getLogger(__name__)
-    try:
-        torrent_hash = re.findall(r"urn:btih:(\w{32,40})", link)[0]
+    link = make_unicode(link) if link else ''
+    magnet = MAGNET_BTIH.search(link)
+    if magnet:
+        torrent_hash = magnet.group(1)
         if len(torrent_hash) == 32:
-            torrent_hash = b16encode(b32decode(torrent_hash)).lower()
-    except (re.error, IndexError, TypeError):
-        if data:
-            try:
-                # noinspection PyUnresolvedReferences
-                info = bdecode(data)["info"]
-                # noinspection PyTypeChecker
-                torrent_hash = sha1(bencode(info)).hexdigest()
-            except Exception as e:
-                logger.error(f"Error calculating hash: {e}")
-                return ''
-        else:
-            logger.error("Cannot calculate torrent hash without magnet link or data")
-            return ''
+            # some indexers use the base32 form of the infohash
+            torrent_hash = make_unicode(b16encode(b32decode(torrent_hash.upper())))
+        torrent_hash = torrent_hash.lower()
+        logger.debug(f"Torrent Hash: {torrent_hash}")
+        return torrent_hash
+
+    magnet = MAGNET_BTMH.search(link)
+    if magnet:
+        torrent_hash = magnet.group(1).lower()[:V2_ID_LENGTH]
+        logger.debug(f"Torrent Hash (v2): {torrent_hash}")
+        return torrent_hash
+
+    if not data:
+        logger.error("Cannot calculate torrent hash without magnet link or data")
+        return ''
+
+    invalid = torrent_data_error(data)
+    if invalid:
+        logger.error(f"Provider returned invalid torrent data: {invalid}")
+        return ''
+
+    try:
+        v1, v2 = torrent_info_hashes(data)
+    except (BencodeDecodeError, KeyError, TypeError, ValueError, RecursionError) as e:
+        logger.error(f"Error calculating hash: {type(e).__name__} {e}")
+        return ''
+
+    torrent_hash = v1 or v2[:V2_ID_LENGTH]
     logger.debug(f"Torrent Hash: {torrent_hash}")
     return torrent_hash

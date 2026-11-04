@@ -25,7 +25,7 @@ from urllib.request import (
     install_opener,
 )
 
-from lazylibrarian.common import get_user_agent
+from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import check_int, get_list
 
@@ -196,7 +196,7 @@ class UtorrentClient:
         if CONFIG['PROXY_HOST']:
             for item in get_list(CONFIG['PROXY_TYPE']):
                 request.set_proxy(CONFIG['PROXY_HOST'], item)
-        request.add_header('User-Agent', get_user_agent())
+        request.add_header('User-Agent', 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.7103.88 Mobile Safari/537.36')
 
         if body:
             # noinspection PyCallingNonCallable
@@ -226,17 +226,17 @@ def check_link():
             try:
                 _ = client.list()
             except Exception as err:
-                return f"uTorrent list FAILED: {type(err).__name__} {str(err)}"
+                return i18n.gettext('%(name)s list FAILED: %(error)s') % {'name': 'uTorrent', 'error': f'{type(err).__name__} {str(err)}'}, False
 
             # we would also like to check lazylibrarian.utorrent_label
             # but uTorrent only sends us a list of labels that have active torrents
             # so we can't tell if our label is known, or does it get created anyway?
             if CONFIG['UTORRENT_LABEL']:
-                return "uTorrent login successful, label not checked"
-            return "uTorrent login successful"
-        return "uTorrent login FAILED\nCheck debug log"
+                return i18n.gettext('%(name)s login successful, label not checked') % {'name': 'uTorrent'}, True
+            return i18n.gettext('%(name)s login successful') % {'name': 'uTorrent'}, True
+        return i18n.gettext('%(name)s login FAILED\nCheck debug log') % {'name': 'uTorrent'}, False
     except Exception as err:
-        return f"uTorrent login FAILED: {type(err).__name__} {str(err)}"
+        return i18n.gettext('%(name)s login FAILED: %(error)s') % {'name': 'uTorrent', 'error': f'{type(err).__name__} {str(err)}'}, False
 
 
 # noinspection PyUnresolvedReferences
@@ -332,9 +332,9 @@ def add_torrent(link, hashid, provider_options=None):
 
     if provider_options:
         if "seed_ratio" in provider_options:
-            uclient.setprops(hashid, "seed_time", provider_options["seed_ratio"])
+            uclient.setprops(hashid, "seed_ratio", provider_options["seed_ratio"])
         if "seed_duration" in provider_options:
-            uclient.setprops(hashid, "seed_ratio", provider_options["seed_duration"])
+            uclient.setprops(hashid, "seed_time", provider_options["seed_duration"])
     count = 10
     while count:
         torrentlist = uclient.list()

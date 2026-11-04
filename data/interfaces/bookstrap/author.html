@@ -2,64 +2,69 @@
 <%!
     import lazylibrarian
     from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.startup import prioritized_infosources
 %>
 <%def name="headerIncludes()">
     <div id="subhead_container">
         <form id="subhead_menu" class="form-inline">
-        %if perm&lazylibrarian.perm_force:
+        %if perm&lazylibrarian.perm_status:
             %if author['Status'] == 'Paused':
-                <a href="resume_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-pause"></i> Paused</a>
+                <a href="resume_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-pause"></i> ${_('Paused')}</a>
             %else:
               %if author['Status'] == 'Active':
-                <a href="want_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-play"></i> Active</a>
+                <a href="want_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-play"></i> ${_('Active')}</a>
               %else:
                 %if author['Status'] == 'Wanted':
-                  <a href="ignore_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-plus"></i> Wanted</a>
+                  <a href="ignore_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-plus"></i> ${_('Wanted')}</a>
                 %else:
-                  <a href="pause_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> Ignored</a>
+                  <a href="pause_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Ignored')}</a>
                 %endif
               %endif
             %endif
-            <a href="refresh_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> Refresh Author</a>
-            <a href="library_scan_author?authorid=${author['AuthorID']}&library=eBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> eBook Scan</a>
+        %endif
+        %if perm&lazylibrarian.perm_force:
+            <a href="refresh_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('Refresh Author')}</a>
+            <a href="library_scan_author?authorid=${author['AuthorID']}&library=eBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('eBook Scan')}</a>
             %if CONFIG.get_int('AUDIO_TAB') > 0:
-                <a href="library_scan_author?authorid=${author['AuthorID']}&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> AudioBook Scan</a>
+                <a href="library_scan_author?authorid=${author['AuthorID']}&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('AudioBook Scan')}</a>
             %endif
-            <button class="button btn btn-sm btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> Remove Author</button>
+        %endif
+        %if perm&lazylibrarian.perm_edit:
+            <button class="button btn btn-sm btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> ${_('Remove Author')}</button>
+        %endif
             %if ignored == 'True':
               %if library == 'AudioBook':
-                <a href="author_page?authorid=${author['AuthorID']}&ignored=False&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> Show Active</a>
+                <a href="author_page?authorid=${author['AuthorID']}&ignored=False&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Show Active')}</a>
               %else:
-                <a href="author_page?authorid=${author['AuthorID']}&ignored=False" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> Show Active</a>
+                <a href="author_page?authorid=${author['AuthorID']}&ignored=False" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Show Active')}</a>
               %endif
             %else:
               %if library == 'AudioBook':
-                <a href="author_page?authorid=${author['AuthorID']}&ignored=True&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> Show Ignored</a>
+                <a href="author_page?authorid=${author['AuthorID']}&ignored=True&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Show Ignored')}</a>
               %else:
-                <a href="author_page?authorid=${author['AuthorID']}&ignored=True" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> Show Ignored</a>
+                <a href="author_page?authorid=${author['AuthorID']}&ignored=True" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Show Ignored')}</a>
               %endif
             %endif
-        %endif
         %if showseries >= 1:
             %if perm&lazylibrarian.perm_series:
-              <a href="series?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> Series</a>
+              <a href="series?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Series')}</a>
               %endif
         %endif
         %if CONFIG['GR_FOLLOW']:
             %if author['GRfollow']:
               %if author['GRfollow'] != '0':
-                <a href="unfollow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-check"></i> Following</a>
+                <a href="unfollow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-check"></i> ${_('Following')}</a>
               %else:
-                <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> Not Following</a>
+                <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
               %endif
             %else:
-              <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> Not Following</a>
+              <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
             %endif
         %endif
         %if lazylibrarian.PRIMARY_AUTHORS == True:
-            <a href="toggle_primary?page=author_page&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Primary Author, or Contributor"><i class="fa fa-star"></i></a>
+            <a href="toggle_primary?page=author_page&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-star"></i></a>
         %else:
-            <a href="toggle_primary?page=author_page&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="Primary Author, or Contributor"><i class="fa fa-handshake"></i></a>
+            <a href="toggle_primary?page=author_page&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-handshake"></i></a>
         %endif
          <div class="form-group pull-right">
             %if len(types) > 1:
@@ -67,17 +72,17 @@
                 <label for="chooselib"><small>&nbsp;</small></label>
                 <select class="form-control input-sm" name="chooselib" id="chooselib">
                   %for library_type in types:
-                    <option value="${library_type}">${library_type}</option>
+                    <option value="${library_type}">${status_label(library_type)}</option>
                   %endfor
                 </select>
               %endif
             %endif
             %if len(languages) > 1:
-              <label for="chooselanguage"><small>&nbsp;Lang</small></label>
+              <label for="chooselanguage"><small>&nbsp;${_('Lang')}</small></label>
               <select class="form-control input-sm" name="chooselanguage" id="chooselanguage">
-                <option value="">All</option>
+                <option value="">${_('All')}</option>
                 %for language in languages:
-                  <option value="${language['BookLang']}">${language['BookLang']}</option>
+                  <option value="${language['BookLang'] | h}">${language['label'] | h}</option>
                 %endfor
               </select>
             %endif
@@ -85,12 +90,12 @@
          %if CONFIG['USER_ACCOUNTS']:
            %if CONFIG['RSS_ENABLED']:
              %if CONFIG.get_int('EBOOK_TAB') > 0:
-             <a href="rss_feed?user=${user}&type=eBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="rss feed of recent ebooks"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-book"></i></a>
-             <link rel="alternate" type="application/rss+xml" title="LazyLibrarian latest eBooks" href="rss_feed?user=${user}&type=eBook&authorid=${author['AuthorID']}&limit=10.xml">
+             <a href="rss_feed?user=${user}&type=eBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent ebooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-book"></i></a>
+             <link rel="alternate" type="application/rss+xml" title="${_('LazyLibrarian latest eBooks') | h}" href="rss_feed?user=${user}&type=eBook&authorid=${author['AuthorID']}&limit=10.xml">
              %endif
              %if CONFIG.get_int('AUDIO_TAB') > 0:
-             <a href="rss_feed?user=${user}&type=AudioBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="rss feed of recent audiobooks"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-headphones"></i></a>
-             <link rel="alternate" type="application/rss+xml" title="LazyLibrarian latest AudioBooks" href="rss_feed?user=${user}&type=AudioBook&authorid=${author['AuthorID']}&limit=10.xml">
+             <a href="rss_feed?user=${user}&type=AudioBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent audiobooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-headphones"></i></a>
+             <link rel="alternate" type="application/rss+xml" title="${_('LazyLibrarian latest AudioBooks') | h}" href="rss_feed?user=${user}&type=AudioBook&authorid=${author['AuthorID']}&limit=10.xml">
              %endif
            %endif
          %endif
@@ -109,73 +114,108 @@
     </div>
     <div id="authorhead_container" class="col-md-9">
         <div id="authorhead_menu">
-            <h1><a href="${author['AuthorLink']}" target="_blank" rel="noreferrer">${author['AuthorName']}</a>
+            <%
+                # Every linked source, each with its own stored page link (see
+                # INFOSOURCES author_link / link_author_source, set_primary_source,
+                # get_all_author_details). No single "primary" is needed here any
+                # more - that's still tracked (PrimarySource) for future metadata-
+                # merge preference, but this page just lists what's linked.
+                linkable_sources = [(name, src['author_key'], src['author_link'])
+                                   for name, src in prioritized_infosources() if src.get('author_link')]
+                linked_sources = [(name, author.get(link_col))
+                                 for name, id_col, link_col in linkable_sources if author.get(id_col)]
+            %>
+            <h1><a href="author_detail?authorid=${author['AuthorID']}">${author['AuthorName']}</a>
             %if perm&lazylibrarian.perm_edit:
-            <a href="edit_author?authorid=${author['AuthorID']}"><small><i>Edit</i></small></a>
+            <a href="edit_author?authorid=${author['AuthorID']}"><small><i>${_('Edit')}</i></small></a>
             %endif
             </h1>
+            %if linked_sources or gb_search_link or amazon_search_link or author.get('AmazonAuthorURL'):
+            <p>
+            %for name, link in linked_sources:
+                %if link:
+                <a href="${link}" target="_blank" rel="noreferrer"><small><i>${name}</i></small></a>&nbsp;&nbsp;
+                %else:
+                <small><i class="text-muted" title="${_('Linked, page link not fetched yet') | h}">${name}</i></small>&nbsp;&nbsp;
+                %endif
+            %endfor
+            %if gb_search_link:
+            <a href="${gb_search_link}" target="_blank" rel="noreferrer" title="${_('Google Books has no author page of its own - this is a name search, not a verified link') | h}"><small><i>${_('GoogleBooks (search)')}</i></small></a>&nbsp;&nbsp;
+            %endif
+            %if author.get('AmazonAuthorURL'):
+            <a href="${author['AmazonAuthorURL']}" target="_blank" rel="noreferrer" title="${_('Manually linked Amazon Author Central page') | h}"><small><i>Amazon</i></small></a>&nbsp;&nbsp;
+            %elif amazon_search_link:
+            <a href="${amazon_search_link}" target="_blank" rel="noreferrer" title="${_('Amazon has no free author-lookup API - this is a name search, not a verified link. Useful for self-published authors.') | h}"><small><i>${_('Amazon (search)')}</i></small></a>&nbsp;&nbsp;
+            %endif
+            </p>
+            %endif
             %if CONFIG['SHOW_REASON']:
+              <%
+                reasonstring = None
+              %>
               %if author['Reason']:
               <%
                 reasonlist = author['Reason'].split()
                 match reasonlist[0].lower().strip(":"):
                   case 'webserver': # manual search and add of author
-                    reasonstring = "Manual search"
+                    reasonstring = _('Manual search')
                   case 'wishlist': # added via wishlist rss search
-                    reasonstring = "Wishlist search " + ' '.join(reasonlist[1:])
+                    reasonstring = _('Wishlist search %(name)s') % {'name': ' '.join(reasonlist[1:])}
                   case 'process_alternate': # added via import of alt folder
-                    reasonstring = f"Import {' '.join(reasonlist[1:])} from alternate folder"
+                    reasonstring = _('Import %(name)s from alternate folder') % {'name': ' '.join(reasonlist[1:])}
                   case 'ol.find_book':
-                    reasonstring = "OpenLibrary search"
+                    reasonstring = _('%(source)s search') % {'source': 'OpenLibrary'}
                   case 'ol_get_author_books':
-                    reasonstring = "OpenLibrary search"
+                    reasonstring = _('%(source)s search') % {'source': 'OpenLibrary'}
                   case 'gr.find_book':
-                    reasonstring = "GoodReads search"
+                    reasonstring = _('%(source)s search') % {'source': 'GoodReads'}
                   case 'gr_get_author_books':
-                    reasonstring = "GoodReads search"
+                    reasonstring = _('%(source)s search') % {'source': 'GoodReads'}
                   case 'hc.find_book':
-                    reasonstring = "HardCover search"
+                    reasonstring = _('%(source)s search') % {'source': 'HardCover'}
                   case 'hc_get_author_books':
-                    reasonstring = "HardCover search"
+                    reasonstring = _('%(source)s search') % {'source': 'HardCover'}
                   case 'gb.find_book':
-                    reasonstring = "GoogleBooks search"
+                    reasonstring = _('%(source)s search') % {'source': 'GoogleBooks'}
                   case 'gb_get_author_books':
-                    reasonstring = "GoogleBooks search"
+                    reasonstring = _('%(source)s search') % {'source': 'GoogleBooks'}
                   case 'import_csv':
-                    reasonstring = "CSV import"
+                    reasonstring = _('CSV import')
                   case 'sync_calibre_list':
-                    reasonstring = "Calibre Sync"
+                    reasonstring = _('Calibre Sync')
                   case 'api': #by name, id, and refresh
                     reasonstring = "API"
                   case 'add':
-                    reasonstring = f"Import author of {' '.join(reasonlist[3:])}"
+                    reasonstring = _('Import author of %(title)s') % {'title': ' '.join(reasonlist[3:])}
                   case 'contributor':
                     reasonstring = ' '.join(reasonlist)
                   case 'series':
-                    reasonstring = "Search for series " + ' '.join(reasonlist[1:])
+                    reasonstring = _('Search for series %(name)s') % {'name': ' '.join(reasonlist[1:])}
                   case _:
-                    reasonstring = null
+                    reasonstring = author['Reason']
               %>
               %else:
-                reasonstring = "Book added before reason set"
+              <%
+                reasonstring = _('Book added before reason set')
+              %>
               %endif
               %if reasonstring:
-              <p><b> Added by:</b> ${reasonstring}</p>
+              <p><b> ${_('Added by:')}</b> ${reasonstring}</p>
               %endif
             %endif
             %if author['AuthorDeath']:
-            <p><b>Born:</b> ${author['AuthorBorn']}, <b>Died:</b> ${author['AuthorDeath']}</p>
+            <p><b>${_('Born:')}</b> ${author['AuthorBorn']}, <b>${_('Died:')}</b> ${author['AuthorDeath']}</p>
             %else:
                 %if author['AuthorBorn']:
-                    <p><b>Born:</b> ${author['AuthorBorn']}</p>
+                    <p><b>${_('Born:')}</b> ${author['AuthorBorn']}</p>
                 %endif
             %endif
             %if author['Status'] == 'Loading':
             <p>
-            <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Fetching information for this author ...</button>
+            <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Fetching information for this author ...')}</button>
             </p>
             %endif
-            <p><b>Totalbooks:</b> ${author['TotalBooks']}</p>
+            <p><b>${_('Totalbooks:')}</b> ${author['TotalBooks']}</p>
 
             <%
                 totalbooks = author['UnignoredBooks']
@@ -200,11 +240,11 @@
                     css = "bg-danger"
             %>
 <div class="row" title="${percent}">
-  <div class="col-xs-4"><strong>Progress:</strong></div>
+  <div class="col-xs-4"><strong>${_('Progress:')}</strong></div>
   <div class="col-xs-4">
     <div class="progress">
       <div class="progress-bar" role="progressbar" aria-valuenow="${percent}" aria-valuemin="0" aria-valuemax="100" style="width: ${percent}%;">
-        <span class="sr-only">${percent}% Complete</span>
+        <span class="sr-only">${_('%(percent)s%% Complete') % {'percent': percent}}</span>
       </div>
     </div>
   </div>
@@ -226,47 +266,55 @@
     %if perm&lazylibrarian.perm_status or  CONFIG['USER_ACCOUNTS']:
     <div class="col-xs-12 col-sm-5">
       <div class="form-group">
-        <label for="mark_books" class="">Mark selected ${library}s as</label>
+        <label for="mark_books" class="">${_('Mark selected AudioBooks as') if library == 'AudioBook' else _('Mark selected eBooks as')}</label>
         <select class="mark_books form-control input-sm" id="action" name="action">
           %if perm&lazylibrarian.perm_status:
-            <option value="WantEbook">eBook Wanted</option>
+            <option value="WantEbook">${_('eBook Wanted')}</option>
             %if CONFIG.get_int('AUDIO_TAB') > 0:
-              <option value="WantAudio">Audio Wanted</option>
+              <option value="WantAudio">${_('Audio Wanted')}</option>
             %endif
             %if CONFIG.get_int('EBOOK_TAB') > 0 and CONFIG.get_int('AUDIO_TAB') > 0:
-              <option value="WantBoth">Both Wanted</option>
+              <option value="WantBoth">${_('Both Wanted')}</option>
             %endif
-            <option value="Have">Have</option>
-            <option value="Ignored">Ignored</option>
-            %endif
-            %if CONFIG.get_int('EBOOK_TAB') > 0 and CONFIG.get_int('AUDIO_TAB') > 0:
-              <option value="IgnoreBoth">Both Ignored</option>
-            %endif
-            <option value="Skipped">Skipped</option>
-            <option value="Remove">Remove</option>
-            <option value="Delete">Delete</option>
-            <option value="Leave" hidden>Leave</option>
+            <% mark_options = [('Have', _('eBook Have'), _('Audio Have'), _('Both Have')),
+                               ('Ignore', _('eBook Ignored'), _('Audio Ignored'), _('Both Ignored')),
+                               ('Skip', _('eBook Skipped'), _('Audio Skipped'), _('Both Skipped'))] %>
+            %for code, ebook_label, audio_label, both_label in mark_options:
+              %if CONFIG.get_int('EBOOK_TAB') > 0:
+                <option value="${code}Ebook">${ebook_label}</option>
+              %endif
+              %if CONFIG.get_int('AUDIO_TAB') > 0:
+                <option value="${code}Audio">${audio_label}</option>
+              %endif
+              %if CONFIG.get_int('EBOOK_TAB') > 0 and CONFIG.get_int('AUDIO_TAB') > 0:
+                <option value="${code}Both">${both_label}</option>
+              %endif
+            %endfor
+            <option value="Remove">${_('Remove')}</option>
+            <option value="Delete">${_('Delete')}</option>
+            <option value="Leave" hidden>${_('Leave')}</option>
+          %endif
           % endif
           %if CONFIG['USER_ACCOUNTS']:
-            <option value="Unread">Unread</option>
-            <option value="Read">Read</option>
-            <option value="ToRead">To Read</option>
-            <option value="Reading">Reading</option>
-            <option value="Abandoned">Abandoned</option>
+            <option value="Unread">${_('Unread')}</option>
+            <option value="Read">${_('Read')}</option>
+            <option value="ToRead">${_('To Read')}</option>
+            <option value="Reading">${_('Reading')}</option>
+            <option value="Abandoned">${_('Abandoned')}</option>
           %endif
         </select>
       </div>
-      <input type="submit" class="mark_books btn btn-sm btn-primary" onclick="submitFormAjax()" value="Go">
+      <input type="submit" class="mark_books btn btn-sm btn-primary" onclick="submitFormAjax()" value="${_('Go') | h}">
     </div>
     %if CONFIG['TOGGLES']:
     <div class="toggles col-xs-12 col-sm-7 text-right">
-    Toggle: <a class="toggle-vis" data-column="1"> Cover</a>
-    <a class="toggle-vis" data-column="3"> Title</a>
-    <a class="toggle-vis" data-column="4"> Series</a>
-    <a class="toggle-vis hidden-sm hidden-xs" data-column="5"> Rating</a>
-    <a class="toggle-vis" data-column="6"> Released</a>
-    <a class="toggle-vis" data-column="7"> Added</a>
-    <a class="toggle-vis" data-column="8"> Status</a>
+    ${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Cover')}</a>
+    <a class="toggle-vis" data-column="3"> ${_('Title')}</a>
+    <a class="toggle-vis" data-column="4"> ${_('Series')}</a>
+    <a class="toggle-vis hidden-sm hidden-xs" data-column="5"> ${_('Rating')}</a>
+    <a class="toggle-vis" data-column="6"> ${_('Released')}</a>
+    <a class="toggle-vis" data-column="7"> ${_('Added')}</a>
+    <a class="toggle-vis" data-column="8"> ${_('Status')}</a>
     </div>
     %endif
   </div>
@@ -275,14 +323,14 @@
       <thead>
         <tr>
           <th class="select text-center no-sort"><input type="checkbox" onClick="toggleAll(this)" /></th>
-          <th class="bookart text-center no-sort">Cover</th>
-          <th class="authorname hidden">Author</th>
-          <th class="bookname">Title</th>
-          <th class="series">Series</th>
-          <th class="stars text-center hidden-sm hidden-xs">Rating</th>
-          <th class="date text-center">Released</th>
-          <th class="date text-center">Added</th>
-          <th class="status text-center">Status</th>
+          <th class="bookart text-center no-sort">${_('Cover')}</th>
+          <th class="authorname hidden">${_('Author')}</th>
+          <th class="bookname">${_('Title')}</th>
+          <th class="series">${_('Series')}</th>
+          <th class="stars text-center hidden-sm hidden-xs">${_('Rating')}</th>
+          <th class="date text-center">${_('Released')}</th>
+          <th class="date text-center">${_('Added')}</th>
+          <th class="status text-center">${_('Status')}</th>
         </tr>
       </thead>
     </table>
@@ -301,21 +349,22 @@
 
         $('#removeme').click(function () {
             bootbox.confirm({
-                message: "Are you sure you want to permanently delete the author?",
+                message: ${_js('Are you sure you want to permanently delete the author?')},
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
                 callback: function (result) {
-                  if (result) { $.get("remove_author", {'authorid': '${author['AuthorID']}' },
-                      function (data) { }); }
-                window.location = "authors"
+                  if (result) {
+                      $.get("remove_author", {'authorid': '${author['AuthorID']}' });
+                      window.location = "authors";
+                  }
                 }
             });
         });
@@ -344,6 +393,9 @@
                 "order": [[ 6, 'desc' ]],
                 "bAutoWidth": false,
                 "stateSave": true,
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "rowId": 0,
                 "columnDefs":[
                     { targets: 'no-sort', orderable: false },
@@ -356,7 +408,7 @@
                     { targets: [1],
                         'class': 'text-center',
                         'render': function(data, type, row) {
-                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="Cover" class="bookcover-sm img-responsive"></a>';} },
+                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="' + ${_js('Cover')} + '" class="bookcover-sm img-responsive"></a>';} },
                     { targets: [2], 'class': "hidden" },
                     { targets: [3], 'render': function(data, type, row) {
                         var pre = data.split('<');
@@ -382,12 +434,12 @@
                     { targets: [5],
                         'class': 'text-center',
                         'render': function(data, type, row) {
-                            return '<img src="images/' + data + '-stars.png" alt="Rating">';} },
+                            return '<img src="images/' + data + '-stars.png" alt="' + ${_js('Rating')} + '">';} },
                     %endif
                     { targets: [6],
                         'class': "text-center",
                         'render': function(data, type, row) {
-                            return '<a data-toggle="tooltip" title="Listed: ' + row[16] + '\n' + row[17] + '">' + row[6] + '</a>';} },
+                            return '<a data-toggle="tooltip" title="' + ${_js('Listed:')} + ' ' + row[16] + '\n' + row[17] + '">' + row[6] + '</a>';} },
                     { targets: [7],
                         'class': 'text-center',
                         'render': function(data, type, row) {
@@ -414,56 +466,56 @@
                         btn = btn + flag
                         if ( btn.indexOf('Open') >= 0 ) {
                                 btn = '<a class="button green btn btn-xs btn-warning" href="open_book?bookid=' + row[9] +
-                                    '&library=eBook" target="_self"><i class="fa fa-book"></i> ' + btn + '</a>'
+                                    '&library=eBook" target="_self"><i class="fa fa-book"></i> ' + llStatus(btn) + '</a>'
                             %if len(email):
                                 btn += '<a class="button green btn btn-xs btn-info" href="send_book?bookid=' + row[9] +
-                                    '&library=eBook" target="_self">Send</a>'
+                                    '&library=eBook" target="_self">' + ${_js('Send')} + '</a>'
                             %endif
                         }
                         else if ( btn.indexOf('Wanted') >= 0 ) {
-                            btn = '<p><a class="a btn btn-xs btn-danger"><i class="fa fa-book"></i> ' + btn + '</a></p><p><a class="b btn btn-xs btn-success" href="search_for_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-search"></i> Search</a></p>'}
+                            btn = '<p><a class="a btn btn-xs btn-danger"><i class="fa fa-book"></i> ' + llStatus(btn) + '</a></p><p><a class="b btn btn-xs btn-success" href="search_for_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-search"></i> ' + ${_js('Search')} + '</a></p>'}
                         else if ( btn.indexOf('Snatched') >= 0 ) {
-                            btn = '<a class="button btn btn-xs btn-info"><i class="fa fa-book"></i> ' + btn + '</a>'}
+                            btn = '<a class="button btn btn-xs btn-info"><i class="fa fa-book"></i> ' + llStatus(btn) + '</a>'}
                         else if ( btn.indexOf('Ignored') >= 0 ) {
                             btn = '<button onclick="dlinfo(\'' + btn + '^' + row[9] +
-                            '\')" class="button btn btn-xs btn-primary" type="button"><i class="fa fa-book"></i> ' + btn + '</button>'}
+                            '\')" class="button btn btn-xs btn-primary" type="button"><i class="fa fa-book"></i> ' + llStatus(btn) + '</button>'}
                         else if ( btn.indexOf('Have') >= 0 ) {
                             %if perm&lazylibrarian.perm_status:
-                            btn = '<a class="button btn btn-xs btn-info"><i class="fa fa-book"></i> ' + btn + '</a>'
+                            btn = '<a class="button btn btn-xs btn-info"><i class="fa fa-book"></i> ' + llStatus(btn) + '</a>'
                             %else:
-                            btn = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-book"></i> Request</a></p>'
+                            btn = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-book"></i> ' + ${_js('Request')} + '</a></p>'
                             %endif
                             }
                         else {
                             %if perm&lazylibrarian.perm_status:
-                            btn = '<a class="button btn btn-xs btn-default grey"><i class="fa fa-book"></i> ' + btn + '</a>'
+                            btn = '<a class="button btn btn-xs btn-default grey"><i class="fa fa-book"></i> ' + llStatus(btn) + '</a>'
                             %else:
-                            btn = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-book"></i> Request</a></p>'
+                            btn = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=eBook" target="_self"><i class="fa fa-book"></i> ' + ${_js('Request')} + '</a></p>'
                             %endif
                             }
                         if ( btn2.indexOf('Open') >= 0 ) {
                                 btn2 = '<a class="button green btn btn-xs btn-warning" href="open_book?bookid=' + row[9] +
-                                    '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> ' + btn2 + '</a>'
+                                    '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</a>'
                         }
                         else if ( btn2.indexOf('Wanted') >= 0 ) {
-                            btn2 = '<p><a class="a btn btn-xs btn-danger"><i class="fa fa-headphones"></i> ' + btn2 + '</a></p><p><a class="b btn btn-xs btn-success" href="search_for_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-search"></i> Search</a></p>'}
+                            btn2 = '<p><a class="a btn btn-xs btn-danger"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</a></p><p><a class="b btn btn-xs btn-success" href="search_for_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-search"></i> ' + ${_js('Search')} + '</a></p>'}
                         else if ( btn2.indexOf('Snatched') >= 0 ) {
-                            btn2 = '<a class="button btn btn-xs btn-info"><i class="fa fa-headphones"></i> ' + btn2 + '</a>'}
-                        else if ( btn.indexOf('Ignored') >= 0 ) {
+                            btn2 = '<a class="button btn btn-xs btn-info"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</a>'}
+                        else if ( btn2.indexOf('Ignored') >= 0 ) {
                             btn2 = '<button onclick="dlinfo(\'' + btn2 + '^' + row[9] +
-                            '\')" class="button btn btn-xs btn-primary" type="button"><i class="fa fa-headphones"></i> ' + btn2 + '</button>'}
+                            '\')" class="button btn btn-xs btn-primary" type="button"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</button>'}
                         else if ( btn2.indexOf('Have') >= 0 ) {
                             %if perm&lazylibrarian.perm_status:
-                            btn2 = '<a class="button btn btn-xs btn-info"><i class="fa fa-headphones"></i> ' + btn2 + '</a>'
+                            btn2 = '<a class="button btn btn-xs btn-info"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</a>'
                             %else:
-                            btn2 = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> Request</a></p>'
+                            btn2 = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> ' + ${_js('Request')} + '</a></p>'
                             %endif
                             }
                         else {
                             %if perm&lazylibrarian.perm_status:
-                            btn2 = '<a class="button btn btn-xs btn-default grey"><i class="fa fa-headphones"></i> ' + btn2 + '</a>'
+                            btn2 = '<a class="button btn btn-xs btn-default grey"><i class="fa fa-headphones"></i> ' + llStatus(btn2) + '</a>'
                             %else:
-                            btn2 = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> Request</a></p>'
+                            btn2 = '<p><a class="button btn btn-xs btn-default grey" href="request_book?bookid=' + row[9] + '&library=AudioBook" target="_self"><i class="fa fa-headphones"></i> ' + ${_js('Request')} + '</a></p>'
                             %endif
                             }
                         %if CONFIG.get_int('EBOOK_TAB') == 0:
@@ -477,19 +529,14 @@
                         %endif
                         return btn + btn2;} }
                     ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No books found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No books found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[6, 'desc']],
                 "bServerSide": true,
                 "sAjaxSource": 'get_books?source=Author&AuthorID=${author['AuthorID']}&booklang=${booklang}&library=${library}&ignored=${ignored}',
                 "bFilter": true,
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
                     // hide cover,stars,date on small devices
@@ -536,7 +583,7 @@
         }
 
         oTable.search(decodeURI(document.getElementById("bookfilter").value)).draw()
-        $('.dataTables_filter input').attr("placeholder", "Results Filter");
+        $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
         //$(window).resize(function() {oTable.draw(false)});
         $('a.toggle-vis').click(function (e) {
             e.preventDefault();
@@ -552,11 +599,11 @@
         $.get('dlinfo', {'target': target},
         function(data) {
             bootbox.dialog({
-                title: 'Title '+ status,
+                title: ${_js('Title')} + ' ' + status,
                 message: '<pre>'+data+'</pre>',
                 buttons: {
                    primary: {
-                        label: "Close",
+                        label: ${_js('Close')},
                         className: 'btn-primary'
                     }
                 }
@@ -569,7 +616,7 @@
         var formData = new FormData(form);
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div>',
             size: 'small',
             backdrop: false,
             closeButton: false
@@ -596,21 +643,21 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
             bootbox.dialog({
-                title: 'Mark Books Complete',
+                title: ${_js('Mark Books Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             window.location = data.redirect;
@@ -625,11 +672,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload(); }
                         },

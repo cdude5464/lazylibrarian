@@ -88,6 +88,7 @@ import time
 import traceback
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import ROLE, database
@@ -99,6 +100,7 @@ from lazylibrarian.bookwork import (
     isbnlang,
     language_from_words,
 )
+from lazylibrarian.common import is_valid_language
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
     check_int,
@@ -112,7 +114,7 @@ from lazylibrarian.formatter import (
 )
 from lazylibrarian.images import cache_bookimg, get_book_cover
 
-id_key = {'DNB': 'dnb_id', 'HardCover': 'hc_id', 'GoodReads': 'gr_id',
+id_key = {'DNB': 'dnb_id', 'BN': 'bn_id', 'DBK': 'dbk_id', 'RanobeDB': 'ran_id', 'HardCover': 'hc_id', 'GoodReads': 'gr_id',
           'GoogleBooks': 'gb_id', 'OpenLibrary': 'ol_id'}
 
 
@@ -157,12 +159,12 @@ def validate_bookdict(bookdict, current_db=None):
             lang = ''
             languages = get_list(bookdict.get('booklang'))
             if not languages:
-                detected_lang, confidence = language_from_words(bookdict['bookname'])
+                detected_lang, confidence = language_from_words(bookdict['bookname'], desc=bookdict.get('bookdesc', ''))
                 if detected_lang and confidence > 0.6:
                     languages = [detected_lang]
             if languages:
                 for item in languages:
-                    if item in wantedlanguages:
+                    if is_valid_language(item, wantedlanguages):
                         lang = item
                         break
             if not lang and bookdict.get('bookisbn'):
@@ -324,6 +326,20 @@ def add_bookdict_to_db(book):
         db.close()
         return False
 
+    _, auth_id = lazylibrarian.importer.get_preferred_author(book.get('authorname', ''), authorid=book['authorid'])
+    if not auth_id:
+        auth_id = lazylibrarian.importer.add_author_to_db(authorname=None, refresh=False,
+                                                          authorid=book['authorid'], addbooks=False,
+                                                          reason=f"Bookdict author of {book['bookname']}")
+    if not auth_id:
+        logger.error(f"AuthorID {book['authorid']} not found, Unable to add {book['bookname']}")
+        db.close()
+        return False
+
+    if auth_id != book['authorid']:
+        logger.warning(f"AuthorID changed from bookdict {book['authorid']} to {auth_id}")
+        book['authorid'] = auth_id
+
     if book['bookimg'] and book['bookimg'].startswith('http'):
         book['bookimg'] = cache_bookimg(book['bookimg'], book['bookid'], book['source'].lower())
     if not book['bookimg']:  # no results or failed to cache it
@@ -358,7 +374,7 @@ def add_bookdict_to_db(book):
     author = db.match('SELECT authorname from authors where authorid=?', (book['authorid'],))
     db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
               (book['authorid'], book['bookid'], ROLE['PRIMARY']), suppress='UNIQUE')
-    logger.debug(f"Add primary {book['authorid']}{author['authorname']}")
+    logger.debug(f"Add primary {book['authorid']}:{author['authorname']}")
     if CONFIG.get_bool('CONTRIBUTING_AUTHORS') and book.get('contributors'):
         for entry in book['contributors']:
             if entry[0]:
@@ -433,6 +449,15 @@ def add_bookdict_to_db(book):
         added = 'added'
     logger.info(f"{book['bookname']} by {book['authorname']} {added}, {book['status']}/{book['audiostatus']}")
     db.close()
+    # Audiobook enrichment: fill Narrator (and genre/description/cover when empty)
+    # from Audnexus for an owned audiobook that has an ASIN. No-op unless the
+    # AUDNEXUS toggle is on and the fields are empty; never lets an enrichment
+    # error break the book add.
+    try:
+        from lazylibrarian.audnexus import enrich_audiobook
+        enrich_audiobook(book['bookid'])
+    except Exception as enrich_err:
+        logger.debug(f"Audnexus enrich skipped for {book.get('bookid')}: {enrich_err}")
     return True
 
 
@@ -502,8 +527,10 @@ def add_author_books_to_db(resultqueue, bookstatus, audiostatus, entrystatus, en
             logger.debug(f"Aborting {threadname}")
             break
         summary['total'] += 1
-        bookdict['status'] = bookstatus
-        bookdict['audiostatus'] = audiostatus
+        if not bookdict.get('status'):
+            bookdict['status'] = bookstatus
+        if not bookdict.get('audiostatus'):
+            bookdict['audiostatus'] = audiostatus
         # since we're using this in a loop, pass a preconfigured db
         # to save opening a new cursor and setting fuzzy collation for each entry
         bookdict, rejected = validate_bookdict(bookdict, current_db=db)
@@ -852,12 +879,16 @@ def add_series_entries(bookdict, bookstatus, audiostatus, get_series_members, ge
                                      f"for series {ser_name}, author not in database")
                         continue
 
-                cmd = f"SELECT * from authors WHERE authorname=? or {source.lower()}_id=?"
-                exists = db.match(cmd, (auth_name, member[3]))
+                if member[3]:
+                    cmd = f"SELECT * from authors WHERE authorname=? or {source.lower()}_id=?"
+                    exists = db.match(cmd, (auth_name, member[3]))
+                else:
+                    # dbk has no author id here, and an unlinked author has an empty one,
+                    # so use the author get_preferred_author found
+                    exists = db.match("SELECT * from authors WHERE AuthorID=?", (exists,))
                 if exists:
                     auth_id = exists['AuthorID']
-                    if fuzz.ratio(auth_name.lower().replace('.', ''),
-                                  member[2].lower().replace('.', '')) < 95:
+                    if fuzz.ratio(auth_name, member[2], processor=default_process) < 95:
                         akas = get_list(exists['AKA'], ',')
                         if member[2] not in akas:
                             akas.append(member[2])

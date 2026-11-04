@@ -12,12 +12,14 @@
 
 import contextlib
 import logging
+import re
 import time
 import traceback
 from urllib.parse import quote_plus
 
 from bs4 import BeautifulSoup
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import ROLE, database
@@ -38,6 +40,7 @@ from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
     check_float,
     check_int,
+    check_year,
     date_format,
     format_author_name,
     get_list,
@@ -51,6 +54,12 @@ from lazylibrarian.formatter import (
     unaccented,
 )
 from lazylibrarian.images import cache_bookimg, get_book_cover
+from lazylibrarian.oldump import (
+    query_local_dump_author_info,
+    query_local_dump_authorid,
+    query_local_dump_authorid_of_book,
+    query_local_dump_books,
+)
 
 
 class OpenLibrary:
@@ -141,19 +150,19 @@ class OpenLibrary:
                         workid = workid[0]
 
                     if searchauthorname:
-                        author_fuzz = fuzz.token_sort_ratio(author_name, searchauthorname)
+                        author_fuzz = fuzz.token_sort_ratio(author_name, searchauthorname, processor=default_process)
                     else:
-                        author_fuzz = fuzz.token_sort_ratio(author_name, searchterm)
+                        author_fuzz = fuzz.token_sort_ratio(author_name, searchterm, processor=default_process)
                     if searchtitle:
                         if book_title.endswith(')'):
                             book_title = book_title.rsplit(' (', 1)[0]
-                        book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchtitle.lower())
+                        book_fuzz = fuzz.token_set_ratio(book_title, searchtitle, processor=default_process)
                         # lose a point for each extra word in the fuzzy matches so we get the closest match
                         words = len(get_list(book_title))
                         words -= len(get_list(searchtitle))
                         book_fuzz -= abs(words)
                     else:
-                        book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchterm.lower())
+                        book_fuzz = fuzz.token_set_ratio(book_title, searchterm, processor=default_process)
                         words = len(get_list(book_title))
                         words -= len(get_list(searchterm))
                         book_fuzz -= abs(words)
@@ -209,89 +218,124 @@ class OpenLibrary:
         except Exception:
             self.logger.error(f'Unhandled exception in OL.find_results: {traceback.format_exc()}')
 
+    def get_authorid_from_books(self, authorbooks, authorname, refresh):
+        for book in authorbooks['docs']:
+            if not book.get('author_name'):
+                continue
+            cnt = 0
+            while cnt < len(book['author_name']):
+                author_name = format_author_name(book['author_name'][cnt],
+                                                 postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
+                if fuzz.token_set_ratio(author_name, authorname, processor=default_process) >= CONFIG.get_int('NAME_RATIO'):
+                    key = book.get('author_key')[cnt]
+                    if key:
+                        key = key.split('/')[-1]
+                    res = self.get_author_info(key, authorname, refresh)
+                    if res and res['authorname'] != authorname:
+                        res['aka'] = authorname
+                    return res
+                cnt += 1
+        return {}
+
     def find_author_id(self, authorname='', title='', refresh=False):
+        if not authorname:
+            authorname = ''  # we may just have a title?
         authorname = authorname.replace('#', '').replace('/', '_')
         authorname = format_author_name(authorname, postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
-        self.logger.debug(f"Getting OL author id for {authorname}, refresh={refresh}")
+        self.logger.debug(f"Getting OL author id for {authorname}:{title}, refresh={refresh}")
+
+        # try local dump first
         if title:
-            authorbooks, in_cache = json_request(
+            res = query_local_dump_authorid_of_book(authorname, title)
+            if res:
+                key = res['authorid']
+                name = res['authorname']
+                res = self.get_author_info(key, name, refresh)
+                if res and res['authorname'] != authorname:
+                    res['aka'] = authorname
+                self.logger.debug(f"Found {res['authorid']}:{res['authorname']} using local dump author/title")
+                return res
+
+        # no results using author/title, try author only
+        res = query_local_dump_authorid(authorname)
+        if res:
+            key = res['authorid']
+            name = res['authorname']
+            res = self.get_author_info(key, name, refresh)
+            if res and res['authorname'] != authorname:
+                res['aka'] = authorname
+                self.logger.debug(f"Found {res['authorid']}:{res['authorname']} using local dump author")
+            return res
+
+        if title:
+            authorbooks, _ = json_request(
                 f"{self.OL_SEARCH}author={quote_plus(authorname)}&title={quote_plus(title)}", use_cache=not refresh)
         else:
-            authorbooks, in_cache = json_request(f"{self.OL_SEARCH}author={quote_plus(authorname)}",
-                                                 use_cache=not refresh)
-        if authorbooks and authorbooks["docs"]:
-            for book in authorbooks['docs']:
-                if not book.get('author_name'):
-                    continue
-                cnt = 0
-                while cnt < len(book['author_name']):
-                    author_name = format_author_name(book['author_name'][cnt],
-                                                     postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
-                    if fuzz.token_set_ratio(author_name, authorname) >= CONFIG.get_int('NAME_RATIO'):
-                        key = book.get('author_key')[cnt]
-                        if key:
-                            key = key.split('/')[-1]
-                        res = self.get_author_info(key, authorname)
-                        if res and res['authorname'] != authorname:
-                            res['aka'] = authorname
-                        return res
-                    cnt += 1
+            authorbooks, _ = json_request(f"{self.OL_SEARCH}author={quote_plus(authorname)}", use_cache=not refresh)
 
-        if title:  # no results using author/title, try author only
-            authorbooks, in_cache = json_request(f"{self.OL_SEARCH}author={quote_plus(authorname)}",
-                                                 use_cache=not refresh)
-            if not authorbooks or not authorbooks["docs"]:
-                self.logger.debug(f"No books found for {authorname}")
-                return {}
-            for book in authorbooks['docs']:
-                if not book.get('author_name'):
-                    continue
-                cnt = 0
-                while cnt < len(book['author_name']):
-                    author_name = format_author_name(book['author_name'][cnt],
-                                                     postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
-                    if fuzz.token_set_ratio(author_name, authorname) >= CONFIG.get_int('NAME_RATIO'):
-                        key = book.get('author_key')[cnt]
-                        if key:
-                            key = key.split('/')[-1]
-                        res = self.get_author_info(key, authorname, refresh=refresh)
-                        if res and res['authorname'] != authorname:
-                            res['aka'] = authorname
-                        return res
-                    cnt += 1
+        if authorbooks and authorbooks["docs"]:
+            res = self.get_authorid_from_books(authorbooks, authorname, refresh=refresh)
+            if res:
+                self.logger.debug(f"Found {res['authorid']}:{res['authorname']} using remote author{'/title' if title else ''}")
+                return res
+
+        if not title:
+            return {}
+
+        # no results using author/title, try author only
+        authorbooks, in_cache = json_request(f"{self.OL_SEARCH}author={quote_plus(authorname)}",
+                                             use_cache=not refresh)
+        if authorbooks and authorbooks["docs"]:
+            return self.get_authorid_from_books(authorbooks, authorname, refresh=refresh)
+
+        self.logger.debug(f"No books found for {authorname}")
         return {}
+
+    def get_author_image(self, authorid=None, authorname=None):
+        res = self.get_author_info(authorid=authorid, authorname=authorname)
+        return res.get('authorimg', '')
 
     def get_author_info(self, authorid=None, authorname=None, refresh=False):
         authorinfo = {}
         if authorid and not authorid.startswith('OL'):
             self.logger.debug(f"Invalid OL authorid: {authorid}")
             return {}
+
         if authorid:
+            authorinfo = query_local_dump_author_info(authorid)
+            # sqlite doesn't store lists so we convert to/from string
+            if ',' in authorinfo.get('photos', ''):
+                authorinfo['photos'] = get_list(authorinfo['photos'])
+
+        if not authorinfo and authorid:
             self.logger.debug(f"Getting OL author info for {authorid}:{authorname}, refresh={refresh}")
             authorinfo, in_cache = json_request(f"{self.OL_AUTHOR + authorid}.json", use_cache=not refresh)
+            try:
+                if authorinfo['type']['key'] == '/type/redirect':
+                    newauthorid = authorinfo['location'].rsplit('/', 1)[1]
+                    self.logger.debug(f"Authorid {authorid} redirected to {newauthorid}")
+                    authorid = newauthorid
+                    authorinfo, in_cache = json_request(f"{self.OL_AUTHOR + authorid}.json", use_cache=not refresh)
+                    if not authorinfo:
+                        self.logger.debug(f"No info found for redirect {authorid}")
+                        return {}
+            except (IndexError, KeyError, TypeError):
+                pass
         if not authorinfo:
             self.logger.debug(f"No info found for {authorid}:{authorname}")
             return {}
 
-        try:
-            if authorinfo['type']['key'] == '/type/redirect':
-                newauthorid = authorinfo['location'].rsplit('/', 1)[1]
-                self.logger.debug(f"Authorid {authorid} redirected to {newauthorid}")
-                authorid = newauthorid
-                authorinfo, in_cache = json_request(f"{self.OL_AUTHOR + authorid}.json", use_cache=not refresh)
-                if not authorinfo:
-                    self.logger.debug(f"No info found for redirect {authorid}")
-                    return {}
-        except (IndexError, KeyError):
-            pass
-
         bio = authorinfo.get('bio', '')
+        if not bio:
+            bio = authorinfo.get('about', '')
         if bio and isinstance(bio, dict):
             about = bio.get('value', '')
         else:
             about = ''
 
         photos = authorinfo.get('photos', '')
+        if not photos:
+            photos = authorinfo.get('authorimg', '')
         if photos:
             if isinstance(photos, list):
                 photos = photos[0]
@@ -300,9 +344,15 @@ class OpenLibrary:
             author_img = 'images/nophoto.png'
 
         author_link = self.OL_AUTHOR + authorid
-        author_name = authorinfo.get('name', '')
+        author_name = authorinfo.get('authorname', '')
+        if not author_name:
+            author_name = authorinfo.get('name', '')
         author_born = authorinfo.get('birth_date', '')
+        if not author_born:
+            author_born = authorinfo.get('authorborn', '')
         author_died = authorinfo.get('death_date', '')
+        if not author_died:
+            author_died = authorinfo.get('authordeath', '')
 
         if "," in author_name:
             postfix = get_list(CONFIG.get_csv('NAME_POSTFIX'))
@@ -344,7 +394,7 @@ class OpenLibrary:
                     except IndexError:
                         seriesname = ''
                 if seriesname:
-                    match = fuzz.partial_ratio(seriesname, series_name)
+                    match = fuzz.partial_ratio(seriesname, series_name, processor=default_process)
                     if match < 95:
                         self.logger.debug(f"Series name mismatch for {series_id}, "
                                           f"{round(match, 2)}% {seriesname}/{series_name}")
@@ -541,29 +591,33 @@ class OpenLibrary:
         db = database.DBConnection()
         try:
             ol_id = ''
-            match = db.match('SELECT authorid,ol_id FROM authors where authorid=? or ol_id=?', (authorid, authorid))
+            match = db.match('SELECT authorid,ol_id,authorname FROM authors where authorid=? or ol_id=?', (authorid, authorid))
             if match:
                 ol_id = match['ol_id']
                 authorid = match['authorid']
-            if not ol_id:
+            if not ol_id and authorid.startswith('OL'):
                 ol_id = authorid
 
             # Artist is loading
             db.action("UPDATE authors SET Status='Loading' WHERE AuthorID=?", (authorid,))
 
             while next_page:
-                loop_count += 1
-                url = f"{self.OL_SEARCH}author={ol_id}"
-                if offset:
-                    url += f"&offset={offset}"
-                authorbooks, in_cache = json_request(url, use_cache=not refresh)
-                api_hits += not in_cache
-                cache_hits += in_cache
-                if not authorbooks or not authorbooks["docs"]:
-                    self.logger.debug(f"No books found for key {ol_id}")
-                    docs = []
+                docs = query_local_dump_books(ol_id)
+                if docs:
+                    authorbooks = None
                 else:
-                    docs = authorbooks.get('docs', [])
+                    loop_count += 1
+                    url = f"{self.OL_SEARCH}author={ol_id}"
+                    if offset:
+                        url += f"&offset={offset}"
+                    authorbooks, in_cache = json_request(url, use_cache=not refresh)
+                    api_hits += not in_cache
+                    cache_hits += in_cache
+                    if not authorbooks or not authorbooks["docs"]:
+                        self.logger.debug(f"No books found for key {ol_id}")
+                        docs = []
+                    else:
+                        docs = authorbooks.get('docs', [])
                 hit = 0
                 miss = 0
                 for book in docs:
@@ -575,36 +629,43 @@ class OpenLibrary:
                 self.logger.debug(f"{hit + miss} books on page, {hit} with LT_ID, {miss} without")
                 total_count += hit + miss
                 for book in docs:
-                    if not book.get('author_name'):
-                        continue
-                    auth_name = book.get('author_name')[0]
                     auth_id = book.get('author_key')[0]
+                    if not book.get('author_name') and match:
+                        auth_name = match['authorname']
+                    else:
+                        auth_name = book.get('author_name')[0]
                     title = book.get('title')
                     cover = book.get('cover_i')
-                    isbns = book.get('isbn')
+                    isbns = book.get('isbn', '')
                     link = book.get('key')
                     isbn = ''
                     lang = ''
                     if isbns:
                         isbn = isbns[0]
                     bookpages = 0
-                    bookdesc = ''
+                    bookdesc = book.get('description', '')
                     if title.endswith(')') and '(' not in title:  # openlibrary oddity, "book title )"
                         title = title.rstrip(')').strip()
                     key = book.get('key').split('/')[-1]
                     first_publish_year = book.get('first_publish_year')
                     auth_key = book.get('author_key')[0]
-                    languages = book.get('language')
+                    languages = book.get('language', [])
                     publish_date = book.get('publish_date', '')
-                    publishers = book.get('publisher')
+                    publishers = book.get('publisher', '')
                     id_librarything = book.get('id_librarything')
                     if id_librarything:
                         id_librarything = id_librarything[0]
                     if not publish_date and first_publish_year:
                         publish_date = [str(first_publish_year)]
                     if publish_date:
-                        publish_date = date_format(publish_date[0], context=f"{auth_name}/{title}",
-                                                   datelang=CONFIG['DATE_LANG'])
+                        year_match = re.search(r'\d{4}', publish_date[0])
+                        if year_match and not check_year(year_match.group(), past=1800, future=1):
+                            # implausible year (eg a typo'd future date) - skip rather than
+                            # warn-and-passthrough, matching NO_FUTURE handling elsewhere
+                            publish_date = ''
+                        else:
+                            publish_date = date_format(publish_date[0], context=f"{auth_name}/{title}",
+                                                       datelang=CONFIG['DATE_LANG'])
 
                     rejected = []
                     wantedlanguages = get_list(CONFIG['IMP_PREFLANG'])
@@ -690,6 +751,9 @@ class OpenLibrary:
 
                     if not isbn and CONFIG.get_bool('NO_ISBN'):
                         rejected.append(['isbn', 'No ISBN'])
+
+                    if auth_id and ol_id and auth_id != ol_id:
+                        rejected.append(['name', f"Wrong authorid ({auth_id}/{ol_id})"])
 
                     dic = {'.': ' ', '-': ' ', '/': ' ', '+': ' ', '_': ' ', '(': '', ')': '',
                            '[': ' ', ']': ' ', '#': '# ', ':': ' ', ';': ' '}
@@ -797,14 +861,15 @@ class OpenLibrary:
                                 if 'Invalid language [' in reason:
                                     with contextlib.suppress(IndexError):
                                         lang = reason.split('Invalid language [')[1].split("'")[1]
-                                infodict = get_gb_info(isbn=isbn, author=auth_name, title=title, expire=False)
+                                infodict = get_gb_info(isbn=isbn, author=auth_name, title=title)
                                 if infodict:
                                     gbupdate = []
-                                    if infodict['desc']:
-                                        bookdesc = infodict['desc']
-                                        gbupdate.append("Description")
-                                    else:
-                                        bookdesc = 'No Description'
+                                    if not bookdesc:
+                                        if infodict['desc']:
+                                            bookdesc = infodict['desc']
+                                            gbupdate.append("Description")
+                                        else:
+                                            bookdesc = 'No Description'
                                     if not genres and infodict['genre']:
                                         genres = genre_filter(infodict['genre'])
                                         gbupdate.append('Genres')
@@ -833,10 +898,21 @@ class OpenLibrary:
                                     publishers = ', '.join(publishers)
                                 cover_link = cover
                                 if 'nocover' in cover or 'nophoto' in cover:
-                                    start = time.time()
-                                    cover_link, _ = get_book_cover(key, ignore='openlibrary')
-                                    cover_time += (time.time() - start)
-                                    cover_count += 1
+                                    # infodict['img'] (Google Books) was already fetched a few
+                                    # lines above for date/desc/genre - use it here too before
+                                    # falling to the untrusted keyword image-search crawler
+                                    # inside get_book_cover(). Mirrors the same fix in gr.py's
+                                    # get_author_books (see WI-010 item 2). Costs no extra API
+                                    # call since infodict is already in hand.
+                                    gb_img = infodict.get('img') if infodict else ''
+                                    if gb_img and gb_img.startswith('http') and \
+                                            'nocover' not in gb_img and 'nophoto' not in gb_img:
+                                        cover_link = cache_bookimg(gb_img, key, 'ol')
+                                    else:
+                                        start = time.time()
+                                        cover_link, _ = get_book_cover(key, ignore='openlibrary')
+                                        cover_time += (time.time() - start)
+                                        cover_count += 1
                                 elif cover and cover.startswith('http'):
                                     cover_link = cache_bookimg(cover, key, 'ol')
                                 if not cover_link:  # no results on search or failed to cache it
@@ -901,6 +977,8 @@ class OpenLibrary:
                                     self.searchinglogger.debug(f"status is now {book_status},{audio_status}")
                                 elif not exists:
                                     update_value_dict["ScanResult"] = reason
+                                if exists and isbn and not exists['BookIsbn']:
+                                    update_value_dict["BookIsbn"] = isbn
 
                             if update_value_dict:
                                 control_value_dict = {"LT_WorkID": id_librarything}
@@ -986,8 +1064,7 @@ class OpenLibrary:
                                                 exists = db.match(cmd, (auth_name,))
                                                 if exists:
                                                     auth_key = exists['AuthorID']
-                                                    if fuzz.ratio(auth_name.lower().replace('.', ''),
-                                                                  member[2].lower().replace('.', '')) < 95:
+                                                    if fuzz.ratio(auth_name, member[2], processor=default_process) < 95:
                                                         akas = get_list(exists['AKA'], ',')
                                                         if member[2] not in akas:
                                                             akas.append(member[2])
@@ -1147,9 +1224,9 @@ class OpenLibrary:
                                                                               'Status, WorkPage, AudioStatus, '
                                                                               'LT_WorkID, ScanResult, '
                                                                               'OriginalPubDate, ol_id) '
-                                                                              'VALUES (?,?,?,?,?,?,?,?,?,?,?,'
-                                                                              '?,?,?,?,?,?,?,?,?)',
-                                                                              (bauth_key, title, '', genres, '',
+                                                                              'VALUES (?,?,?,?,?,?,?,?,?,?,'
+                                                                              '?,?,?,?,?,?,?,?,?,?)',
+                                                                              (bauth_key, title, '', genres, isbn,
                                                                                '', rating, cover, worklink, workid,
                                                                                publish_date, lang, '',
                                                                                bookstatus if bookstatus else 'Skipped', '',
@@ -1189,7 +1266,7 @@ class OpenLibrary:
                                                                             "UPDATE series SET Total=? WHERE "
                                                                             "SeriesID=?", (counter, seriesid))
                     if rating == 0:
-                        self.logger.debug("No additional librarything info")
+                        self.logger.debug(f"No additional librarything info for {title}")
                     exists = db.match("SELECT * from books WHERE BookID=?", (key,))
                     if not exists:
                         self.logger.debug(f"Inserting new book for {authorid}")
@@ -1222,28 +1299,42 @@ class OpenLibrary:
                                 cover = 'images/nocover.png'
 
                             db.action(
-                                "INSERT INTO books (AuthorID, BookName, BookImg, BookLink, BookID, "
+                                "INSERT INTO books (AuthorID, BookName, BookImg, BookLink, BookID, BookDesc, "
                                 "BookDate, BookLang, BookAdded, Status, WorkPage, AudioStatus, ScanResult, "
-                                "OriginalPubDate, ol_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                                (authorid, title, cover, link, key, publish_date, lang, now(),
+                                "OriginalPubDate, ol_id, BookIsbn) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                                (authorid, title, cover, link, key, bookdesc, publish_date, lang, now(),
                                  book_status if book_status else 'Skipped', '',
-                                 audio_status if audio_status else 'Skipped', reason, first_publish_year, key))
+                                 audio_status if audio_status else 'Skipped', reason, first_publish_year, key, isbn))
 
                     if not rejected:
                         db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
                                   (authorid, key, ROLE['PRIMARY']), suppress='UNIQUE')
 
-                        # add any additional contributing authors
-                        # ol gives us a list of names and a list of keys
-                        authornames = book.get('author_name')
-                        authorkeys = book.get('author_key')
-                        contributing_authors = []
-                        cnt = 1
-                        while cnt < len(authornames):
-                            contributing_authors.append([authorkeys[cnt], " ".join(authornames[cnt].split())])
-                            cnt += 1
-
                         if CONFIG.get_bool('CONTRIBUTING_AUTHORS'):
+                            # add any additional contributing authors. Build lists that look the same from both sources
+                            if 'contributors' not in book:
+                                # ol search.json gives us a list of names and a list of keys
+                                authornames = book.get('author_name')
+                                authorkeys = book.get('author_key')
+                                # skip primary author, already added
+                                cnt = 1
+                            else:
+                                # data from oldump file, contributors does not include primary author
+                                authornames = []
+                                authorkeys = []
+                                cnt = 0
+                                for contributor in get_list(book['contributors']):
+                                    res = query_local_dump_author_info(contributor)
+                                    if res:
+                                        authornames.append(res['authorname'])
+                                        authorkeys.append(res['authorid'])
+
+                            contributing_authors = []
+
+                            while cnt < len(authornames):
+                                contributing_authors.append([authorkeys[cnt], " ".join(authornames[cnt].split())])
+                                cnt += 1
+
                             for entry in contributing_authors:
                                 auth_id = lazylibrarian.importer.add_author_to_db(authorname=entry[1], refresh=False,
                                                                                   authorid=entry[0],
@@ -1365,7 +1456,7 @@ class OpenLibrary:
             bookdict['bookisbn'] = workinfo.get('isbn_10', '')
         if isinstance(bookdict['bookisbn'], list):
             bookdict['bookisbn'] = ', '.join(bookdict['bookisbn'])
-        else:
+        if not bookdict['bookisbn'] and CONFIG.get_bool('ISBN_LOOKUP'):
             try:
                 res = isbn_from_words(f"{bookdict['bookname']} {unaccented(bookdict['authorname'], only_ascii=False)}")
             except Exception as e:
@@ -1379,7 +1470,10 @@ class OpenLibrary:
             bookdict['bookpub'] = ', '.join(bookdict['bookpub'])
         bookdict['bookdate'] = date_format(workinfo.get('publish_date', ''),
                                            context=bookdict['bookname'], datelang=CONFIG['DATE_LANG'])
-        detected_lang, confidence = language_from_words(bookdict['bookname'])
+        desc = workinfo.get('description', '')
+        if isinstance(desc, dict):
+            desc = desc.get('value', '')
+        detected_lang, confidence = language_from_words(bookdict['bookname'], desc=desc)
         if detected_lang and confidence > 0.6:
             bookdict['booklang'] = detected_lang
         else:
@@ -1407,6 +1501,9 @@ class OpenLibrary:
     def add_bookid_to_db(self, bookid=None, bookstatus=None, audiostatus=None, reason='ol.add_bookid'):
 
         bookdict, _ = self.get_bookdict_for_bookid(bookid)
+        if not bookdict:
+            self.logger.warning(f"No OpenLibrary metadata for {bookid}, unable to add book")
+            return False
         authorname = bookdict.get('authorname')
         if not authorname:
             self.logger.warning(f"No AuthorName for {bookid}, unable to add book")
@@ -1423,7 +1520,7 @@ class OpenLibrary:
             bookdict['authorname'] = match['AuthorName']
             bookdict['authorid'] = match['AuthorID']
         else:
-            auth_id = lazylibrarian.importer.add_author_name_to_db(author=authorname,
+            _, auth_id, _ = lazylibrarian.importer.add_author_name_to_db(author=authorname,
                                                                    refresh=False,
                                                                    addbooks=False,
                                                                    reason=f"ol.add_bookid {bookid}")

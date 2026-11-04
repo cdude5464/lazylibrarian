@@ -67,6 +67,8 @@ from lazylibrarian.formatter import (
     split_title,
     today,
     unaccented,
+    word_key,
+    word_keys,
 )
 from lazylibrarian.gr import GoodReads
 from lazylibrarian.hc import HardCover
@@ -254,6 +256,23 @@ def process_book_from_dir(source_dir=None, library="eBook", bookid=None):
     if not source_dir or not path_isdir(source_dir):
         logger.warning(f"{source_dir} is not a directory")
         return False
+
+    # Accept any recognizable spelling of ebook/audiobook (eg "AudioBook", the value
+    # used elsewhere in the codebase for display/logging) rather than only the two
+    # exact internal literals "eBook"/"Audio" this function historically required.
+    # Every other caller of process_book_from_dir has to know that undocumented
+    # distinction or their import silently fails with a misleading "not implemented"
+    # error even though the book type is perfectly well understood everywhere else
+    # (get_directory() already special-cases "AudioBook", for example).
+    try:
+        book_type = BookType.from_string(library)
+    except ValueError:
+        book_type = None
+    if book_type not in (BookType.EBOOK, BookType.AUDIOBOOK):
+        logger.error(f"book_from_dir not implemented for {library}")
+        return False
+    library = "Audio" if book_type == BookType.AUDIOBOOK else "eBook"
+
     if source_dir.startswith(get_directory(library)):
         logger.warning("Source directory must not be the same as or inside library")
         return False
@@ -262,10 +281,6 @@ def process_book_from_dir(source_dir=None, library="eBook", bookid=None):
     reject = multibook(source_dir)
     if reject:
         logger.debug(f"Not processing {source_dir}, found multiple {reject}")
-        return False
-
-    if library not in ["eBook", "Audio"]:
-        logger.error(f"book_from_dir not implemented for {library}")
         return False
 
     db = database.DBConnection()
@@ -376,12 +391,13 @@ def process_issues(source_dir=None, title=""):
                 # Some docker quirk, or the python version in the docker ???
                 # nouns.extend(lazylibrarian.SEASONS)
                 nouns.extend(list(lazylibrarian.SEASONS.keys()))
-                nouns = set(nouns)
+                # compared without accents, titles are often written without them
+                nouns = word_keys(nouns)
                 valid = True
                 for word in filename_words:
                     if (
                         word not in title_words
-                        and word not in nouns
+                        and word_key(word) not in nouns
                         and not word.isdigit()
                     ):
                         cleanword = unaccented(word).lower()
@@ -484,6 +500,8 @@ def process_alternate(source_dir=None, library="eBook"):
                 for f in listdir(source_dir):
                     if not is_valid_type(f, extensions=CONFIG.get_all_types_list()):
                         # Is file an archive, if so look inside and extract to new dir
+                        if not os.path.exists(os.path.join(source_dir, f)):
+                            continue
                         res = _unpack_archive(os.path.join(source_dir, f), source_dir, f)
                         if res:
                             source_dir = res
@@ -735,8 +753,13 @@ def process_alternate(source_dir=None, library="eBook"):
             return process_book(source_dir, bookid, library=library)
 
         logger.warning(f"{library} {new_book} has no metadata")
+
         db = database.DBConnection()
-        res = _process_ll_bookid_folders_from_list(source_dir, db, logger)
+        if path_isdir(source_dir):
+            all_downloads = [(source_dir, f) for f in os.listdir(source_dir)]
+        else:
+            all_downloads = [(os.path.dirname(source_dir), os.path.basename(source_dir))]
+        res = _process_ll_bookid_folders_from_list(all_downloads, db, logger)
         db.close()
         if not res:
             logger.warning(f"{source_dir} has no book with LL.number")

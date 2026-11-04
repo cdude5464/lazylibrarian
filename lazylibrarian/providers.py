@@ -53,6 +53,7 @@ from lazylibrarian.formatter import (
 )
 from lazylibrarian.ircbot import irc_query, irc_results
 from lazylibrarian.soulseek import slsk_search
+from lazylibrarian.telemetry import TELEMETRY
 from lazylibrarian.torrentparser import (
     torrent_abb,
     torrent_kat,
@@ -60,6 +61,7 @@ from lazylibrarian.torrentparser import (
     torrent_tdl,
     torrent_tpb,
 )
+from lazylibrarian.webshare import webshare_search
 
 
 def test_provider(name: str, host=None, api=None):
@@ -164,15 +166,6 @@ def test_provider(name: str, host=None, api=None):
                     elif 'penguinrandomhouse' in host:
                         return penguinrandomhouse(host, provider['NAME'], provider.get_int('DLPRIORITY'),
                                                   provider['DISPNAME'], test=True), provider['DISPNAME']
-                    elif 'barnesandnoble' in host:
-                        return barnesandnoble(host, provider['NAME'], provider.get_int('DLPRIORITY'),
-                                              provider['DISPNAME'], test=True), provider['DISPNAME']
-                    elif 'bookdepository' in host:
-                        return bookdepository(host, provider['NAME'], provider.get_int('DLPRIORITY'),
-                                              provider['DISPNAME'], test=True), provider['DISPNAME']
-                    elif 'indigo' in host:
-                        return indigo(host, provider['NAME'], provider.get_int('DLPRIORITY'),
-                                      provider['DISPNAME'], test=True), provider['DISPNAME']
                     elif 'mam' in label.lower() and 'wish' in label.lower():
                         return mam(host, provider['NAME'], provider.get_int('DLPRIORITY'),
                                    provider['DISPNAME'], test=True), provider['DISPNAME']
@@ -334,6 +327,14 @@ def test_provider(name: str, host=None, api=None):
             CONFIG.set_str('ANNA_KEY', api)
         return anna_search(book, test=True), "ANNA"
 
+    if name == 'WEBSHARE':
+        logger.debug(f"Testing provider {name}")
+        if api:
+            user, pwd = api.split(' : ', 1)
+            CONFIG.set_str('WEBSHARE_USER', user)
+            CONFIG.set_str('WEBSHARE_PASS', pwd)
+        return webshare_search(book, test=True), "Webshare"
+
     msg = f"Unknown provider [{name}]"
     logger.error(msg)
     return False, msg
@@ -476,6 +477,12 @@ def get_capabilities(provider: ConfigDict, force=False):
                 item = provider.get_item(key)
                 if item:
                     item.reset_to_default()
+            # The category parsing below only fills a category that is still empty, but
+            # reset_to_default() gives the provider-type default (Torznab: 8000,8010, "Other"),
+            # so an indexer offering plain "Books" (7000) without an ebook subcategory was left
+            # searching the wrong category, and one with no audio category still got 3030.
+            for key in ['BOOKCAT', 'AUDIOCAT', 'COMICCAT', 'MAGCAT']:
+                provider[key] = ''
             search = data.find('searching/search')
             if search is not None and 'available' in search.attrib and search.attrib['available'] == 'yes':
                 provider['GENERALSEARCH'] = 'search'
@@ -801,6 +808,7 @@ def iterate_over_direct_sites(book=None, search_type=None):
                     ignored = True
                 if not ignored:
                     logger.debug(f"Querying {prov['NAME']}")
+                    TELEMETRY.record_usage_data(f"Query/{prov['NAME']}")
                     results, error = direct_gen(book, prov['NAME'])
                     if error:
                         BLOCKHANDLER.block_provider(prov['NAME'], error)
@@ -832,6 +840,7 @@ def iterate_over_direct_sites(book=None, search_type=None):
             ignored = True
         if not ignored:
             logger.debug(f'Querying {prov}')
+            TELEMETRY.record_usage_data(f'Query/{prov}')
             results, error = direct_bok(book, prov)
             if error:
                 # use a short delay for site unavailable etc
@@ -872,6 +881,7 @@ def iterate_over_direct_sites(book=None, search_type=None):
         if not ignored:
             logger.debug(f'Querying {search_type} {provider}')
             searchtype = 'audio' if 'audio' in search_type else 'ebook'
+            TELEMETRY.record_usage_data(f'Query/{provider}')
             results, error = slsk_search(book, searchtype=searchtype)
             if error:
                 # use a short delay for site unavailable etc
@@ -904,6 +914,7 @@ def iterate_over_direct_sites(book=None, search_type=None):
             ignored = True
         if not ignored:
             logger.debug(f'Querying {provider}')
+            TELEMETRY.record_usage_data(f'Query/{provider}')
             searchtype = 'ebook'
             if 'audio' in search_type:
                 searchtype = 'audio'
@@ -916,6 +927,41 @@ def iterate_over_direct_sites(book=None, search_type=None):
                 # outage into an 18-hour download-quota block.
                 if not BLOCKHANDLER.is_blocked("annas-search"):
                     BLOCKHANDLER.block_provider("annas-search", error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
+            else:
+                resultslist += results
+                providers += 1
+
+    prov = 'WEBSHARE'
+    if CONFIG[prov]:
+        iterateproviderslogger.debug(f"DLTYPES: {prov}: {CONFIG[prov]} {CONFIG[prov + '_DLTYPES']}")
+        provider = 'webshare'
+        ignored = False
+        if BLOCKHANDLER.is_blocked(provider):
+            logger.debug('webshare is BLOCKED')
+            ignored = True
+        elif search_type in ['book', 'shortbook', 'titlebook'] and                 'E' not in CONFIG[f"{prov}_DLTYPES"]:
+            logger.debug(f"Ignoring {prov} for eBook")
+            ignored = True
+        elif "audio" in search_type and 'A' not in CONFIG[f"{prov}_DLTYPES"]:
+            logger.debug(f"Ignoring {prov} for AudioBook")
+            ignored = True
+        elif "mag" in search_type and 'M' not in CONFIG[f"{prov}_DLTYPES"]:
+            logger.debug(f"Ignoring {prov} for Magazine")
+            ignored = True
+        elif "comic" in search_type:
+            logger.debug(f"Ignoring {prov} for Comic")
+            ignored = True
+        if not ignored:
+            logger.debug(f'Querying {provider}')
+            TELEMETRY.record_usage_data(f'Query/{prov}')
+            searchtype = 'ebook'
+            if 'audio' in search_type:
+                searchtype = 'audio'
+            if 'mag' in search_type:
+                searchtype = 'mag'
+            results, error = webshare_search(book, searchtype)
+            if error:
+                BLOCKHANDLER.block_provider(provider, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
             else:
                 resultslist += results
                 providers += 1
@@ -1020,34 +1066,6 @@ def iterate_over_wishlists():
                     resultslist += penguinrandomhouse(provider['HOST'], provider['NAME'],
                                                       provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                                       provider['DLTYPES'], False, provider['LABEL'])
-            elif wishtype == 'barnesandnoble':
-                if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
-                else:
-                    providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
-                    resultslist += barnesandnoble(provider['HOST'], provider['NAME'],
-                                                  provider.get_int('DLPRIORITY'), provider['DISPNAME'],
-                                                  provider['DLTYPES'], False, provider['LABEL'])
-
-            elif wishtype == 'bookdepository':
-                if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
-                else:
-                    providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
-                    resultslist += bookdepository(provider['HOST'], provider['NAME'],
-                                                  provider.get_int('DLPRIORITY'), provider['DISPNAME'],
-                                                  provider['DLTYPES'], False, provider['LABEL'])
-            elif wishtype == 'indigo':
-                if BLOCKHANDLER.is_blocked(provider['HOST']):
-                    logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
-                else:
-                    providers += 1
-                    logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
-                    resultslist += indigo(provider['HOST'], provider['NAME'],
-                                          provider.get_int('DLPRIORITY'), provider['DISPNAME'],
-                                          provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'myanonamouse':
                 if BLOCKHANDLER.is_blocked(provider['HOST']):
                     logger.debug(f"{provider_log_origin(provider['HOST'])} is BLOCKED")
@@ -1128,6 +1146,8 @@ def ny_times(host=None, feednr=None, priority=0, dispname=None, types='E', test=
     ny_times best-sellers query function, return all the results in a list
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/ny_times')
     results = []
     basehost = host
     if str(host)[:4] != "http":
@@ -1142,7 +1162,9 @@ def ny_times(host=None, feednr=None, priority=0, dispname=None, types='E', test=
     if not dispname:
         dispname = provider
 
-    result, success = fetch_url(url)
+    lazylibrarian.test_data = f'Querying {dispname}'
+
+    result, success = fetch_url(url, impersonate='chrome')
 
     if not success:
         logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
@@ -1175,6 +1197,7 @@ def ny_times(host=None, feednr=None, priority=0, dispname=None, types='E', test=
         logger.debug(f'No data returned from {provider_log_origin(url)}')
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
     return results
@@ -1185,6 +1208,8 @@ def amazon(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
     Amazon charts html page
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/amazon')
     results = []
     basehost = host
     if str(host)[:4] != "http":
@@ -1194,6 +1219,11 @@ def amazon(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
         provider = host.split('/charts')[1]
     else:
         provider = host
+
+    if not dispname:
+        dispname = provider
+
+    lazylibrarian.test_data = f'Querying {dispname}'
 
     url = host
     result, success = fetch_url(url)
@@ -1236,6 +1266,7 @@ def amazon(host=None, feednr=None, priority=0, dispname=None, types='E', test=Fa
                 })
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
     return results
@@ -1246,6 +1277,8 @@ def publishersweekly(host=None, feednr=None, priority=0, dispname=None, types='E
     publishersweekly best-sellers voir dans configLazy folder pour les commentaires
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/publishersweekly')
     results = []
     basehost = host
     if str(host)[:4] != "http":
@@ -1259,6 +1292,8 @@ def publishersweekly(host=None, feednr=None, priority=0, dispname=None, types='E
         provider = 'best-sellers'
     if not dispname:
         dispname = provider
+
+    lazylibrarian.test_data = f'Querying {dispname}'
 
     result, success = fetch_url(url)
     if not success:
@@ -1292,6 +1327,7 @@ def publishersweekly(host=None, feednr=None, priority=0, dispname=None, types='E
                 pass
     else:
         logger.debug(f'No data returned from {provider_log_origin(url)}')
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
     return results
@@ -1302,6 +1338,8 @@ def appsnprorg(host=None, feednr=None, priority=0, dispname=None, types='E', tes
     best-book aoos,npr.org
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/appsnprprg')
     results = []
     basehost = host
     booknames = []
@@ -1318,13 +1356,15 @@ def appsnprorg(host=None, feednr=None, priority=0, dispname=None, types='E', tes
     if not dispname:
         dispname = provider
 
+    lazylibrarian.test_data = f'Querying {dispname}'
+
     try:
         year_url = url.split('year=')[1]
         url_to_json = f"{url.split('#')[0] + year_url}-detail.json"
         result, success = fetch_url(url_to_json)
     except IndexError as e:
         success = False
-        result = str(e)
+        result = type(e).__name__
 
     if not success:
         logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
@@ -1361,6 +1401,7 @@ def appsnprorg(host=None, feednr=None, priority=0, dispname=None, types='E', tes
         logger.debug(f'No data returned from {provider_log_origin(url)}')
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
     return results
@@ -1371,6 +1412,8 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
     penguinrandomhouse html page
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/penguinrandomhouse')
     results = []
     basehost = host
     if str(host)[:4] != "http":
@@ -1381,8 +1424,13 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
     else:
         provider = "penguinrandomhouse"
 
+    if not dispname:
+        dispname = provider
+
+    lazylibrarian.test_data = f'Querying {dispname}'
+
     url = host
-    result, success = fetch_url(url)
+    result, success = fetch_url(url, impersonate='chrome')
     if not success:
         logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
         if not test:
@@ -1439,232 +1487,9 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
                         'label': label,
                     })
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
-    return results
-
-
-def barnesandnoble(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
-    """
-    Barneandnoble charts html page
-    """
-    logger = logging.getLogger(__name__)
-    results = []
-    basehost = host
-    if str(host)[:4] != "http":
-        host = f"http://{host}"
-    provider = "barnesandnoble"
-
-    url = host
-    result, success = fetch_url(url)
-    if not success:
-        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
-        if not test:
-            BLOCKHANDLER.block_provider(basehost, result)
-    elif result:
-        logger.debug(f'Parsing results from {provider_log_origin(url)}')
-        soup = BeautifulSoup(result, 'html5lib')
-        titles = soup.find_all("div", {"class": "product-shelf-title product-info-title pt-xs"})
-        authors = soup.find_all("div", {"class": "product-shelf-author pt-0 mt-1"})
-
-        if len(authors) and len(authors) == len(titles):
-            res = []
-            authnames = []
-            for item in authors:
-                tmp = item.text.strip()
-                if "," in tmp:
-                    authnames.append(tmp.split(',')[0].split('by')[1].strip())
-                else:
-                    authnames.append(tmp.split('by')[1].strip())
-            booknames = []
-            for item in titles:
-                booknames.append(str(item.contents[1]).split('title="')[1].split('"')[0].strip())
-            temp_res = list(zip(authnames, booknames, strict=True))
-            # suppress blanks and duplicates
-            for item in temp_res:
-                if item[0] and item[1] and item not in res:
-                    res.append(item)
-
-            for item in res:
-                results.append({
-                    'rss_prov': provider,
-                    'rss_feed': feednr,
-                    'rss_title': item[1],
-                    'rss_author': item[0],
-                    'rss_bookid': '',
-                    'rss_isbn': '',
-                    'priority': priority,
-                    'dispname': dispname,
-                    'types': types,
-                    'label': label,
-                })
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
-    if test:
-        return len(results)
-    return results
-
-
-def bookdepository(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
-    """
-    bookdepository
-    """
-    logger = logging.getLogger(__name__)
-    results = []
-    basehost = host
-    if str(host)[:4] != "http":
-        host = f"http://{host}"
-    provider = "bookdepository"
-    page = 1
-    next_page = True
-    url = host
-
-    while next_page:
-        time.sleep(1)
-        if 'page=' in host:
-            host = str(url.split('page=')[0])
-        if '?' in host:
-            url = f"{host}&page={page}"
-        else:
-            url = f"{host}?page={page}"
-
-        result, success = fetch_url(url)
-
-        next_page = False
-        if not success:
-            logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
-            if not test:
-                BLOCKHANDLER.block_provider(basehost, result)
-        elif result:
-            logger.debug(f'Parsing results from {provider_log_origin(url)}')
-            soup = BeautifulSoup(result, 'html5lib')
-            titles = soup.find_all("h3", {"class": "title"})
-            authors = soup.find_all("p", {"class": "author"})
-            if len(authors) and len(authors) == len(titles):
-                # take the number of result to see when max page
-                resultnumber = soup.find_all("div", {"class": "search-info"})
-                actual_result = str(resultnumber[0].text).split()[3].strip()
-                max_result = str(resultnumber[0].text).split()[5].strip()
-                next_page = actual_result != max_result
-                res = []
-                authnames = []
-                for item in authors:
-                    authnames.append(item.text.strip())
-                booknames = []
-                for item in titles:
-                    booknames.append(item.text.strip())
-                temp_res = list(zip(authnames, booknames, strict=True))
-                for item in temp_res:
-                    if item[0] and item[1] and item not in res:
-                        res.append(item)
-
-                for item in res:
-                    results.append({
-                        'rss_prov': provider,
-                        'rss_feed': feednr,
-                        'rss_title': item[1],
-                        'rss_author': item[0],
-                        'rss_bookid': '',
-                        'rss_isbn': '',
-                        'priority': priority,
-                        'dispname': dispname,
-                        'types': types,
-                        'label': label,
-                    })
-
-        if test:
-            logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
-            return len(results)
-
-        page += 1
-
-    return results
-
-
-def indigo(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
-    """
-    indigo book list
-    """
-    # May have to check again, the api seems to return XML in browser from time to time,
-    # may have to do a checkup to see if the result is xml
-    logger = logging.getLogger(__name__)
-    results = []
-    basehost = host
-    if str(host)[:4] != "http":
-        host = f"http://{host}"
-    provider = "indigo"
-    # The first page is 0
-    page = 0
-    next_page = True
-    url = host
-
-    result, success = fetch_url(url)
-    if not success:
-        logger.error(f'Error fetching data from {provider_log_origin(url)}: {provider_error_category(result)}')
-        if not test:
-            BLOCKHANDLER.block_provider(basehost, result)
-    elif result:
-        logger.debug(f'Parsing results from {provider_log_origin(url)}')
-        api = 'https://www.chapters.indigo.ca/en-ca/api/v1/merchandising/GetCmsProductList/?sortDirection=0'
-        api += '&sortKey=Default&rangeLength=0&rangeStart=0&pageSize=12'
-        list_id = re.findall(r'(?<="productLists":\[{"ContentID":).*?,', result)[0].split(',')[0]
-        list_id = f"&id={str(list_id)}"
-        while next_page:
-            time.sleep(1)
-            if '?' in api:
-                urlapi = f"{api}&page={page}{list_id}"
-            else:
-                urlapi = f"{api}?page={page}{list_id}"
-
-            # Response in List format
-            apiresult, success = fetch_url(urlapi)
-            soup = BeautifulSoup(apiresult, 'html5lib')
-            # Test if page result is empty
-            if soup.text.strip() == "[]" or soup.text.strip() == "<feff>":
-                return len(results)
-            next_page = True
-
-            # replace weird character , delete new line
-            apiresult = apiresult.replace('\n', '').strip().replace(':', ': ').replace("“", "'").replace("”", "'")
-
-            # conver to list of dict
-            apilist = list(eval(apiresult))
-
-            # List containt word without quote
-            titles = []
-            authors = []
-            isbn = []
-            for item in apilist:
-                tmp_dic = item
-                titles.append(tmp_dic['FullTitle'])
-                authors.append(tmp_dic['MajorContributorName'])
-                isbn.append(tmp_dic['ExternalProductId'])
-
-            if len(authors) == len(titles):
-                res = []
-                temp_res = list(zip(authors, titles, isbn, strict=True))
-                # suppress blanks and duplicates
-                for item in temp_res:
-                    if item[0] and item[1] and item not in res:
-                        res.append(item)
-
-                for item in res:
-                    results.append({
-                        'rss_prov': provider,
-                        'rss_feed': feednr,
-                        'rss_title': item[1],
-                        'rss_author': item[0],
-                        'rss_bookid': '',
-                        'rss_isbn': item[2],
-                        'priority': priority,
-                        'dispname': dispname,
-                        'types': types,
-                        'label': label,
-                    })
-            page += 1
-            if test:
-                logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
-                return len(results)
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     return results
 
 
@@ -1673,6 +1498,8 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
     Goodreads Listopia query function, return all the results in a list
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/listopia')
     results = []
     maxpage = priority
     basehost = host
@@ -1691,13 +1518,15 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
     if not dispname:
         dispname = provider
 
+    lazylibrarian.test_data = f'Querying {dispname}'
+
     while next_page:
         if '?' in host:
             url = f"{host}&page={page}"
         else:
             url = f"{host}?page={page}"
 
-        result, success = fetch_url(url)
+        result, success = fetch_url(url, impersonate='chrome')
 
         next_page = False
 
@@ -1736,6 +1565,7 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
 
         if test:
             logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+            lazylibrarian.test_data = ''
             return len(results)
 
         page += 1
@@ -1744,17 +1574,24 @@ def listopia(host=None, feednr=None, priority=0, dispname=None, types='E', test=
             next_page = False
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     return results
 
 
 def mam(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/mam')
     results = []
     basehost = host
+    if not dispname:
+        dispname = host
     if str(host)[:4] != "http":
         host = f"http://{host}"
 
     url = host
+
+    lazylibrarian.test_data = f'Querying {dispname}'
 
     result, success = fetch_url(url, timeout=False)
 
@@ -1826,6 +1663,7 @@ def mam(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
         logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     else:
         logger.debug(f'No data returned from {provider_log_origin(host)}')
+    lazylibrarian.test_data = ''
     if test:
         return len(results)
     return results
@@ -1837,8 +1675,12 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
     but expects goodreads format (looks for goodreads category names)
     """
     logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/goodreads')
     results = []
     basehost = host
+    if not dispname:
+        dispname = host
     if str(host)[:4] != "http":
         host = f"http://{host}"
 
@@ -1847,6 +1689,8 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
     page = 1
     next_page = True
 
+    lazylibrarian.test_data = f'Querying {dispname}'
+
     while next_page:
         if page > 1:
             if '?' in host:
@@ -1854,7 +1698,7 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
             else:
                 url = f"{host}?page={page}"
 
-        result, success = fetch_url(url)
+        result, success = fetch_url(url, impersonate='chrome')
         next_page = False
 
         if success:
@@ -1900,6 +1744,7 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
                     next_page = True
         if test:
             logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+            lazylibrarian.test_data = ''
             return len(results)
 
         page += 1
@@ -1908,6 +1753,7 @@ def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test
             next_page = False
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
+    lazylibrarian.test_data = ''
     return results
 
 
@@ -2080,8 +1926,12 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
     logger = logging.getLogger(__name__)
     host = provider['HOST']
     api_key = provider['API']
+    # ConfigDict deliberately exposes typed accessors and __getitem__, not
+    # dict.get(). Keep this diagnostic compatible with both real config and
+    # lightweight mapping adapters.
+    display_name = (provider['DISPNAME'] if 'DISPNAME' in provider else '') or 'provider'
     logger.debug(
-        f'Provider [{provider.get("DISPNAME", "provider")}] SearchType [{search_type}] with Host [{provider_log_origin(host)}] mode [{search_mode}] '
+        f'Provider [{display_name}] SearchType [{search_type}] with Host [{provider_log_origin(host)}] mode [{search_mode}] '
         f'for item [{book.get("BookID", "unknown")}]')
 
     results = []
@@ -2144,8 +1994,9 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
 
     if not success:
         if '429' in result:
-            # too many requests...
-            BLOCKHANDLER.block_provider(provider['HOST'], "Too Many Requests", delay=30)
+            # too many requests: was a fixed 30 seconds, which meant a provider that stays limited
+            # (or is disabled upstream, eg by Prowlarr) was asked again every 30 seconds indefinitely
+            BLOCKHANDLER.block_provider_backoff(provider['HOST'], "Too Many Requests")
         else:
             # maybe the host doesn't support the search type
             cancelled = cancel_search_type(search_type, result, provider)
@@ -2169,8 +2020,9 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
             if search_type == 'book' and cancelled:
                 return newznab_plus(book, provider, 'generalbook', search_mode, test)
         else:
+            BLOCKHANDLER.reset_backoff(provider['HOST'])  # answered normally
             channel = rootxml.find('channel')
-            if channel:
+            if channel is not None:
                 for item in channel:
                     if 'apilimits' in str(item):
                         limits = item

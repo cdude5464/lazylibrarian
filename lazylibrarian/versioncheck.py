@@ -10,6 +10,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
 
+import contextlib
 import datetime
 import logging
 import os
@@ -17,18 +18,19 @@ import platform
 import re
 import subprocess
 import tarfile
+import tempfile
 import threading
 import time
 from shutil import move, rmtree
 
-import requests
+from curl_cffi import requests
 
 import lazylibrarian
-from lazylibrarian import database, version
-from lazylibrarian.common import dbbackup, docker, get_user_agent, proxy_list
+from lazylibrarian import database, version, whatsnew
+from lazylibrarian.common import dbbackup, docker, proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, listdir, path_isdir, syspath
-from lazylibrarian.formatter import check_int, make_unicode, thread_name
+from lazylibrarian.formatter import make_unicode, thread_name
 from lazylibrarian.telemetry import TELEMETRY
 
 
@@ -213,6 +215,106 @@ def get_current_git_branch():
     return current_branch
 
 
+def git_programs() -> list:
+    """ git executables to try, unquoted for subprocess argument lists """
+    programs = [CONFIG['GIT_PROGRAM'] or 'git']
+    if platform.system().lower() == 'darwin':
+        programs.append('/usr/local/git/bin/git')
+    return programs
+
+
+def git_remote_url() -> str:
+    return f"https://{CONFIG['GIT_HOST']}/{CONFIG['GIT_USER']}/{CONFIG['GIT_REPO']}.git/"
+
+
+def git_remote_branch() -> str:
+    """ The branch to compare against, package installs follow master """
+    branch = CONFIG['GIT_BRANCH'] or 'master'
+    return 'master' if branch.lower() == 'package' else branch
+
+
+def git_run_args() -> dict:
+    """ subprocess.run arguments for git calls that reach the remote: never wait on a password prompt or a dead
+        connection """
+    return {'check': True, 'capture_output': True, 'text': True, 'encoding': 'utf-8', 'errors': 'replace',
+            'timeout': 300,
+            'env': {**os.environ, 'GIT_TERMINAL_PROMPT': '0'}}
+
+
+def remote_head(url: str, branch: str) -> str:
+    """ Latest commit on the remote branch, or empty if git can't tell us.
+        An argument list rather than run_git, as url and branch come from config and run_git uses a shell """
+    logger = logging.getLogger(__name__)
+    for cur_git in git_programs():
+        try:
+            result = subprocess.run([cur_git, 'ls-remote', url, f'refs/heads/{branch}'], **git_run_args())
+            return result.stdout.split('\t')[0].strip()
+        except OSError as err:
+            logger.debug(f"Unable to run {cur_git}: {err}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Git execution failed: {(e.stderr or '').strip()}")
+            return ''
+        except subprocess.TimeoutExpired:
+            logger.error(f'Git timed out reading {url}')
+            return ''
+    logger.warning('git not found - please ensure git executable is in your PATH')
+    return ''
+
+
+def fetch_branch(cur_git: str, tmp_dir: str, branch: str):
+    """ Fetch the remote branch into an empty folder, commits and trees only """
+    logger = logging.getLogger(__name__)
+    # Initialize a temporary bare repository
+    subprocess.run([cur_git, "init"], cwd=tmp_dir, **git_run_args())
+    logger.debug("Initialised temporary repository")
+    # Add the GitLab remote URL
+    subprocess.run([cur_git, "remote", "add", "origin", git_remote_url()], cwd=tmp_dir, **git_run_args())
+    logger.debug("Added remote url")
+    # Perform a blobless fetch for the tracking branches.
+    # This pulls commit logs/skeletons but skips all file downloads (blobs).
+    fetch_cmd = [cur_git, "fetch", "--filter=blob:none", "origin", f"refs/heads/{branch}"]
+    subprocess.run(fetch_cmd, cwd=tmp_dir, **git_run_args())
+    logger.debug("Repository fetched")
+
+
+# hash, short hash, commit date, parents, author and title, split by unit separators. The title goes last
+# so a separator in it stays part of it, and with -z each commit ends with a NUL, which git doesn't allow in them.
+GIT_LOG_FORMAT = '--format=%H%x1f%h%x1f%cI%x1f%P%x1f%an%x1f%s'
+
+
+def git_commits(*logs: list, branch: str = '') -> list | None:
+    """ Fetch the branch once and run git log with each list of arguments, FETCH_HEAD being the branch tip.
+        Each result is a list of dicts with the fields the gitlab commits api uses, so callers can use either.
+        None if git can't be run or can't answer, eg a hash it doesn't have """
+    logger = logging.getLogger(__name__)
+    branch = branch or git_remote_branch()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for cur_git in git_programs():
+            try:
+                fetch_branch(cur_git, tmp_dir, branch)
+                results = []
+                for args in logs:
+                    out = subprocess.run([cur_git, 'log', '-z', GIT_LOG_FORMAT, *args], cwd=tmp_dir, **git_run_args())
+                    commits = []
+                    for record in out.stdout.split('\0'):
+                        fields = record.split('\x1f', 5)
+                        if len(fields) == 6:
+                            commits.append({'id': fields[0], 'short_id': fields[1], 'committed_date': fields[2],
+                                            'parent_ids': fields[3].split(), 'author_name': fields[4],
+                                            'title': fields[5]})
+                    results.append(commits)
+                return results
+            except OSError as err:
+                logger.debug(f"Unable to run {cur_git}: {err}")
+            except subprocess.CalledProcessError as e:
+                logger.debug(f"Git log failed: {(e.stderr or '').strip()}")
+                return None
+            except subprocess.TimeoutExpired:
+                logger.debug('Git timed out reading the commit list')
+                return None
+    return None
+
+
 def check_for_updates():
     """ Called at startup, from webserver with thread name WEBSERVER, or as a cron job """
     logger = logging.getLogger(__name__)
@@ -225,6 +327,7 @@ def check_for_updates():
     db = database.DBConnection()
     columns = db.match('PRAGMA table_info(jobs)')
     if columns:
+        logger.debug("Storing start time for VERSIONCHECK")
         db.upsert("jobs", {"Start": time.time()}, {"Name": "VERSIONCHECK"})
     db.close()
 
@@ -269,9 +372,14 @@ def check_for_updates():
     # lazylibrarian.CONFIG['CURRENT_VERSION'] = 'testing'
 
     logger.debug(f"Update check complete. Behind {CONFIG['COMMITS_BEHIND']}")
+    try:
+        whatsnew.check_whats_new()
+    except Exception as err:
+        logger.warning(f"What's new check failed: {type(err).__name__} {err}")
     db = database.DBConnection()
     columns = db.match('PRAGMA table_info(jobs)')
     if columns:
+        logger.debug("Storing finish time for VERSIONCHECK")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": "VERSIONCHECK"})
     db.close()
 
@@ -317,60 +425,24 @@ def get_latest_version_from_git():
         if branch == 'InvalidBranch':
             logger.debug('Failed to get a valid branch name from local repo')
         else:
-            if branch.lower() in ['package']:  # check against master
-                branch = 'master'
-
-            project = CONFIG['GIT_PROJECT']
-            if not project:
-                project = '9317860'  # default lazylibrarian
-
-            url = f"https://gitlab.com/api/v4/projects/{project}/repository/branches"
-
-            # Get the latest commit available from git
-            logger.debug(f'Retrieving latest version information from git command=[{url}]')
-
-            timestamp = CONFIG.get_int('GIT_UPDATED')
-            age = ''
-            if timestamp:
-                # timestring for 'If-Modified-Since' needs to be english short day/month names and in gmt
-                daynames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
-                monnames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                tm = time.gmtime(timestamp)
-                age = (f"{daynames[tm.tm_wday]}, {tm.tm_mday:02d} {monnames[tm.tm_mon]} {tm.tm_year:04d} "
-                       f"{tm.tm_hour:02d}:{tm.tm_min:02d}:{tm.tm_sec:02d} GMT")
+            branch = git_remote_branch()
+            url = git_remote_url()
             try:
-                headers = {'User-Agent': get_user_agent()}
-                if age:
-                    logger.debug(f'Checking if modified since {age}')
-                    headers.update({'If-Modified-Since': age})
-                proxies = proxy_list()
-                timeout = CONFIG.get_int('HTTP_TIMEOUT')
-                if url.startswith('https') and CONFIG['SSL_VERIFY']:
-                    r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies,
-                                     verify=CONFIG['SSL_CERTS']
-                                     if CONFIG['SSL_CERTS'] else True)
+                latest_version = remote_head(url, branch)
+                if not latest_version:
+                    # no git, or it couldn't reach the remote
+                    published = whatsnew.published_changes(branch)
+                    if published:
+                        logger.debug('Latest commit read from changes.json')
+                        latest_version = published['latest']
+                if not latest_version:
+                    logger.warning('Could not get the latest commit from git')
+                    latest_version = f'Not_Available_From_Git : {url}'
                 else:
-                    r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies, verify=False)
-
-                if str(r.status_code).startswith('2'):
-                    try:
-                        res = r.json()
-                        for item in res:
-                            if item['name'] == branch:
-                                latest_version = item['commit']['id']
-                                created_at = item['commit']['created_at']
-                                logger.debug(f"Branch {branch} Latest Version [{latest_version}] {created_at}")
-                                break
-                    except Exception as err:
-                        logger.warning(f'Error {type(err).__name__} reading json response')
-                        logger.error(f'{r.json()}')
-                elif str(r.status_code) == '304':
-                    latest_version = CONFIG['CURRENT_VERSION']
-                    logger.debug('Not modified, currently on Latest Version')
-                else:
-                    logger.warning(f'Could not get the latest commit from git ({r.status_code})')
-                    logger.error(f'{url}: ({headers})')
-                    latest_version = f'Not_Available_From_Git : {r.status_code} : {url}'
+                     # should really be the hash creation datetime, but we don't have that
+                     # and looking it up eats into the api limit.
+                     # Only used as a marker for when we last checked for update
+                    created_at = datetime.datetime.now().isoformat()
             except Exception as err:
                 logger.warning(f'Could not get the latest commit from git: {type(err).__name__}')
                 logger.error(f'for {url}: {str(err)}')
@@ -384,76 +456,84 @@ def get_commit_difference_from_git() -> tuple[int, str]:
     Takes current latest version value and tries to diff it with the latest version in the current branch.
     Returns # of commits behind, and the list of commits as a string """
     logger = logging.getLogger(__name__)
-    logging.getLogger('urllib3.connectionpool').setLevel(logging.CRITICAL)
     commit_list = ''
     commits = -1
+    result = None
+
     if CONFIG['LATEST_VERSION'] and CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
-        CONFIG.set_str('LATEST_VERSION', 'HEAD')
         commit_list = f"Unable to get latest version from {CONFIG['GIT_HOST']}"
         logger.info(commit_list)
-    if re.match('^[a-z0-9]+$', CONFIG['CURRENT_VERSION']):  # does it look like a hash, not an error message
-        url = (f'https://{lazylibrarian.GITLAB_TOKEN}/api/v4/projects/{CONFIG["GIT_USER"]}%2F'
-               f'{CONFIG["GIT_REPO"]}/repository/compare?from={CONFIG["CURRENT_VERSION"]}'
-               f'&to={CONFIG["LATEST_VERSION"]}')
-        logger.debug(f'Check for differences between local & repo by [{url}]')
+        return commits, commit_list
 
-        try:
-            headers = {'User-Agent': get_user_agent()}
-            proxies = proxy_list()
-            timeout = CONFIG.get_int('HTTP_TIMEOUT')
-            if url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
-                r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies,
-                                 verify=CONFIG['SSL_CERTS']
-                                 if CONFIG['SSL_CERTS'] else True)
-            else:
-                r = requests.get(url, timeout=timeout, headers=headers, proxies=proxies, verify=False)
-            git = r.json()
-            # for gitlab, commits = len(git['commits'])  no status/ahead/behind
-            if 'commits' in git:
-                commits = len(git['commits'])
-                st = ''
-                ahead = 0
-                behind = 0
-                if CONFIG['INSTALL_TYPE'] == 'git':
-                    branch = CONFIG['GIT_BRANCH']
-                    output, _ = run_git(f'rev-list --left-right --count {branch}...origin/{branch}')
-                    if output:
-                        a, b = output.split(None, 1)
-                        ahead = check_int(a, 0)
-                        behind = check_int(b, 0)
-                        if ahead + behind:
-                            st = "Differ"
-                        else:
-                            st = "Even"
-                if st:
-                    msg = f'Git: Status [{st}] - Ahead [{ahead}] - Behind [{behind}] - Total Commits [{commits}]'
-                else:
-                    msg = f'Git: Total Commits [{commits}]'
-                logger.debug(msg)
-            else:
-                logger.warning(f'Could not get difference status from git: {str(git)}')
-            if commits > 0:
-                if CONFIG['LATEST_VERSION'] == 'HEAD':
-                    CONFIG.set_str('LATEST_VERSION', git['commit']['id'])
-                for item in git['commits']:
-                    commit_list = f"{item['title']}\n{commit_list}"
-        except Exception as err:
-            logger.warning(f'Could not get difference status from git: {type(err).__name__}')
-
-    if commits > 1:
-        logger.info(f'New version is available. You are {commits} commits behind')
-    elif commits == 1:
-        logger.info('New version is available. You are one commit behind')
-    elif commits == 0:
-        logger.info('Lazylibrarian is up to date')
-        if CONFIG['LATEST_VERSION'] == 'HEAD':
-            commit_list = ''
-            CONFIG.set_str('LATEST_VERSION', CONFIG['CURRENT_VERSION'])
-    else:
+    if not re.fullmatch('[0-9a-f]{7,40}', CONFIG['CURRENT_VERSION']) or \
+            not re.fullmatch('[0-9a-f]{7,40}', CONFIG['LATEST_VERSION']):
+        # eg 'No Version File', nothing git can compare
         commit_list = (f"Unknown version of lazylibrarian ({CONFIG['CURRENT_VERSION']})\n"
                        f"Run lazylibrarian with --update to identify your version")
         logger.info(commit_list)
+        return commits, commit_list
+
+    branch = git_remote_branch()
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        for cur_git in git_programs():
+            try:
+                fetch_branch(cur_git, tmp_dir, branch)
+                # Get the subject lines of log differences between the two hashes
+                log_cmd = [
+                    cur_git,
+                    "log",
+                    f"{CONFIG['CURRENT_VERSION']}..{CONFIG['LATEST_VERSION']}",
+                    "--pretty=format:%s",
+                ]
+                result = subprocess.run(log_cmd, cwd=tmp_dir, **git_run_args())
+                logger.debug("Differences collected")
+                break
+            except OSError as err:
+                # not installed there, try the next one
+                logger.debug(f"Unable to run {cur_git}: {err}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Git execution failed: {(e.stderr or '').strip()}")
+                return commits, commit_list
+            except subprocess.TimeoutExpired:
+                logger.error('Git timed out reading the commit list')
+                return commits, commit_list
+
+        if result is not None:
+            titles = result.stdout.splitlines()
+        else:
+            newer = commits_between_published(whatsnew.published_changes(branch))
+            if newer is None:
+                logger.warning('git not found - please ensure git executable is in your PATH')
+                return commits, commit_list
+            logger.debug('Differences read from changes.json')
+            # newest first, as git log lists them
+            titles = [item.get('title') or '' for item in reversed(newer)]
+
+        # Clean and split the output into a structured list
+        temp_list = [line.strip() for line in titles if line.strip()]
+        commits = len(temp_list)
+        commit_list = '\n'.join(temp_list)
+        if commits > 1:
+            logger.info(f'New version is available. You are {commits} commits behind')
+        elif commits == 1:
+            logger.info('New version is available. You are one commit behind')
+        elif commits == 0:
+            logger.info('Lazylibrarian is up to date')
+            if CONFIG['LATEST_VERSION'] == 'HEAD':
+                commit_list = ''
+                CONFIG.set_str('LATEST_VERSION', CONFIG['CURRENT_VERSION'])
+        else:
+            commit_list = (f"Unknown version of lazylibrarian ({CONFIG['CURRENT_VERSION']})\n"
+                           "or error talking to the server, check the log for details")
+            logger.info(commit_list)
     return commits, commit_list
+
+
+def commits_between_published(published: dict | None) -> list | None:
+    """ The commits from CURRENT_VERSION to LATEST_VERSION in changes.json, oldest first, None if it can't tell """
+    if not published:
+        return None
+    return whatsnew.commits_between(published['commits'], CONFIG['CURRENT_VERSION'], CONFIG['LATEST_VERSION'])
 
 
 def update_version_file(new_version_id):
@@ -561,9 +641,9 @@ def update():
                     msg = f"No update available: {str(output)}"
                     upgradelog.write(f"{time.ctime()} {msg}\n")
                     logger.info(msg)
-                    if os.path.exists(backup_file):
+                    with contextlib.suppress(OSError):
                         os.remove(backup_file)
-                    if os.path.exists(dbbackup_file):
+                    with contextlib.suppress(OSError):
                         os.remove(dbbackup_file)
                     break
                 if 'Aborting' in line or 'local changes' in line:
@@ -591,15 +671,15 @@ def update():
                 msg = f"Downloading update from: {tar_download_url}"
                 upgradelog.write(f"{time.ctime()} {msg}\n")
                 logger.info(msg)
-                headers = {'User-Agent': get_user_agent()}
                 proxies = proxy_list()
                 timeout = CONFIG.get_int('HTTP_TIMEOUT')
                 if tar_download_url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
-                    r = requests.get(tar_download_url, timeout=timeout, headers=headers, proxies=proxies,
+                    r = requests.get(tar_download_url, timeout=timeout, proxies=proxies,
+                                     impersonate='chrome',
                                      verify=CONFIG['SSL_CERTS']
                                      if CONFIG['SSL_CERTS'] else True)
                 else:
-                    r = requests.get(tar_download_url, timeout=timeout, headers=headers, proxies=proxies, verify=False)
+                    r = requests.get(tar_download_url, timeout=timeout, proxies=proxies, impersonate='chrome', verify=False)
             except requests.exceptions.Timeout:
                 msg = f"Timeout retrieving new version from {tar_download_url}"
                 upgradelog.write(f"{time.ctime()} {msg}\n")
@@ -668,7 +748,7 @@ def update():
                         # or use a different upgrade mechanism
                         logger.debug(f"Skipping {curfile}")
                     else:
-                        if os.path.isfile(syspath(new_path)):
+                        with contextlib.suppress(OSError):
                             os.remove(syspath(new_path))
                         os.renames(syspath(old_path), syspath(new_path))
 

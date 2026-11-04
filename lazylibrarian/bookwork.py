@@ -16,12 +16,16 @@ import re
 import threading
 import time
 import traceback
+import uuid
 from urllib.parse import quote, quote_plus, urlencode
 
+import requests
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url, gr_xml_request, json_request
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
@@ -46,6 +50,90 @@ if CONFIG.get_bool('GOOGLE_TRANS_ID'):
 else:
     Translator = None
 import asyncio
+
+# Local, fully offline language detection (see language_from_words() below) - no network
+# call, no dependency on Google's unofficial/reverse-engineered translate client, which has
+# already been caught more than once reporting every language as English (see the dated
+# comments further down). Installed via a custom-cont-init.d script (persists across
+# restarts/image updates without needing a custom Docker build) rather than baked into this
+# repo's own dependency list, since this deployment doesn't build its own image.
+DEFAULT_LANGID_LANGUAGES = [
+    'en', 'fr', 'de', 'es', 'it', 'pt', 'nl',  # major Western European
+    'sv', 'da', 'no', 'fi',                      # Nordic/Finnish
+    'pl', 'cs', 'ru',                             # Slavic
+    'ja', 'zh', 'ko',                             # East Asian
+    'ar', 'bn',                                   # Arabic, Bengali
+    'oc',                                         # Occitan (kept: reduces fr/es confusion)
+]
+
+try:
+    from langid.langid import LanguageIdentifier
+    from langid.langid import model as _langid_model
+    LANGID = LanguageIdentifier.from_modelstring(_langid_model, norm_probs=True)
+    # Restrict langid's candidate languages to common library languages to reduce
+    # false positives on short titles where compound words can otherwise match
+    # rare or low-precedence languages. Can be overridden via LANGID_LANGUAGES in config.ini.
+    LANGID.set_languages(DEFAULT_LANGID_LANGUAGES)
+except (ModuleNotFoundError, ImportError):
+    LANGID = None
+
+_current_langid_languages = None
+
+
+def apply_langid_languages(custom_csv=None):
+    """ Configure or update langid candidate languages from CONFIG or explicit CSV.
+        Passing an empty string or 'All' resets langid to all 97 languages. """
+    global LANGID, _current_langid_languages
+    if LANGID is None:
+        return
+    try:
+        if custom_csv is None:
+            if 'LANGID_LANGUAGES' in CONFIG:
+                custom_csv = CONFIG.get_csv('LANGID_LANGUAGES')
+            else:
+                return
+        custom_csv = (custom_csv or '').strip()
+        if not custom_csv or custom_csv.lower() == 'all':
+            if _current_langid_languages != 'ALL':
+                LANGID.set_languages(None)
+                _current_langid_languages = 'ALL'
+            return
+
+        langs = [x.strip().lower() for x in custom_csv.split(',') if x.strip() and len(x.strip()) <= 5]
+        if langs and langs != _current_langid_languages:
+            LANGID.set_languages(langs)
+            _current_langid_languages = langs
+    except Exception as e:
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Failed to apply langid languages: {e}")
+
+
+
+def detect_language_ms(text):
+    """
+        Call Microsoft Azure translation service to detect the language of text
+        Return language detected and reliability of detection (0.0 to 1.0)
+    """
+    ms_endpoint = "https://api.cognitive.microsofttranslator.com/"
+    subscription_key = CONFIG['MS_TRANS_ID']
+    headers = {
+        'Ocp-Apim-Subscription-Key': subscription_key,
+        'Ocp-Apim-Subscription-Region': 'global',
+        'Content-type': 'application/json',
+        'X-ClientTraceId': str(uuid.uuid4())
+    }
+
+    body = [{'text': text}]
+    path = '/detect?api-version=3.0'
+    constructed_url = ms_endpoint + path
+    try:
+        request = requests.post(constructed_url, headers=headers, json=body)
+        response = request.json()
+        language = response[0]['language']
+        score = response[0]['score']
+        return [language, score]
+    except Exception as e:
+        return [f'Translation error from Microsoft {e}', 0.0]
 
 
 def set_all_book_authors():
@@ -265,7 +353,12 @@ def get_status(bookid=None, serieslist=None, default=None, adefault=None, authst
             if match and match['Status'] in ['Wanted', 'Skipped', 'Ignored']:
                 if CONFIG.get_bool('EBOOK_TAB'):
                     new_status = match['Status']
-                if CONFIG.get_bool('AUDIO_TAB'):
+                # Narrowing (Skipped/Ignored) always applies, but only let a series' Wanted
+                # status escalate audio to Wanted if the user's own default audio preference
+                # (adefault, from NEWAUDIO_STATUS/NEWAUTHOR_AUDIO) would already do that -
+                # otherwise "never auto-want audio" gets silently overridden by marking a
+                # series Wanted (Issue #2838).
+                if CONFIG.get_bool('AUDIO_TAB') and (match['Status'] != 'Wanted' or adefault == 'Wanted'):
                     new_astatus = match['Status']
                 if new_status or new_astatus:
                     logger.debug(f"Marking {bookname} as {match['Status']}, series {item[2]}")
@@ -280,7 +373,8 @@ def get_status(bookid=None, serieslist=None, default=None, adefault=None, authst
                 wanted_status = authstatus
             if CONFIG.get_bool('EBOOK_TAB'):
                 new_status = wanted_status
-            if CONFIG.get_bool('AUDIO_TAB'):
+            # Same audio-escalation guard as the series check above (Issue #2838).
+            if CONFIG.get_bool('AUDIO_TAB') and (wanted_status != 'Wanted' or adefault == 'Wanted'):
                 new_astatus = wanted_status
             if new_status or new_astatus:
                 logger.debug(f'Marking {bookname} as {wanted_status}, author {authstatus}')
@@ -533,7 +627,11 @@ def add_series_members(seriesid, refresh=False):
                         if CONFIG.get_bool('EBOOK_TAB') and newbook['Status'] != wanted_status:
                             db.action("UPDATE books SET Status=? WHERE BookID=?", (wanted_status, bookid))
                             logger.debug(f"Series [{seriesname}] set status to {wanted_status} for {member[1]}")
-                        if CONFIG.get_bool('AUDIO_TAB') and newbook['AudioStatus'] != wanted_status:
+                        # Only let a Wanted series escalate audio to Wanted if the user's own
+                        # default audio preference would already do that (Issue #2838) -
+                        # narrowing (Skipped) always applies.
+                        if (CONFIG.get_bool('AUDIO_TAB') and newbook['AudioStatus'] != wanted_status
+                                and (wanted_status != 'Wanted' or CONFIG['NEWAUDIO_STATUS'] == 'Wanted')):
                             db.action("UPDATE books SET AudioStatus=? WHERE BookID=?", (wanted_status, bookid))
                             logger.debug(f"Series [{seriesname}] set audiostatus to {wanted_status} for {member[1]}")
                     else:
@@ -546,7 +644,9 @@ def add_series_members(seriesid, refresh=False):
                             if CONFIG.get_bool('EBOOK_TAB') and newbook['Status'] != wanted_status:
                                 db.action("UPDATE books SET Status=? WHERE BookID=?", (wanted_status, bookid))
                                 logger.debug(f"Author {member[4]} set status to {wanted_status} for {member[1]}")
-                            if CONFIG.get_bool('AUDIO_TAB') and newbook['AudioStatus'] != wanted_status:
+                            # Same audio-escalation guard as above (Issue #2838).
+                            if (CONFIG.get_bool('AUDIO_TAB') and newbook['AudioStatus'] != wanted_status
+                                    and (wanted_status != 'Wanted' or CONFIG['NEWAUDIO_STATUS'] == 'Wanted')):
                                 db.action("UPDATE books SET AudioStatus=? WHERE BookID=?", (wanted_status, bookid))
                                 logger.debug(f"Author {member[4]} set audiostatus to {wanted_status} for {member[1]}")
                     count += 1
@@ -632,7 +732,7 @@ def get_series_authors(seriesid):
                                     booktitle = replace_all(booktitle, lazylibrarian.DICTS.get('apostrophe_dict', {}))
                                 except (KeyError, AttributeError):
                                     booktitle = ""
-                                book_fuzz = fuzz.token_set_ratio(booktitle, bookname)
+                                book_fuzz = fuzz.token_set_ratio(booktitle, bookname, processor=default_process)
                                 if book_fuzz >= 98:
                                     try:
                                         author = item.find('./best_book/author/name').text
@@ -664,7 +764,7 @@ def get_series_authors(seriesid):
                                 for item in resultxml:
                                     booktitle = item.find('./best_book/title').text
                                     booktitle = replace_all(booktitle, lazylibrarian.DICTS.get('apostrophe_dict', {}))
-                                    book_fuzz = fuzz.token_set_ratio(booktitle, bookname)
+                                    book_fuzz = fuzz.token_set_ratio(booktitle, bookname, processor=default_process)
                                     if book_fuzz >= 98:
                                         try:
                                             author = item.find('./best_book/author/name').text
@@ -700,22 +800,21 @@ def get_series_authors(seriesid):
 
 def is_set_or_part(title):
     logger = logging.getLogger(__name__)
-    rejected = False
-    msg = ''
     if not title:
-        return rejected, msg
+        return False, ''
     m = re.search(r'(\d+)-(\d+)', title)
     if m:
         if check_year(m.group(1), past=1400, future=0):
             logger.debug(f"Allow {title}, looks like a date range")
         else:
-            rejected = True
-            msg = f'Set or Part {m.group(0)}'
-    if re.search(r'\d+ of \d+', title) or \
-            re.search(r'\d+/\d+', title) and not re.search(r'\d+/\d+/\d+', title) or re.search(r'\w+\s*/\s*\w+', title):
-        rejected = True
-        msg = 'Set or Part'
-    return rejected, msg
+            return True, f'Set or Part {m.group(0)}'
+    m = re.search(r'\d+/\d+/\d+', title)
+    if m and check_year(m.group(0).split('/')[2], past=1400, future=0):
+        logger.debug(f"Allow {title}, looks like a date")
+        return False, ''
+    if re.search(r'\d+ of \d+', title) or re.search(r'\d+/\d+', title) or re.search(r'\w+\s*/\s*\w+', title):
+        return True, 'Set or Part'
+    return False, ''
 
 
 def get_series_members(seriesid=None, seriesname=None, refresh=False):
@@ -850,11 +949,20 @@ def get_series_members(seriesid=None, seriesname=None, refresh=False):
     return filtered, api_hits, source
 
 
-def get_gb_info(isbn=None, author=None, title=None, expire=False):
+def get_gb_info(isbn=None, author=None, title=None, expire=True):
     """ GoodReads/OpenLibrary do not always have a book description in api results
         due to restrictive TOS from some providers, and goodreads may not have genre
         Try to get missing info from googlebooks
-        Return info dictionary, None if error"""
+        Return info dictionary, None if error
+
+        expire=True (the default) lets a cached "no fuzzy match" result age out after
+        CACHE_AGE days so it gets retried on a later refresh, same as the GoodReads
+        pubdate lookup. expire=False pins the result in the cache forever - a Google
+        Books search that fails to fuzzy-match a book/author once (common for messy or
+        subtitled titles) would otherwise never be retried, permanently blocking that
+        book's date/description/genre/rating/publisher from ever being filled in via
+        this fallback. Only pass expire=False for callers that already gate a fresh
+        lookup behind their own explicit refresh flag (see api.py's _setnodesc/_setnogenre)."""
     if not author or not title or not CONFIG['GB_API']:
         return {}
 
@@ -882,8 +990,8 @@ def get_gb_info(isbn=None, author=None, title=None, expire=False):
             high_parts = []
             for item in results['items']:
                 res = google_book_dict(item)
-                book_fuzz = fuzz.token_set_ratio(res['name'], title)
-                auth_fuzz = fuzz.token_set_ratio(res['author'], author)
+                book_fuzz = fuzz.token_set_ratio(res['name'], title, processor=default_process)
+                auth_fuzz = fuzz.token_set_ratio(res['author'], author, processor=default_process)
                 total_fuzz = int(book_fuzz + auth_fuzz) / 2
                 if total_fuzz > high_fuzz:
                     high_fuzz = total_fuzz
@@ -1259,7 +1367,7 @@ def get_book_pubdate(bookid, refresh=False):
             bookdate = rootxml.find('book/work/original_publication_year').text
             if bookdate is None:
                 bookdate = '0000'
-            elif check_year(bookdate, past=1800, future=0):
+            elif check_int(bookdate, 0, positive=False):  # changed to allow any year for classics
                 try:
                     mn = check_int(rootxml.find(
                         './book/work/original_publication_month').text, 0)
@@ -1281,7 +1389,10 @@ def get_book_pubdate(bookid, refresh=False):
         return bookdate, False
 
     url = '/'.join([CONFIG['GB_URL'],
-                    f"books/v1/volumes/{bookid}?key={CONFIG['GB_API']}"])
+                    f"books/v1/volumes/{bookid}"])
+    if CONFIG['GB_API']:
+        url += f"?key={CONFIG['GB_API']}"
+
     jsonresults, in_cache = json_request(url)
     if not jsonresults:
         logger.debug(f'No results found for {bookid}')
@@ -1336,10 +1447,116 @@ def isbnlang(isbn):
     return book_language, cache_hit, thing_hit
 
 
-def language_from_words(words):
-    if not Translator:
-        return 0, 0
+EN_MULTI_STOPS = {
+    'about', 'above', 'after', 'again', 'against', 'all', 'am', 'an', 'and', 'any', 'are', 'as', 'at',
+    'be', 'because', 'been', 'before', 'being', 'below', 'between', 'both', 'but', 'by', 'could', 'did',
+    'do', 'does', 'doing', 'down', 'during', 'each', 'few', 'for', 'from', 'further', 'had', 'has', 'have',
+    'having', 'he', 'her', 'here', 'hers', 'herself', 'him', 'himself', 'his', 'how', 'if', 'in',
+    'into', 'is', 'it', 'its', 'itself', 'me', 'more', 'most', 'my', 'myself', 'no', 'nor', 'not', 'of',
+    'off', 'on', 'once', 'only', 'or', 'other', 'ought', 'our', 'ours', 'ourselves', 'out', 'over', 'own',
+    'same', 'she', 'should', 'so', 'some', 'such', 'than', 'that', 'the', 'their', 'theirs', 'them',
+    'themselves', 'then', 'there', 'these', 'they', 'this', 'those', 'through', 'to', 'too', 'under',
+    'until', 'up', 'very', 'was', 'we', 'were', 'what', 'when', 'where', 'which', 'while', 'who', 'whom',
+    'why', 'with', 'would', 'you', 'your', 'yours', 'yourself', 'yourselves', 'still', 'just', 'like'
+}
+NON_EN_STOPS = {
+    # German
+    'der', 'die', 'das', 'den', 'dem', 'des', 'ein', 'eine', 'einer', 'eines', 'einem', 'einen', 'und',
+    'mit', 'sich', 'auf', 'für', 'ist', 'im', 'nicht', 'von', 'wie', 'bei', 'oder', 'aber', 'vor', 'am',
+    'nach', 'über', 'aus', 'durch', 'wenn', 'beim',
+    # French
+    'le', 'la', 'les', 'un', 'une', 'du', 'de', 'et', 'à', 'au', 'aux', 'pour', 'dans', 'sur', 'avec',
+    'par', 'ce', 'ces', 'cette', 'sont', 'qui', 'que', 'votre', 'notre',
+    # Spanish
+    'el', 'los', 'las', 'unos', 'unas', 'del', 'por', 'para', 'con', 'sus', 'como', 'pero', 'este', 'esta',
+    # Portuguese
+    'um', 'uma', 'do', 'da', 'dos', 'em', 'no', 'na', 'nos', 'nas',
+    # Italian
+    'il', 'lo', 'gli', 'della', 'dello', 'degli', 'delle', 'nel', 'nella', 'sul', 'sulla'
+}
+COMMON_EN_WORDS = {
+    'story', 'stories', 'tales', 'tale', 'book', 'books', 'guide', 'handbook', 'manual',
+    'history', 'world', 'life', 'journey', 'adventure', 'adventures', 'chronicles', 'complete',
+    'series', 'collection', 'collected', 'edition', 'volume', 'secret', 'secrets', 'night', 'day',
+    'days', 'year', 'years', 'time', 'times', 'heart', 'mind', 'power', 'nature', 'light', 'dark',
+    'darkness', 'shadow', 'shadows', 'house', 'home', 'island', 'city', 'land', 'river', 'sea',
+    'death', 'dead', 'living', 'love', 'lessons', 'first', 'last', 'one', 'two', 'three', 'four',
+    'five', 'best', 'great', 'little', 'big', 'short', 'long', 'young', 'younger', 'old', 'older',
+    'man', 'men', 'woman', 'women', 'girl', 'girls', 'boy', 'boys', 'children', 'child', 'mother',
+    'father', 'sister', 'brother', 'family', 'friend', 'friends', 'king', 'queen', 'prince',
+    'princess', 'lord', 'war', 'battle', 'peace', 'fall', 'rise', 'rising', 'lost', 'found',
+    'silent', 'echo', 'storm', 'fire', 'ice', 'water', 'wind', 'blood', 'bone', 'dream', 'dreams',
+    'truth', 'lies', 'song', 'road', 'path', 'summer', 'winter', 'spring', 'autumn', 'moon',
+    'sun', 'star', 'stars', 'art', 'work', 'works', 'fun', 'learning', 'colorful', 'contract',
+    'executive', 'boardroom', 'masked', 'gala', 'rival', 'vow', 'ash', 'video', 'issue', 'monthly',
+    'super', 'alien', 'teachers', 'publisher', 'camera', 'flash', 'portraits', 'photography'
+}
+
+
+def language_from_words(words, source='ms', desc=None):
+    if not words:
+        return 'None', 0
     logger = logging.getLogger(__name__)
+
+    desc_clean = (desc or '').strip()
+    if desc_clean and desc_clean != 'No Description' and len(desc_clean) > 30:
+        sample = f"{words}. {desc_clean[:500]}"
+    else:
+        sample = None
+
+    # Try local, offline detection first - no network call, nothing to rate-limit or go
+    # down, and nothing for an upstream service to ever misreport (see the Google outage
+    # documented below, which this sidesteps entirely rather than working around). Skipped
+    # only for the internal "is Google currently lying to us" canary probe (source="google"),
+    # which deliberately needs to reach the real Google path to keep testing it.
+    if source != 'google' and LANGID is not None:
+        apply_langid_languages()
+        if sample:
+            lang, conf = LANGID.classify(sample)
+            logger.debug(f"langid (with desc) detected {lang}:{conf:.3f} for {words}")
+            return lang, conf
+
+        # Short title heuristics before raw langid classification:
+        # N-gram models easily misclassify short titles lacking stopwords.
+        tokens = set(re.findall(r'[a-zA-Z]+', words.lower()))
+        en_stops = tokens.intersection(EN_MULTI_STOPS)
+        non_en_stops = tokens.intersection(NON_EN_STOPS)
+
+        if en_stops and not non_en_stops:
+            logger.debug(f"Title stopword heuristic detected en:1.000 for {words}")
+            return 'en', 1.0
+
+        en_vocab = tokens.intersection(COMMON_EN_WORDS)
+        if (len(en_stops) + len(en_vocab)) >= max(1, len(tokens) * 0.4) and not non_en_stops:
+            logger.debug(f"Title vocab heuristic detected en:0.950 for {words}")
+            return 'en', 0.95
+
+        lang, conf = LANGID.classify(words)
+        logger.debug(f"langid detected {lang}:{conf:.3f} for {words}")
+        return lang, conf
+
+    if source == 'ms' and CONFIG['MS_TRANS_ID']:
+        return detect_language_ms(words)
+
+    # couldn't be loaded, or configured off
+    if not Translator or not CONFIG.get_bool('GOOGLE_TRANS_ID'):
+        return 'Disabled', 0
+
+    # Since 24 Aug 2026 google now reports everything as English, 1.0
+    # Fixed 31 August, working normally again
+    # Check if not already checked in the last hour
+    if int(time.time()) > lazylibrarian.TIMERS['LAST_GLANG'] + 3600:
+        lazylibrarian.TIMERS['LAST_GLANG'] = int(time.time())
+        detected_lang, _ = language_from_words("le chien blanc", source="google")
+        if detected_lang == "en":
+            # google is lying to us, block for an hour
+            BLOCKHANDLER.block_provider("glang", "Invalid en result", delay=3600)
+        elif detected_lang == "fr" and BLOCKHANDLER.is_blocked("glang"):
+            BLOCKHANDLER.remove_provider_entry("glang")
+
+    if BLOCKHANDLER.is_blocked("glang"):
+        return "Blocked", 0
+
     logging.getLogger('googletrans').setLevel(logging.CRITICAL)
     logging.getLogger('asyncio').setLevel(logging.CRITICAL)
     logging.getLogger('hpack').setLevel(logging.CRITICAL)
@@ -1349,12 +1566,16 @@ def language_from_words(words):
             result = await translator.detect(s)
             return result
     try:
-        res = asyncio.run(lang_detect(words))
+        res = asyncio.run(asyncio.wait_for(lang_detect(words), timeout=5))
         logger.debug(f"Detected {res.lang}:{res.confidence} for {words}")
         return res.lang, res.confidence
+    except asyncio.TimeoutError:
+        msg = 'Asyncio timeout'
+        logger.debug(msg)
+        return msg, 0
     except Exception as e:
         logger.debug(str(e))
-        return 0, 0
+        return str(e), 0
 
 
 def isbn_from_words(words):
@@ -1368,6 +1589,11 @@ def isbn_from_words(words):
             logger.debug(f'Found cached ISBN for {words}')
             db.close()
             return res['ISBN']
+
+        if BLOCKHANDLER.is_blocked('googleapis') or BLOCKHANDLER.is_blocked('ISBN'):
+            logger.debug(f"Skipping Google search ISBN lookup for '{words}': Google is blocked")
+            db.close()
+            return None
 
         baseurl = "http://www.google.com/search?q=ISBN+"
         search_url = baseurl + quote(words.replace(' ', '+'))

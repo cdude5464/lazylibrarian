@@ -63,6 +63,17 @@ class AnnaAvailabilityTest(TestCase):
         self.assertEqual(json.loads(Path(path).read_text()), [])
         self.assertTrue(self.config["ANNA_HOST"].startswith("https://two.invalid"))
 
+    def test_unknown_success_page_does_not_poison_zero_result_cache(self):
+        for html in (
+            "<html><body>Scheduled maintenance. Please try later.</body></html>",
+            "<html><body>Anna's Archive</body></html>",
+            "<html><body>No files found. is an example phrase, not a result.</body></html>",
+        ):
+            with self.subTest(html=html), patch.object(annas, "html_parser", return_value=BeautifulSoup(html, "html5lib")):
+                with self.assertRaisesRegex(annas.HTTPFailedError, "unrecognized results page"):
+                    annas.annas_search("book")
+            self.assertEqual(list(self.cache.iterdir()), [])
+
     def test_unparseable_result_cards_do_not_poison_zero_result_cache(self):
         soup = BeautifulSoup('<div class="pt-3 border-b">changed markup</div>', "html5lib")
         with patch.object(annas, "html_parser", return_value=soup):
@@ -74,9 +85,9 @@ class AnnaAvailabilityTest(TestCase):
         for title in ("Just a moment...", "DDoS-Guard"):
             with self.subTest(title=title):
                 response = Mock(status_code=200, text=f"<html><title>{title}</title></html>")
-                with patch.object(annas, "get", return_value=response):
+                with patch.object(annas, "_anna_search_response", return_value=response):
                     with self.assertRaisesRegex(annas.HTTPFailedError, "access challenge"):
-                        annas.html_parser("https://one.invalid/search")
+                        annas.html_parser("https://annas-archive.gl/search")
 
     def test_adapter_returns_error_instead_of_successful_no_results(self):
         with patch.object(annas.BLOCKHANDLER, "is_blocked", return_value=False):
@@ -124,7 +135,7 @@ class AnnaAvailabilityTest(TestCase):
 class AnnaProviderOutageBlockTest(TestCase):
     def test_stale_remaining_quota_does_not_extend_an_outage_block(self):
         config = FakeConfig(
-            BOK=False, SLSK=False, ANNA=True, ANNA_DLTYPES="E",
+            BOK=False, SLSK=False, WEBSHARE=False, ANNA=True, ANNA_DLTYPES="E",
             ANNA_DLLIMIT=50, BLOCKLIST_TIMER=300,
         )
         config.providers = lambda _: []
@@ -142,7 +153,7 @@ class AnnaProviderOutageBlockTest(TestCase):
 
 
     def test_existing_search_backoff_is_not_extended_by_more_wanted_books(self):
-        config = FakeConfig(BOK=False, SLSK=False, ANNA=True, ANNA_DLTYPES="E", BLOCKLIST_TIMER=300)
+        config = FakeConfig(BOK=False, SLSK=False, WEBSHARE=False, ANNA=True, ANNA_DLTYPES="E", BLOCKLIST_TIMER=300)
         config.providers = lambda _: []
         book = {"bookid": "42", "bookName": "Book", "authorName": "Author", "searchterm": "Author Book"}
         with (

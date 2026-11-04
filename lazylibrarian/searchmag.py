@@ -32,9 +32,11 @@ from lazylibrarian.formatter import (
     replace_all,
     thread_name,
     unaccented,
+    word_key,
+    word_keys,
 )
 from lazylibrarian.magazinescan import get_dateparts
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import (
     iterate_over_direct_sites,
     iterate_over_irc_sites,
@@ -56,17 +58,17 @@ def search_magazines(mags=None, reset=False, backissues=False):
     TELEMETRY.record_usage_data('Search/Magazine')
     logger = logging.getLogger(__name__)
     searchinglogger = logging.getLogger('special.searching')
-    threadname = thread_name()
-    if "Thread" in threadname:
+
+    if "SEARCH" not in thread_name():
         if not mags:
             thread_name("SEARCHALLMAG")
-            threadname = "SEARCHALLMAG"
         else:
             thread_name("SEARCHMAG")
+
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
-
+        logger.debug(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
         searchlist = []
 
@@ -111,8 +113,8 @@ def search_magazines(mags=None, reset=False, backissues=False):
             logger.warning('There is nothing to search for.  Mark some magazines as active.')
 
         for book in searchlist:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLMAG":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLMAG":
+                logger.debug("STOPTHREADS Aborting SEARCHALLMAG")
                 break
 
             resultlist = []
@@ -346,9 +348,10 @@ def search_magazines(mags=None, reset=False, backissues=False):
                                     nouns.extend(get_list(CONFIG['MAG_NOUNS']))
                                     nouns.extend(get_list(CONFIG['MAG_TYPE']))
                                     nouns.extend(list(lazylibrarian.SEASONS.keys()))
-                                    nouns = set(nouns)
+                                    # compared without accents, titles are often written without them
+                                    nouns = word_keys(nouns)
                                     for word in lower_title:
-                                        if word not in lower_bookid and word not in nouns and not word.isdigit():
+                                        if word not in lower_bookid and word_key(word) not in nouns and not word.isdigit():
                                             valid = False
                                             for f in range(1, 13):
                                                 if (word in lazylibrarian.MONTHNAMES[0][f] or
@@ -522,9 +525,8 @@ def search_magazines(mags=None, reset=False, backissues=False):
                     db.upsert("wanted", new_value_dict, control_value_dict)
                     logger.info(f"Added {control_value_dict['NZBtitle']} to wanted marked {new_value_dict['Status']}")
 
-                msg = f"Found {total_nzbs} {plural(total_nzbs, 'result')} for {bookid}. {new_date} new,{new_list}"
-                msg += f' {old_date} old, {bad_date} fail date, {bad_name} fail name,'
-                msg += f' {rejects} rejected: {len(wanted_list)} to download'
+                msg = (f"Found {total_nzbs} {plural(total_nzbs, 'result')} for {bookid}. {new_date} new{' ' + str(new_list) if new_list else ''},"
+                    f" {old_date} old, {bad_date} fail date, {bad_name} fail name, {rejects} rejected: {len(wanted_list)} to download")
                 logger.info(msg)
 
                 threading.Thread(target=download_maglist, name='DL-MAGLIST', args=[maglist, 'pastissues']).start()
@@ -538,6 +540,7 @@ def search_magazines(mags=None, reset=False, backissues=False):
     except Exception:
         logger.error(f'Unhandled exception in search_magazines: {traceback.format_exc()}')
     finally:
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
         db.close()
         thread_name("WEBSERVER")
@@ -547,8 +550,10 @@ def download_maglist(maglist, table='wanted'):
     logger = logging.getLogger(__name__)
     snatched = 0
     db = database.DBConnection()
+    logger.debug(f"Downloading {len(maglist)}")
     try:
         for magazine in maglist:
+            logger.debug(f"{magazine['nzbmode']}: {magazine['nzbtitle']}")
             if magazine['nzbmode'] in ["torznab", "torrent", "magnet"]:
                 snatch, res = tor_dl_method(
                     magazine['bookid'],
@@ -579,14 +584,13 @@ def download_maglist(maglist, table='wanted'):
                     db.action("UPDATE pastissues set status=? WHERE NZBurl=?", ('Snatched', magazine["nzburl"]))
                 logger.info(f"Downloading {magazine['nzbtitle']} from {magazine['nzbprov']}")
                 custom_notify_snatch(f"{magazine['bookid']} {magazine['nzburl']}")
-                notify_snatch(
-                    f"Magazine {unaccented(magazine['nzbtitle'], only_ascii=False)} from "
-                    f"{CONFIG.disp_name(magazine['nzbprov'])} at {now()}")
+                notify_snatch(notify_text(unaccented(magazine['nzbtitle'], only_ascii=False),
+                                          CONFIG.disp_name(magazine['nzbprov']), 'Magazine'))
             else:
                 db.action(f"UPDATE {table} SET status='Failed',DLResult=? WHERE NZBurl=?",
                           (res, magazine["nzburl"]))
-    except Exception as e:
-        logger.error(str(e))
+    except Exception:
+        logger.error(f"Error in download_maglist: {traceback.format_exc()}")
     finally:
         db.close()
         if snatched:

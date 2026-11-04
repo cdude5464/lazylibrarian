@@ -19,6 +19,7 @@
 import datetime
 import logging
 import os
+import zipfile
 from urllib.parse import quote_plus
 
 import cherrypy
@@ -32,6 +33,7 @@ from lazylibrarian.common import get_readinglist, mime_type, zip_audio
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import any_file, listdir, path_isfile, splitext
 from lazylibrarian.formatter import check_int, get_list, make_unicode, plural
+from lazylibrarian.images import extract_image_from_page, pdf_pagecount
 
 searchable = ['EAuthors', 'AAuthors', 'Magazines', 'Series', 'EAuthor', 'AAuthor', 'RecentBooks',
               'RecentAudio', 'RecentMags', 'RatedBooks', 'RatedAudio', 'ReadBooks', 'ToReadBooks',
@@ -136,7 +138,7 @@ class OPDS:
         else:
             return self.data
 
-    def multi_link(self, bookfile, bookid):
+    def _multi_format_book_links(self, bookfile, bookid):
         types = []
         multi = ''
         basename, _ = splitext(bookfile)
@@ -151,6 +153,71 @@ class OPDS:
                 multi += '<link href="'
                 multi += f'{self.opdsroot}?cmd=Serve&amp;bookid={quote_plus(bookid)}&amp;fmt={fmt}'
                 multi += '" rel="http://opds-spec.org/acquisition" type="' + mime_type('.' + fmt) + '"/>'
+        return multi
+
+    def _number_of_pages(self, bookfile):
+        basename, extn = splitext(bookfile)
+
+        if extn.lower() == '.pdf':
+            return pdf_pagecount(bookfile)
+
+        # Valid image extensions commonly found inside CBR/CB7 files
+        image_extensions = ('.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp')
+
+        if extn.lower() == '.cbz':
+            with zipfile.ZipFile(bookfile, 'r') as z:
+                all_files = z.namelist()
+                return sum(1 for file in all_files if file.lower().endswith(image_extensions))
+
+        if extn.lower() == '.cbr':
+            if lazylibrarian.UNRARLIB == 1 and lazylibrarian.RARFILE.is_rarfile(bookfile):
+                try:
+                    z = lazylibrarian.RARFILE.RarFile(bookfile)
+                except Exception as e:
+                    self.logger.error(f"Failed to unrar lib_1 {bookfile}: {e}")
+                    return 0
+                all_files = z.namelist()
+                return sum(1 for file in all_files if file.lower().endswith(image_extensions))
+
+            if lazylibrarian.UNRARLIB == 2:
+                try:
+                    z = lazylibrarian.RARFILE(bookfile)
+                except Exception as e:
+                    self.logger.error(f"Failed to unrar lib_2 {bookfile}: {e}")
+                    return 0
+                all_files = []
+                for member in z.infoiter():
+                    all_files.append(member.filename)
+                return sum(1 for file in all_files if file.lower().endswith(image_extensions))
+
+            return 0
+
+        if extn.lower() == '.cb7':
+            try:
+                import py7zr
+            except Exception:
+                return 0
+            with py7zr.SevenZipFile(bookfile, mode='r') as archive:
+                all_files = archive.getnames()
+                return sum(1 for file in all_files if file.lower().endswith(image_extensions))
+
+        return 0
+
+    def _streamable_links(self, bookfile, bookid, userid, idtype):
+        multi = ''
+        basename, extn = splitext(bookfile)
+        if not isinstance(basename, str):
+            basename = basename.decode('utf-8')
+        pagecount = self._number_of_pages(bookfile)
+        if not pagecount:
+            return ''
+        multi += '<link href="'
+        multi += f'{self.opdsroot}?cmd=Serve&amp;issueid={quote_plus(bookid)}{userid}'
+        multi += '" rel="http://opds-spec.org/acquisition" type="' + mime_type(extn) + '"/>'
+        multi += f'<link href="{self.opdsroot}?cmd=Serve&amp;{idtype}={quote_plus(bookid)}'
+        multi += '&amp;page={pageNumber}&amp;width={maxWidth}"'
+        multi += f' pse:count="{pagecount}"'
+        multi += ' rel="http://vaemendis.net/opds-pse/stream" type="image/jpeg"/>'
         return multi
 
     @staticmethod
@@ -416,12 +483,14 @@ class OPDS:
         cmd = ("select genrename,(select count(*) as counter from genrebooks,books where "
                "genrebooks.genreid = genres.genreid and books.status='Open' and "
                "books.bookid=genrebooks.bookid) as cnt from genres where cnt > 0")
+        args = ()
         if 'query' in kwargs:
-            cmd += f" and instr(genrename, '{kwargs['query']}') > 0"
+            cmd += " and instr(genrename, ?) > 0"
+            args = (kwargs['query'], )
         cmd += " order by cnt DESC,genrename ASC"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            results = db.select(cmd, args) if args else db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -499,7 +568,7 @@ class OPDS:
                 mimetype = None
                 rel = 'file'
                 if book['BookFile']:
-                    mimetype = self.multi_link(book['BookFile'], book['BookID'])
+                    mimetype = self._multi_format_book_links(book['BookFile'], book['BookID'])
                     if mimetype:
                         rel = 'multi'
                     else:
@@ -587,12 +656,14 @@ class OPDS:
         links.append(getlink(href=f'{self.searchroot}/opensearchauthors.xml',
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Authors'))
         cmd = "SELECT AuthorName,AuthorID,HaveEBooks,TotalBooks,Updated,AuthorImg from Authors WHERE "
+        args = ()
         if 'query' in kwargs:
-            cmd += f"instr(AuthorName, '{kwargs['query']}') > 0 AND "
+            cmd += "instr(AuthorName, ?) > 0 AND "
+            args = (kwargs['query'], )
         cmd += "HaveEBooks > 0 order by AuthorName"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            results = db.select(cmd, args) if args else db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -664,12 +735,14 @@ class OPDS:
         links.append(getlink(href=f'{self.searchroot}/opensearchauthors.xml',
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Authors'))
         cmd = "SELECT AuthorName,AuthorID,HaveAudioBooks,TotalBooks,Updated,AuthorImg from Authors WHERE "
+        args = ()
         if 'query' in kwargs:
-            cmd += f"instr(AuthorName, '{kwargs['query']}') > 0 AND "
+            cmd += "instr(AuthorName, ?) > 0 AND "
+            args = (kwargs['query'], )
         cmd += "HaveAudioBooks > 0 order by AuthorName"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            results = db.select(cmd, args) if args else db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -739,12 +812,17 @@ class OPDS:
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Comics'))
         cmd = ("select comics.*,(select count(*) as counter from comicissues where "
                "comics.ComicID = comicissues.ComicID) as Iss_Cnt from comics ")
+        args = ()
         if 'query' in kwargs:
-            cmd += f"WHERE instr(comics.title, '{kwargs['query']}') > 0 "
+            cmd += "WHERE instr(comics.title, ?) > 0 "
+            args = (kwargs['query'], )
         cmd += "order by comics.title"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -812,12 +890,17 @@ class OPDS:
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Magazines'))
         cmd = ("select magazines.*,(select count(*) as counter from issues where magazines.title = issues.title) "
                "as Iss_Cnt from magazines ")
+        args = ()
         if 'query' in kwargs:
-            cmd += f"WHERE instr(magazines.title, '{kwargs['query']}') > 0 "
+            cmd += "WHERE instr(magazines.title, ?) > 0 "
+            args = (kwargs['query'], )
         cmd += "order by magazines.title"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -884,12 +967,14 @@ class OPDS:
         links.append(getlink(href=f'{self.searchroot}/opensearchseries.xml',
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Series'))
         cmd = "SELECT SeriesName,SeriesID,Have,Total from Series WHERE CAST(Have AS INTEGER) > 0 "
+        args = ()
         if 'query' in kwargs:
-            cmd += f"AND instr(SeriesName, '{kwargs['query']}') > 0 "
+            cmd += "AND instr(SeriesName, ?) > 0 "
+            args = (kwargs['query'], )
         cmd += "order by SeriesName"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            results = db.select(cmd, args) if args else db.select(cmd)
             if limit:
                 page = results[index:(index + limit)]
             else:
@@ -973,14 +1058,21 @@ class OPDS:
             limit = len(page)
         for issue in page:
             issueid = f'{kwargs["magid"]}_{issue["IssueID"]}'
+            mimetype = self._streamable_links(issue['IssueFile'], issue["IssueID"], userid, 'issueid')
+            if mimetype:
+                rel = 'multi'
+            else:
+                rel = 'file'
+                mimetype = mime_type(issue['IssueFile'])
+
             entry = {'title': escape(f'{title} ({issue["IssueID"]})'),
                      'id': f'issue:{issueid}',
                      'updated': opdstime(issue['IssueAcquired']),
                      'content': escape(f'{title} - {issue["IssueID"]}'),
                      'href': f'{self.opdsroot}?cmd=Serve&amp;comicissueid={issueid}{userid}',
                      'kind': 'acquisition',
-                     'rel': 'file',
-                     'type': mime_type(issue['IssueFile'])}
+                     'rel': rel,
+                     'type': mimetype}
             if CONFIG.get_bool('OPDS_METAINFO'):
                 fname = splitext(issue['IssueFile'])[0]
                 res = cache_img(ImageType.COMIC, issueid, fname + '.jpg')
@@ -1032,11 +1124,11 @@ class OPDS:
         links = []
         entries = []
         title = ''
-        cmd = ("SELECT Title,IssueID,IssueDate,IssueAcquired,IssueFile from issues WHERE Title='%s' "
+        cmd = ("SELECT Title,IssueID,IssueDate,IssueAcquired,IssueFile from issues WHERE Title=? "
                "order by IssueDate DESC")
         db = database.DBConnection()
         try:
-            results = db.select(cmd % kwargs['magid'])
+            results = db.select(cmd, (kwargs['magid'], ))
         finally:
             db.close()
         if limit:
@@ -1045,6 +1137,13 @@ class OPDS:
             page = results
             limit = len(page)
         for issue in page:
+            mimetype = self._streamable_links(issue['IssueFile'], issue["IssueID"], userid, 'issueid')
+            if mimetype:
+                rel = 'multi'
+            else:
+                rel = 'file'
+                mimetype = mime_type(issue['IssueFile'])
+
             title = make_unicode(issue['Title'])
             entry = {'title': escape(f'{title} ({issue["IssueDate"]})'),
                      'id': escape(f'issue:{issue["IssueID"]}'),
@@ -1052,8 +1151,9 @@ class OPDS:
                      'content': escape(f'{title} - {issue["IssueDate"]}'),
                      'href': f'{self.opdsroot}?cmd=Serve&amp;issueid={quote_plus(issue["IssueID"])}{userid}',
                      'kind': 'acquisition',
-                     'rel': 'file',
-                     'type': mime_type(issue['IssueFile'])}
+                     'rel': rel,
+                     'type': mimetype}
+
             if CONFIG.get_bool('OPDS_METAINFO'):
                 fname = splitext(issue['IssueFile'])[0]
                 res = cache_img(ImageType.MAG, issue['IssueID'], fname + '.jpg')
@@ -1113,10 +1213,13 @@ class OPDS:
             author = db.match("SELECT AuthorName from authors WHERE AuthorID=?", (kwargs['authorid'],))
             author = make_unicode(author['AuthorName'])
             cmd = "SELECT BookName,BookDate,BookID,BookAdded,BookDesc,BookImg,BookFile from books WHERE "
+            args = ()
             if 'query' in kwargs:
-                cmd += f"instr(BookName, '{kwargs['query']}' > 0 AND "
+                cmd += "instr(BookName, ? > 0 AND "
+                args += (kwargs['query'], )
             cmd += "Status='Open' and AuthorID=? order by BookDate DESC"
-            results = db.select(cmd, (kwargs['authorid'],))
+            args += (kwargs['authorid'], )
+            results = db.select(cmd, args)
         finally:
             db.close()
         if limit:
@@ -1128,7 +1231,7 @@ class OPDS:
             mimetype = None
             rel = 'file'
             if book['BookFile']:
-                mimetype = self.multi_link(book['BookFile'], book['BookID'])
+                mimetype = self._multi_format_book_links(book['BookFile'], book['BookID'])
                 if mimetype:
                     rel = 'multi'
                 else:
@@ -1206,10 +1309,13 @@ class OPDS:
             author = db.match("SELECT AuthorName from authors WHERE AuthorID=?", (kwargs['authorid'],))
             author = make_unicode(author['AuthorName'])
             cmd = "SELECT BookName,BookDate,BookID,BookAdded,BookDesc,BookImg,AudioFile from books WHERE "
+            args = ()
             if 'query' in kwargs:
-                cmd += f"instr(BookName, '{kwargs['query']}') > 0 AND "
+                cmd += "instr(BookName, ?) > 0 AND "
+                args += (kwargs['query'], )
             cmd += "AudioStatus='Open' and AuthorID=? order by BookDate DESC"
-            results = db.select(cmd, (kwargs['authorid'],))
+            args += (kwargs['authorid'], )
+            results = db.select(cmd, args)
         finally:
             db.close()
         if limit:
@@ -1309,7 +1415,7 @@ class OPDS:
             mimetype = None
             rel = 'file'
             if book['BookFile']:
-                mimetype = self.multi_link(book['BookFile'], book['BookID'])
+                mimetype = self._multi_format_book_links(book['BookFile'], book['BookID'])
                 if mimetype:
                     rel = 'multi'
                 else:
@@ -1392,12 +1498,17 @@ class OPDS:
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Magazines'))
         cmd = "select Title,IssueID,IssueAcquired,IssueDate,IssueFile,Cover from issues "
         cmd += "where IssueFile != '' "
+        args = ()
         if 'query' in kwargs:
-            cmd += f"AND instr(Title, '{kwargs['query']}') > 0 "
+            cmd += "AND instr(Title, ?) > 0 "
+            args += (kwargs['query'], )
         cmd += "order by IssueAcquired DESC"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -1406,6 +1517,12 @@ class OPDS:
             page = results
             limit = len(page)
         for mag in page:
+            mimetype = self._streamable_links(mag['IssueFile'], mag["IssueID"], userid, 'issueid')
+            if mimetype:
+                rel = 'multi'
+            else:
+                rel = 'file'
+                mimetype = mime_type(mag['IssueFile'])
             title = make_unicode(mag['Title'])
             entry = {'title': escape(f'{mag["IssueDate"]}'),
                      'id': escape(f'issue:{mag["IssueID"]}'),
@@ -1413,9 +1530,9 @@ class OPDS:
                      'content': escape(f'{title} - {mag["IssueDate"]}'),
                      'href': f'{self.opdsroot}?cmd=Serve&amp;issueid={quote_plus(mag["IssueID"])}',
                      'kind': 'acquisition',
-                     'rel': 'file',
+                     'rel': rel,
                      'author': escape(title),
-                     'type': mime_type(mag['IssueFile'])}
+                     'type': mimetype}
             if CONFIG.get_bool('OPDS_METAINFO'):
                 entry['image'] = self.searchroot + '/' + mag['Cover']
                 entry['thumbnail'] = entry['image']
@@ -1460,12 +1577,17 @@ class OPDS:
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Comics'))
         cmd = "select comics.ComicID,Title,IssueID,IssueAcquired,IssueFile,Start from comics,comicissues "
         cmd += "where comics.ComicID = comicissues.ComicID and IssueFile != '' "
+        args = ()
         if 'query' in kwargs:
-            cmd += f"AND instr(Title, '{kwargs['query']}') > 0 "
+            cmd += "AND instr(Title, ?) > 0 "
+            args += (kwargs['query'], )
         cmd += "order by IssueAcquired DESC"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
         finally:
             db.close()
         if limit:
@@ -1474,17 +1596,24 @@ class OPDS:
             page = results
             limit = len(page)
         for mag in page:
-            title = make_unicode(mag['Title'])
             issueid = f'{mag["ComicID"]}_{mag["IssueID"]}'
+            mimetype = self._streamable_links(mag['IssueFile'], issueid, userid, 'comicid')
+            if mimetype:
+                rel = 'multi'
+            else:
+                rel = 'file'
+                mimetype = mime_type(mag['IssueFile'])
+
+            title = make_unicode(mag['Title'])
             entry = {'title': escape(f'{title} {mag["Start"]}'),
                      'id': escape(f'issue:{issueid}'),
                      'updated': opdstime(mag['IssueAcquired']),
                      'content': escape(f'{title} - {mag["IssueID"]}'),
                      'href': f'{self.opdsroot}?cmd=Serve&amp;comicissueid={issueid}',
                      'kind': 'acquisition',
-                     'rel': 'file',
+                     'rel': rel,
                      'author': escape(title),
-                     'type': mime_type(mag['IssueFile'])}
+                     'type': mimetype}
             if CONFIG.get_bool('OPDS_METAINFO'):
                 fname = splitext(mag['IssueFile'])[0]
                 res = cache_img(ImageType.COMIC, issueid, fname + '.jpg')
@@ -1547,8 +1676,10 @@ class OPDS:
                              ftype='application/opensearchdescription+xml', rel='search', title='Search Books'))
         cmd = ("select BookName,BookID,BookLibrary,BookDate,BookImg,BookDesc,BookRate,BookAdded,BookFile,AuthorID "
                "from books where Status='Open' ")
+        args = ()
         if 'query' in kwargs:
-            cmd += f"AND instr(BookName, '{kwargs['query']}') > 0 "
+            cmd += "AND instr(BookName, ?) > 0 "
+            args += (kwargs['query'], )
         if sorder == 'Recent':
             cmd += "order by BookLibrary DESC, BookName ASC"
         if sorder == 'Rated':
@@ -1556,7 +1687,10 @@ class OPDS:
 
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
             self.dlcommslogger.debug(f"Initial select found {len(results)}")
 
             readfilter = None
@@ -1582,7 +1716,7 @@ class OPDS:
                 mimetype = None
                 rel = 'file'
                 if book['BookFile']:
-                    mimetype = self.multi_link(book['BookFile'], book['BookID'])
+                    mimetype = self._multi_format_book_links(book['BookFile'], book['BookID'])
                     if mimetype:
                         rel = 'multi'
                     else:
@@ -1673,8 +1807,10 @@ class OPDS:
 
         cmd = ("select BookName,BookID,AudioLibrary,BookDate,BookImg,BookDesc,BookRate,BookAdded,AuthorID"
                " from books WHERE ")
+        args = ()
         if 'query' in kwargs:
-            cmd += f"instr(BookName, '{kwargs['query']}') > 0 AND "
+            cmd += "instr(BookName, ?) > 0 AND "
+            args += (kwargs['query'], )
         cmd += "AudioStatus='Open'"
         if sorder == 'Recent':
             cmd += " order by AudioLibrary DESC, BookName ASC"
@@ -1682,7 +1818,10 @@ class OPDS:
             cmd += " order by BookRate DESC, BookDate DESC"
         db = database.DBConnection()
         try:
-            results = db.select(cmd)
+            if args:
+                results = db.select(cmd, args)
+            else:
+                results = db.select(cmd)
             if limit:
                 page = results[index:(index + limit)]
             else:
@@ -1758,6 +1897,14 @@ class OPDS:
                 db.close()
             self.filepath = res['IssueFile']
             self.filename = os.path.split(res['IssueFile'])[1]
+            if 'page' in kwargs:
+                # page number must be positive integer or zero
+                pagenum = check_int(kwargs['page'], -1, True)
+                if pagenum >= 0:
+                    pagefile = extract_image_from_page(res['IssueFile'], pagenum=pagenum, cover=False)
+                    if pagefile:
+                        self.filepath = pagefile
+                        self.filename = os.path.split(pagefile)[1]
             return
         if 'comicissueid' in kwargs:
             myid = kwargs['comicissueid']
@@ -1773,6 +1920,13 @@ class OPDS:
                 db.close()
             self.filepath = res['IssueFile']
             self.filename = os.path.split(res['IssueFile'])[1]
+            if 'page' in kwargs:
+                pagenum = check_int(kwargs['page'], -1, True)
+                if pagenum >= 0:
+                    pagefile = extract_image_from_page(res['IssueFile'], pagenum=pagenum, cover=False)
+                    if pagefile:
+                        self.filepath = pagefile
+                        self.filename = os.path.split(pagefile)[1]
             return
         if 'audioid' in kwargs:
             myid = kwargs['audioid']

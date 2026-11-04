@@ -2,8 +2,9 @@ import logging
 
 import requests
 
+from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 
 class TelegramNotifier:
@@ -54,21 +55,22 @@ class TelegramNotifier:
     def notify_snatch(self, title, fail=False):
         if CONFIG.get_bool('TELEGRAM_ONSNATCH'):
             if fail:
-                self._notify(telegram_token=None, telegram_userid=None, event=notify_strings[NOTIFY_FAIL],
+                self._notify(telegram_token=None, telegram_userid=None, event=notify_event(NOTIFY_FAIL),
                              message=title)
             else:
-                self._notify(telegram_token=None, telegram_userid=None, event=notify_strings[NOTIFY_SNATCH],
+                self._notify(telegram_token=None, telegram_userid=None, event=notify_event(NOTIFY_SNATCH),
                              message=title)
 
     def notify_download(self, title):
         if CONFIG.get_bool('TELEGRAM_ONDOWNLOAD'):
-            self._notify(telegram_token=None, telegram_userid=None, event=notify_strings[NOTIFY_DOWNLOAD],
+            self._notify(telegram_token=None, telegram_userid=None, event=notify_event(NOTIFY_DOWNLOAD),
                          message=title)
 
     # noinspection PyUnusedLocal
     def test_notify(self, title="Test"):
-        return self._notify(telegram_token=None, telegram_userid=None, event="Test",
-                            message="Testing Telegram settings from LazyLibrarian", force=True)
+        with i18n.language(i18n.notify_language()):
+            return self._notify(telegram_token=None, telegram_userid=None, event=i18n.gettext("Test"),
+                                message=i18n.gettext("Testing Telegram settings from LazyLibrarian"), force=True)
 
 
 notifier = TelegramNotifier

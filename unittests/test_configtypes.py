@@ -63,10 +63,10 @@ class Config2Test(LLTestCase):
             ci.set_bool(True)  # Write Error
             self.assertEqual(ci.get_bool(), False)  # Read Error
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[STRVALUE] to 2: incorrect type str/int',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[STRVALUE] (Override)',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[STRVALUE] to True: incorrect type str/bool',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[STRVALUE] (Override)'
+            'WARNING:lazylibrarian.configtypes:Cannot set config[STRVALUE]: incorrect type str/int',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[STRVALUE]',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[STRVALUE]: incorrect type str/bool',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[STRVALUE]'
         ])
 
         expected = Counter({Access.READ_OK: 3, Access.WRITE_OK: 1, Access.WRITE_ERR: 2, Access.READ_ERR: 2})
@@ -104,10 +104,10 @@ class Config2Test(LLTestCase):
             self.assertEqual(ci.get_int(), 42)
 
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Type error reading config[INTVALUE] (42)',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[INTVALUE] to Override: incorrect type int/str',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[INTVALUE] to True: incorrect type int/bool',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[INTVALUE] (2)'
+            'WARNING:lazylibrarian.configtypes:Type error reading config[INTVALUE]',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[INTVALUE]: incorrect type int/str',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[INTVALUE]: incorrect type int/bool',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[INTVALUE]'
         ])
         expected = Counter({Access.READ_OK: 8, Access.WRITE_OK: 3, Access.WRITE_ERR: 2, Access.READ_ERR: 2})
         self.single_access_compare(ci.accesses, expected, [], 'Basic Int Config not working as expected')
@@ -126,8 +126,8 @@ class Config2Test(LLTestCase):
             self.assertEqual(int(ci), 100)
 
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[RANGEDINTVALUE] to 5',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[RANGEDINTVALUE] to 1100'
+            'WARNING:lazylibrarian.configtypes:Cannot set config[RANGEDINTVALUE]: invalid value',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[RANGEDINTVALUE]: invalid value'
         ])
         expected = Counter({Access.READ_OK: 4, Access.WRITE_OK: 1, Access.WRITE_ERR: 2})
         self.single_access_compare(ci.accesses, expected, [], 'Ranged Int Config not working as expected')
@@ -163,12 +163,12 @@ class Config2Test(LLTestCase):
             self.assertEqual(cf.get_float(), 1.1)
 
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE] (1.1)',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE] (1.1)',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[FLOATVALUE] to Override: incorrect type float/str',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE] (2.0)',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[FLOATVALUE] to True: incorrect type float/bool',
-            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE] (2.0)'
+            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE]',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE]',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[FLOATVALUE]: incorrect type float/str',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE]',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[FLOATVALUE]: incorrect type float/bool',
+            'WARNING:lazylibrarian.configtypes:Type error reading config[FLOATVALUE]'
         ])
         expected = Counter({Access.READ_OK: 9, Access.WRITE_OK: 4, Access.WRITE_ERR: 2, Access.READ_ERR: 4})
         self.single_access_compare(cf.accesses, expected, [], 'Basic Float Config not working as expected')
@@ -191,8 +191,8 @@ class Config2Test(LLTestCase):
             self.assertEqual(int(ci), 0o321)
 
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[PERMISSIONVALUE] to 0o3641100',
-            'WARNING:lazylibrarian.configtypes:Cannot set config[PERMISSIONVALUE] to -0o10'
+            'WARNING:lazylibrarian.configtypes:Cannot set config[PERMISSIONVALUE]: invalid value',
+            'WARNING:lazylibrarian.configtypes:Cannot set config[PERMISSIONVALUE]: invalid value'
         ])
         expected = Counter({Access.READ_OK: 6, Access.WRITE_OK: 2, Access.WRITE_ERR: 2})
         self.single_access_compare(ci.accesses, expected, [], 'Permission config not working as expected')
@@ -221,7 +221,7 @@ class Config2Test(LLTestCase):
             self.assertEqual(ci.get_save_str(), 'False')
             self.assertFalse(ci.is_enabled())
         self.assertListEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[BOOLVALUE] to Override: incorrect type bool/str'
+            'WARNING:lazylibrarian.configtypes:Cannot set config[BOOLVALUE]: incorrect type bool/str'
         ])
         expected = Counter({Access.READ_OK: 13, Access.WRITE_OK: 1, Access.WRITE_ERR: 1})
         self.single_access_compare(ci.accesses, expected, [], 'Basic Bool Config not working as expected')
@@ -291,7 +291,7 @@ class Config2Test(LLTestCase):
         with self.assertLogs(self.logger, level='INFO') as cm:
             ci.set_int(10000000)  # Value too large, should have no effect
         self.assertEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[] to 10000000'])
+            'WARNING:lazylibrarian.configtypes:Cannot set config[]: invalid value'])
         self.assertEqual(ci.get_int(), 10, 'Schedule interval not stored correctly')
         self.assertEqual((0, 10), ci.get_hour_min_interval())
 
@@ -336,7 +336,7 @@ class Config2Test(LLTestCase):
 
             cdt.set_str('M,A,X')  # Write error, value doesn't change
         self.assertEqual(cm.output, [
-            'WARNING:lazylibrarian.configtypes:Cannot set config[] to M,A,X'
+            'WARNING:lazylibrarian.configtypes:Cannot set config[]: invalid value'
         ])
         self.assertEqual(cdt.get_csv(), 'M,A')
 

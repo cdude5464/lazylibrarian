@@ -14,7 +14,6 @@
 # import chardet
 import datetime
 import logging
-import os
 import re
 import threading
 import unicodedata
@@ -148,12 +147,18 @@ def sanitize(name, is_folder_or_file=False):
     filename = replace_all(filename, lazylibrarian.DICTS.get('apostrophe_dict', {}))
     # strip characters we don't want in a filename/foldername
     dic = lazylibrarian.DICTS.get('filename_dict', {}).copy()
-    if is_folder_or_file and os.path.__name__ == 'ntpath':
-        dic.pop(':')
+    if is_folder_or_file:
+        dic.pop('\\', None)
+        dic['\\\\'] ,= '\\'
+    # ':' goes on Windows too, it isn't allowed in file or folder names there. Callers pass names
+    # and relative naming patterns, never a full path with a drive letter
     filename = replace_all(filename, dic)
     # Remove all characters below code point 32
     filename = "".join(c for c in filename if ord(c) > 31)
     filename = unicodedata.normalize('NFC', filename)
+    # don't allow leading space or dot
+    while filename and filename[0] in '. ':
+        filename = filename[1:]
     # windows filenames can't end in space or dot
     while filename and filename[-1] in '. ':
         filename = filename[:-1]
@@ -199,6 +204,80 @@ def url_fix(s, charset='utf-8'):
     path = quote(path, '/%')
     qs = quote_plus(qs, ':&=')
     return urlunsplit((scheme, netloc, path, qs, anchor))
+
+
+# Query parameters that carry a credential of some sort. Private trackers and
+# indexers put passkeys and api keys straight in the download url, so a url
+# can't be logged as-is.
+_DEFAULT_CREDENTIAL_PARAMS = (
+    'apikey', 'api_key', 'auth', 'authkey', 'key', 'passkey', 'passwd',
+    'password', 'rss_key', 'rsskey', 'secret', 'session', 'sessionid',
+    'token', 'torrent_pass',
+)
+
+# A credential can turn up percent encoded inside another url, which is how a
+# private tracker's announce url reaches us in a magnet's tr= parameter, so
+# match an encoded separator as well as a literal one. Anything up to the next
+# separator goes, and over-redacting a log line is the safe way to be wrong.
+USERINFO_RE = re.compile(r'(?<=//)[^/@\s]+@')
+
+_credential_re_lock = threading.Lock()
+_credential_re_cache = {'params': None, 'regex': None}
+
+_DEFAULT_CREDENTIAL_RE = re.compile(
+    r'(?:(?<![A-Za-z0-9_])|(?<=%3F)|(?<=%26))('
+    + '|'.join(_DEFAULT_CREDENTIAL_PARAMS)
+    + r')(=|%3D)[^&;#\s]*',
+    re.IGNORECASE)
+
+
+def _credential_re():
+    try:
+        from lazylibrarian.config2 import CONFIG
+        extra = get_list(CONFIG['REDACT_PARAMS'], ',')
+    except Exception:
+        extra = []
+    all_params = sorted(set(_DEFAULT_CREDENTIAL_PARAMS) | {p.lower() for p in extra if p})
+    key = tuple(all_params)
+    with _credential_re_lock:
+        if _credential_re_cache['params'] == key:
+            return _credential_re_cache['regex']
+    try:
+        regex = re.compile(
+            r'(?:(?<![A-Za-z0-9_])|(?<=%3F)|(?<=%26))('
+            + '|'.join(re.escape(p) for p in all_params)
+            + r')(=|%3D)[^&;#\s]*',
+            re.IGNORECASE)
+    except re.error:
+        return _DEFAULT_CREDENTIAL_RE
+    with _credential_re_lock:
+        _credential_re_cache['regex'] = regex
+        _credential_re_cache['params'] = key
+    return regex
+
+
+def _redact_secrets_in_path(url):
+    try:
+        from lazylibrarian.config2 import CONFIG
+        secrets = CONFIG.REDACTLIST
+        for secret in secrets:
+            if isinstance(secret, str) and len(secret) > 3 and secret in url:
+                url = url.replace(secret, '[redacted]')
+    except Exception:
+        pass
+    return url
+
+
+def redact_url(url):
+    if not url:
+        return ''
+    url = make_unicode(url)
+    if not isinstance(url, str):
+        return '[unprintable url]'
+    url = USERINFO_RE.sub('[redacted]@', url, count=1)
+    url = _credential_re().sub(r'\1\2[redacted]', url)
+    url = _redact_secrets_in_path(url)
+    return url
 
 
 def book_series(bookname):
@@ -298,7 +377,7 @@ def age(histdate):
     return datecompare(today(), histdate)
 
 
-def check_year(num, past=1830, future=1):
+def check_year(num, past=1800, future=1):
     # See if num looks like a valid year
     # for a magazine allow forward dated by a year, eg Jan 2017 issues available in Dec 2016
     n = check_int(num, 0)
@@ -326,6 +405,10 @@ def nzbdate2format(nzbdate):
 
 
 def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
+
+    def date_format(datestr, datefmt=None):
+        if type(datestr) is str:
+            datestr = datestr.replace("??", "00")
     # return date formatted for display in requested style
     # $d	Day of the month as a zero-padded decimal number
     # $D    Day of month, zero padded, suppress if 01
@@ -349,7 +432,7 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
     if not datestr:
         return ''
 
-    if datestr.isdigit():  # just issue number or year
+    if datestr.lstrip('-').isdigit():  # just issue number or year, could be negative like -412 BC
         return datestr
 
     logger = logging.getLogger(__name__)
@@ -377,11 +460,11 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
     if len(dateparts) == 7:  # Tue, 23 Aug 2016 17:33:26
         _, d, m, y, hh, mm, _ = dateparts
     elif len(dateparts) == 6:
-        if check_year(dateparts[0]):  # YYYY-MM-DD HH:MM:SS
+        if check_year(dateparts[0], future=2):  # YYYY-MM-DD HH:MM:SS
             y, m, d, hh, mm, _ = dateparts
-        elif check_year(dateparts[1]):  # MM-YYYY-DD HH:MM:SS
+        elif check_year(dateparts[1], future=2):  # MM-YYYY-DD HH:MM:SS
             m, y, d, hh, mm, _ = dateparts
-        elif check_year(dateparts[2]):  # 13 Nov 2014 05:01:18
+        elif check_year(dateparts[2], future=2):  # 13 Nov 2014 05:01:18
             d, m, y, hh, mm, _ = dateparts
         else:
             d, m, y, hh, mm = 0, 0, 0, 0, 0
@@ -392,21 +475,21 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
         y = now()[:4]
     elif len(dateparts) == 3:  # 2018-04-25 or June 20 2008 or 20 June 2008
         y, m, d, = 0, 0, 0
-        if check_year(dateparts[0]) and dateparts[2].isdigit():
+        if check_year(dateparts[0], future=2) and dateparts[2].isdigit():
             y, m, d = dateparts
-        elif check_year(dateparts[2]):
+        elif check_year(dateparts[2], future=2):
             if dateparts[0].isdigit():
                 d, m, y = dateparts
             elif dateparts[1].isdigit():
                 m, d, y = dateparts
         hh = '00'
         mm = '00'
-    elif len(dateparts) == 2 and check_year(dateparts[1]):  # May 1995
+    elif len(dateparts) == 2 and check_year(dateparts[1], future=2):  # May 1995
         m, y = dateparts
         d = '01'
         hh = '00'
         mm = '00'
-    elif len(dateparts) == 2 and check_year(dateparts[0]):  # 1995-05
+    elif len(dateparts) == 2 and check_year(dateparts[0], future=2):  # 1995-05
         y, m = dateparts
         d = '01'
         hh = '00'
@@ -464,6 +547,24 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
         return datestr
 
 
+# Choices for the display date format selects, issue dates can also leave out the day
+DISPLAY_DATE_FORMATS = ['$Y-$m-$d', '$d.$m.$Y', '$d. $m. $Y', '$d/$m/$Y', '$m/$d/$Y', '$d-$m-$Y',
+                        '$d $b $Y', '$d $B $Y', '$d. $B $Y', '$B $d, $Y']
+ISSUE_DATE_FORMATS = DISPLAY_DATE_FORMATS + ['$B $Y', '$b $Y', '$m/$Y', '$Y-$m']
+
+
+def date_format_picker(current: str, formats: list[str], datelang: str = '') -> dict:
+    """ Formats for a display date select, each with an example date in datelang.
+        A stored format that isn't one of these is returned as 'other' so the select can keep it
+        and saving doesn't change it.
+        Returns {'formats': [{'format', 'example'}], 'selected': str, 'other': dict | None} """
+    def entry(fmt):
+        return {'format': fmt, 'example': date_format('2026-12-31', fmt, datelang=datelang)}
+
+    other = None if current in formats else entry(current)
+    return {'formats': [entry(fmt) for fmt in formats], 'selected': current, 'other': other}
+
+
 def two_months(word):
     # compound months as a single word eg AprilMay
     # found in some magazine titles
@@ -496,6 +597,18 @@ def two_months(word):
     if a == b:
         return 0, 0
     return a, b
+
+
+def word_key(word: str) -> str:
+    """ How words from titles and names are compared with the word lists in the settings:
+        without accents, lowercase and without a trailing period, so "Číslo", "cislo" and "č." match """
+    return unaccented(word).lower().strip('.')
+
+
+def word_keys(words) -> set:
+    """ word_key() of each word in a settings list, done once per lookup as the settings
+        can change from the config page """
+    return {word_key(word) for word in words}
 
 
 def month2num(month):
@@ -532,6 +645,21 @@ def datecompare(nzbdate, control_date):
         return dtage.days
     except ValueError:
         return 0
+
+
+def elapsed_time(seconds):
+    # given a seconds count, return a message showing days,hours,minutes,seconds
+    days = int(seconds // 86400)
+    hours = int(seconds // 3600 % 24)
+    mins = int(seconds // 60 % 60)
+    secs = round(seconds % 60, 2)
+    timestr = f"{days} {plural(days, 'day')}, " if days else ''
+    timestr += f"{hours} {plural(hours, 'hour')}, " if hours else ''
+    timestr += f"{mins} {plural(mins, 'minute')}, " if mins else ''
+    timestr += f"{secs} {plural(secs, 'second')}" if secs else ''
+    if timestr.endswith(', '):
+        timestr = timestr[:-2]
+    return timestr
 
 
 def plural(var, phrase=""):
@@ -649,19 +777,37 @@ def make_utf8bytes(txt):
     # parse to detect if CP850/ISO-8859-15 is used
     # and return tuple of bytestring encoded in utf-8, detected encoding
     for idx in range(len(name)):
-        # /!\ detection is done 2char by 2char for UTF-8 special character
-        ch = chr(name[idx])
+        # /!\ detection is done byte by byte for UTF-8 special character.
+        # NOTE: name[idx] on a bytes object is already an int (0-255) in
+        # Python 3 -- wrapping it in chr() turns it into a Unicode code point
+        # in that same numeric range, and the byte-range literals below
+        # ('\xC2'..'\xFF') are then compared as *Unicode* code points rather
+        # than raw bytes. That's harmless for the CP850/ISO-8859-15 checks
+        # (single code point vs single byte, same range), but it breaks the
+        # UTF-8 lead-byte check: it only recognised '\xC2'/'\xC3' (the lead
+        # bytes for U+0080-U+00FF, i.e. Latin-1 supplement), so any valid
+        # UTF-8 sequence starting with a *different* two-byte lead byte
+        # (0xC4-0xDF, e.g. the 0xC5 in 'ō' -> b'\xc5\x8d') fell through to
+        # the ISO-8859-15 branch below and got double-encoded into mojibake
+        # (seen live as "Kondo" -> "KondÅ" -> "KondÃ\x85Â\x8d" on repeated
+        # postprocessing passes, causing a permanent import-failure loop for
+        # any author/title with such characters). Compare raw byte values
+        # instead of chr()-wrapping them, and widen the lead-byte check to
+        # the full two-byte UTF-8 lead range (0xC2-0xDF) with a proper
+        # continuation-byte check (0x80-0xBF), so genuine multi-byte UTF-8
+        # is detected regardless of which lead byte it uses.
+        ch = name[idx]
         if idx < (len(name) - 1):
-            chx = chr(name[idx + 1])
+            chx = name[idx + 1]
             # Detect UTF-8
-            if ((ch == '\xC2') | (ch == '\xC3')) & ((chx >= '\xA0') & (chx <= '\xFF')):
+            if (0xC2 <= ch <= 0xDF) and (0x80 <= chx <= 0xBF):
                 return name, 'UTF-8'
         # Detect CP850 or Windows CP1252 (latin-1)
-        if (ch >= '\x80') & (ch <= '\xA5'):
+        if 0x80 <= ch <= 0xA5:
             name = name.decode('cp850')
             return name.encode('utf-8'), 'CP850'
         # Detect ISO-8859-15 (latin-9)
-        if (ch >= '\xA6') & (ch <= '\xFF'):
+        if 0xA6 <= ch <= 0xFF:
             name = name.decode('iso-8859-15')
             return name.encode('utf-8'), 'ISO-8859-15'
     return name, ''
@@ -711,7 +857,7 @@ def make_bytestr(txt):
     for encoding in _encodings:
         try:
             return txt.encode(encoding)
-        except (UnicodeDecodeError, LookupError):
+        except (UnicodeEncodeError, LookupError):
             pass
     logger = logging.getLogger(__name__)
     logger.debug(f"Unable to encode name [{repr(txt)}]")
@@ -865,7 +1011,7 @@ def format_author_name(author: str, postfix: list[str]) -> str:
                 fuzzlogger.debug(f'Formatted authorname [{author}] to [{forename} {surname}]')
                 author = f"{forename} {surname}"
     # ensure initials have a '.' on the end
-    words = author.split()
+    words = author.replace('.', ' ').split()
     author = ''
     for word in words:
         if len(word) == 1 and word.isalpha():
@@ -892,7 +1038,7 @@ def sort_definite(title: str, articles=list[str]) -> str:
     if len(words) < 2:
         return title
     word = words.pop(0)
-    if word.lower() in articles:
+    if word_key(word) in word_keys(articles):
         return f"{' '.join(words)}, {word}"
     return title
 
@@ -904,7 +1050,7 @@ def surname_first(authorname: str, postfixes: list[str]) -> str:
         return authorname
     res = words.pop()
 
-    if res.strip('.').lower() in postfixes:
+    if word_key(res) in word_keys(postfixes):
         res = f"{words.pop()} {res}"
     return res + ', ' + ' '.join(words)
 
@@ -941,19 +1087,22 @@ def unaccented_bytes(str_or_unicode, only_ascii=True):
 
     # replace all non-ascii quotes/apostrophes with ascii ones eg "Collector's"
     stripped = replace_all(cleaned, lazylibrarian.DICTS.get('apostrophe_dict', {}))
-    if only_ascii:
+    if only_ascii:  # True or special replace character
         stripped = ''.join([c for c in stripped if not unicodedata.combining(c)])
         # Other characters not converted by unicodedata.combining
         # c6 Ae, d0 Eth, d7 multiply, d8 Ostroke, de Thorn, df sharpS
-        # e6 ae, f0 eth, f7 divide, f8 ostroke, fe thorn
+        # e6 ae, f0 eth, f7 divide, f8 ostroke, fe thorn, 141 Lstroke, 142 lstroke
         dic = {'\xc6': 'A', '\xd0': 'D', '\xd7': '*', '\xd8': 'O', '\xde': 'P', '\xdf': 's',
-                '\xe6': 'a', '\xf0': 'o', '\xf7': '/', '\xf8': 'o', '\xfe': 'p'}
+                '\xe6': 'a', '\xf0': 'o', '\xf7': '/', '\xf8': 'o', '\xfe': 'p',
+                '\u0141': 'L', '\u0142': 'l'}
         stripped = replace_all(stripped, dic)
+    if only_ascii is True:
         stripped = stripped.encode('ASCII', 'ignore')
+    elif only_ascii is False:
+        stripped = unicodedata.normalize('NFC', stripped).encode('utf-8')
     else:  # replace with specified char (use '_' for goodreads author names)
         stripped = stripped.encode('ASCII', 'replace')  # replaces with '?'
-        if not isinstance(only_ascii, bool):
-            stripped = stripped.replace(b'?', make_bytestr(str(only_ascii)[0]))
+        stripped = stripped.replace(b'?', make_bytestr(str(only_ascii)[0]))
     stripped = stripped.strip()
     if not stripped:
         stripped = str_or_unicode

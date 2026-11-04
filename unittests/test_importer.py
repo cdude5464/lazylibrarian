@@ -2,10 +2,12 @@
 #
 # Purpose:
 #   Testing functionality in importer.py
+import unicodedata
 from unittest import mock
 from unittest.mock import MagicMock
 
-from lazylibrarian import importer
+from lazylibrarian import database, importer
+from lazylibrarian.importer import move_book_to_author
 from unittests.unittesthelpers import LLTestCaseWithStartup
 
 
@@ -64,8 +66,9 @@ class ImporterTest(LLTestCaseWithStartup):
         testname = 'Mr Allan Mertner The Tester'
         authorname, authorid, new = importer.add_author_name_to_db(
             author=testname, refresh=False, addbooks=False, reason='Testing', title=False)
-        self.assertEqual(new, False)
-        self.assertEqual(authorname, '')
+        self.assertEqual(new, True)
+        self.assertEqual(authorid, 'LL7cb40777627f545b9559a5ebe67d7fe6c956bdb9')
+        self.assertEqual(authorname, 'Mr Allan Mertner The Tester')
 
     @mock.patch('lazylibrarian.gr.GoodReads.find_author_id')
     @mock.patch('lazylibrarian.ol.OpenLibrary.find_author_id')
@@ -95,16 +98,132 @@ class ImporterTest(LLTestCaseWithStartup):
         self.assertEqual(authorname, testname)
         self.assertEqual(authorid, 'OL272947A')
 
-    @mock.patch('lazylibrarian.ol.OpenLibrary.get_author_info')
-    @mock.patch.object(importer, 'get_author_image')  # Patches images.get_author_image in import only
-    def test_add_author_to_db_JustByID(self, images_get_author_image: MagicMock, ol_get_author_info: MagicMock):
-        testid = 'OL2219179A'  # Maud D. Davies
-        self.cfg().set_str('BOOK_API', 'OpenLibrary')
-        ol_get_author_info.return_value = {'authorid': 'OL2219179A',
-                                           'authorlink': 'https://www.openlibrary.org/authors/OL2219179A',
-                                           'authorimg': 'images/nophoto.png', 'authorborn': '', 'authordeath': '',
-                                           'about': '', 'totalbooks': '0', 'authorname': 'Maud D. Davies'}
-        images_get_author_image.return_value = 'fakeimage.png'
-        authorid = importer.add_author_to_db(
-            authorname=None, refresh=False, addbooks=False, reason='Testing', authorid=testid)
-        self.assertEqual(authorid, testid)
+    def test_collate_fuzzy_unicode_forms(self):
+        composed = 'Stefan Żeromski'
+        decomposed = unicodedata.normalize('NFD', composed)
+        self.assertNotEqual(composed, decomposed)
+        self.assertEqual(importer.collate_fuzzy(composed, decomposed), 0)
+
+    def test_get_preferred_author_unicode_forms(self):
+        # names can be stored composed or decomposed, a lookup in either form finds the stored author
+        db = database.DBConnection()
+        try:
+            for authorid, name in [('UNI_NFC', 'Andrzej Ziemiański'),
+                                   ('UNI_NFD', unicodedata.normalize('NFD', 'Jacek Pacyński'))]:
+                db.action("INSERT OR REPLACE INTO authors (AuthorID, AuthorName, Status) VALUES (?, ?, ?)",
+                          (authorid, name, 'Active'))
+            for name, authorid in [('Andrzej Ziemiański', 'UNI_NFC'),
+                                   (unicodedata.normalize('NFD', 'Andrzej Ziemiański'), 'UNI_NFC'),
+                                   ('Jacek Pacyński', 'UNI_NFD'),
+                                   (unicodedata.normalize('NFD', 'Jacek Pacyński'), 'UNI_NFD')]:
+                with self.subTest(name=name):
+                    self.assertEqual(importer.get_preferred_author(name)[1], authorid)
+        finally:
+            db.action("DELETE FROM authors WHERE AuthorID IN ('UNI_NFC', 'UNI_NFD')")
+            db.close()
+
+
+class MoveBookToAuthorTest(LLTestCaseWithStartup):
+
+    def _setup_data(self):
+        db = database.DBConnection()
+        db.action("INSERT OR REPLACE INTO authors (AuthorID, AuthorName, Status) VALUES (?, ?, ?)",
+                  ('OLD_AUTH', 'Old Author', 'Active'))
+        db.action("INSERT OR REPLACE INTO authors (AuthorID, AuthorName, Status) VALUES (?, ?, ?)",
+                  ('NEW_AUTH', 'New Author', 'Active'))
+        db.action("INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status, AudioStatus) "
+                  "VALUES (?, ?, ?, ?, ?)", ('BOOK1', 'OLD_AUTH', 'Test Book', 'Have', 'Wanted'))
+        db.action("INSERT INTO bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)",
+                  ('OLD_AUTH', 'BOOK1', 1), suppress='UNIQUE')
+        return db
+
+    def test_books_table_updated(self):
+        db = self._setup_data()
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            row = db.match('SELECT AuthorID FROM books WHERE BookID=?', ('BOOK1',))
+            self.assertEqual(row['AuthorID'], 'NEW_AUTH')
+        finally:
+            db.close()
+
+    def test_bookauthors_updated(self):
+        db = self._setup_data()
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            new_link = db.match('SELECT Role FROM bookauthors WHERE BookID=? AND AuthorID=?',
+                                ('BOOK1', 'NEW_AUTH'))
+            self.assertIsNotNone(new_link, "New author should have a bookauthors entry")
+            old_link = db.match('SELECT Role FROM bookauthors WHERE BookID=? AND AuthorID=?',
+                                ('BOOK1', 'OLD_AUTH'))
+            self.assertFalse(old_link, "Old author should lose bookauthors entry when they have no other books")
+        finally:
+            db.close()
+
+    def test_old_author_keeps_bookauthors_for_other_books(self):
+        db = self._setup_data()
+        db.action("INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status, AudioStatus) "
+                  "VALUES (?, ?, ?, ?, ?)", ('BOOK2', 'OLD_AUTH', 'Other Book', 'Have', 'Have'))
+        db.action("INSERT INTO bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)",
+                  ('OLD_AUTH', 'BOOK2', 1), suppress='UNIQUE')
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            old_link = db.match('SELECT Role FROM bookauthors WHERE BookID=? AND AuthorID=?',
+                                ('BOOK1', 'OLD_AUTH'))
+            self.assertFalse(old_link, "Old author loses link for the moved book")
+            other_link = db.match('SELECT Role FROM bookauthors WHERE BookID=? AND AuthorID=?',
+                                  ('BOOK2', 'OLD_AUTH'))
+            self.assertIsNotNone(other_link, "Old author keeps link for their other book")
+        finally:
+            db.close()
+
+    def test_seriesauthors_updated(self):
+        db = self._setup_data()
+        db.action("INSERT OR REPLACE INTO series (SeriesID, SeriesName, Status) VALUES (?, ?, ?)",
+                  ('SER1', 'Test Series', 'Active'))
+        db.action("INSERT OR REPLACE INTO member (SeriesID, BookID) VALUES (?, ?)",
+                  ('SER1', 'BOOK1'))
+        db.action("INSERT INTO seriesauthors (SeriesID, AuthorID) VALUES (?, ?)",
+                  ('SER1', 'OLD_AUTH'), suppress='UNIQUE')
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            new_sa = db.match('SELECT * FROM seriesauthors WHERE SeriesID=? AND AuthorID=?',
+                              ('SER1', 'NEW_AUTH'))
+            self.assertIsNotNone(new_sa, "New author should be linked to the series")
+            old_sa = db.match('SELECT * FROM seriesauthors WHERE SeriesID=? AND AuthorID=?',
+                              ('SER1', 'OLD_AUTH'))
+            self.assertFalse(old_sa, "Old author should lose series link when they have no other books in it")
+        finally:
+            db.close()
+
+    def test_old_author_keeps_series_with_other_books(self):
+        db = self._setup_data()
+        db.action("INSERT OR REPLACE INTO books (BookID, AuthorID, BookName, Status, AudioStatus) "
+                  "VALUES (?, ?, ?, ?, ?)", ('BOOK2', 'OLD_AUTH', 'Other Book', 'Have', 'Have'))
+        db.action("INSERT INTO bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)",
+                  ('OLD_AUTH', 'BOOK2', 1), suppress='UNIQUE')
+        db.action("INSERT OR REPLACE INTO series (SeriesID, SeriesName, Status) VALUES (?, ?, ?)",
+                  ('SER1', 'Test Series', 'Active'))
+        db.action("INSERT OR REPLACE INTO member (SeriesID, BookID) VALUES (?, ?)",
+                  ('SER1', 'BOOK1'))
+        db.action("INSERT OR REPLACE INTO member (SeriesID, BookID) VALUES (?, ?)",
+                  ('SER1', 'BOOK2'))
+        db.action("INSERT INTO seriesauthors (SeriesID, AuthorID) VALUES (?, ?)",
+                  ('SER1', 'OLD_AUTH'), suppress='UNIQUE')
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            old_sa = db.match('SELECT * FROM seriesauthors WHERE SeriesID=? AND AuthorID=?',
+                              ('SER1', 'OLD_AUTH'))
+            self.assertIsNotNone(old_sa, "Old author keeps series link when they have another book in it")
+        finally:
+            db.close()
+
+    def test_totals_recomputed(self):
+        db = self._setup_data()
+        try:
+            move_book_to_author('BOOK1', 'OLD_AUTH', 'NEW_AUTH')
+            old_auth = db.match('SELECT TotalBooks, HaveBooks FROM authors WHERE AuthorID=?', ('OLD_AUTH',))
+            new_auth = db.match('SELECT TotalBooks, HaveBooks FROM authors WHERE AuthorID=?', ('NEW_AUTH',))
+            self.assertEqual(old_auth['TotalBooks'], 0, "Old author should have 0 books after move")
+            self.assertEqual(new_auth['TotalBooks'], 1, "New author should have 1 book after move")
+        finally:
+            db.close()

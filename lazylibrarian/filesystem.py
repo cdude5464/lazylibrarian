@@ -7,6 +7,7 @@
 #    Should not depend on any other LazyLibrarian files, except ConfigDict
 
 import logging
+import ntpath
 import os
 import shutil
 import sys
@@ -171,50 +172,29 @@ WINDOWS_MAGIC_PREFIX = '\\\\?\\'
 
 
 def syspath(path: str | bytes, prefix: bool = True) -> str:
-    """Convert a path for use by the operating system. In particular,
-    paths on Windows must receive a magic prefix and must be converted
-    to Unicode before they are sent to the OS. To disable the magic
-    prefix on Windows, set `prefix` to False---but only do this if you
-    *really* know what you're doing.
+    """Convert a path for use by the operating system. Only Windows needs anything:
+    every path gets the magic prefix, which lifts the MAX_PATH limit, also for the files
+    that rmtree, os.walk and shutil.move find below a directory.
+    The prefix turns off path normalisation, so the path is made absolute with backslashes first.
+    Relative paths starting with . are left alone. Set `prefix` to False to never add it.
     """
     DIRS.permlogger.debug(f"{os.path.__name__}:{sys.version[0:5]} [{repr(path)}] {isinstance(path, str)}")
 
     if os.path.__name__ != 'ntpath':
         return path
 
-    if not isinstance(path, str):
-        # Beets currently represents Windows paths internally with UTF-8
-        # arbitrarily. But earlier versions used MBCS because it is
-        # reported as the FS encoding by Windows. Try both.
-        try:
-            # if path is _not_ a string, ie bytes
-            # noinspection PyUnresolvedReferences
-            path = path.decode('utf-8')
-        except UnicodeError:
-            # The encoding should always be MBCS, Windows' broken
-            # Unicode representation.
-            encoding = sys.getfilesystemencoding() or sys.getdefaultencoding()
-            path = path.decode(encoding, 'replace')
-
+    path = os.fsdecode(path)
+    if not prefix or not path or path.startswith(('.', WINDOWS_MAGIC_PREFIX)):
+        return path
     if 1 < len(path) < 4 and path[1] == ':':  # it's just a drive letter (E: or E:/)
         return path
 
-    # the html cache addressing uses forwardslash as a separator but Windows file system needs backslash
-    s = path.find(DIRS.CACHEDIR)
-    if s >= 0 and '/' in path:
-        path = path.replace('/', '\\')
-        # logger.debug("cache path changed [%s] to [%s]" % (opath, path))
-
-    if not path.startswith('.') and prefix and not path.startswith(WINDOWS_MAGIC_PREFIX):
-        # Don't affect relative paths
-        # Add the magic prefix if it isn't already there.
-        # http://msdn.microsoft.com/en-us/library/windows/desktop/aa365247.aspx
-        if path.startswith('\\\\'):
-            # UNC path. Final path should look like \\?\UNC\...
-            path = f"UNC{path[1:]}"
-        path = WINDOWS_MAGIC_PREFIX + path
-
-    return path
+    # https://learn.microsoft.com/en-us/windows/win32/fileio/maximum-file-path-limitation
+    path = ntpath.abspath(path)
+    if path.startswith('\\\\'):
+        # UNC path. Final path should look like \\?\UNC\...
+        return f"{WINDOWS_MAGIC_PREFIX}UNC{path[1:]}"
+    return WINDOWS_MAGIC_PREFIX + path
 
 
 def remove_file(name: str) -> bool:
@@ -445,13 +425,50 @@ def any_file(search_dir: str, extn: str) -> str:
     return ""
 
 
-def opf_file(search_dir: str) -> str:
+# Book formats that mark another book sharing the folder even when they aren't
+# in the configured types, so its metadata.opf isn't taken for ours
+_OTHER_BOOK_EXTENSIONS = {
+    'azw', 'azw1', 'azw3', 'azw4', 'kfx', 'kepub', 'mobi', 'prc', 'pdb', 'epub', 'pdf', 'djvu',
+    'fb2', 'fbz', 'lit', 'lrf', 'rtf', 'doc', 'docx', 'odt', 'chm', 'cbz', 'cbr', 'cb7', 'cbc',
+    'mp3', 'm4b', 'm4a', 'aac', 'flac', 'ogg', 'opus', 'wma',
+}
+
+
+def only_book_in_dir(search_dir: str, basename: str) -> bool:
+    """ Return True if every ebook/audiobook file in search_dir is named basename.<ext>,
+    ie the folder holds just one book, possibly in several formats """
+    for fname in listdir(search_dir):
+        stem, extn = os.path.splitext(fname)
+        if stem == basename:
+            continue
+        if (extn.lstrip('.').lower() in _OTHER_BOOK_EXTENSIONS or
+                DIRS.config.is_valid_booktype(fname, booktype='ebook') or
+                DIRS.config.is_valid_booktype(fname, booktype='audiobook')):
+            return False
+    return True
+
+
+def opf_file(search_dir: str, bookfile: str = '') -> str:
     global _OPFWARN
     """ Look for .opf files in search_dir, returning the file name.
+    If bookfile is given, <bookfile-basename>.opf is preferred, since search_dir may
+    hold opf for more than one book (eg a series folder) and any other .opf there belongs
+    to a different book. If it doesn't exist, metadata.opf (as written by calibre) is used
+    only when no other book shares the folder. Return '' if neither applies.
+    Otherwise (no bookfile given):
     If metadata.opf exists and no other opf file does, return metatadata.
     If metadata.opf and another .opf file exists, return the other one.
     If two or more other .opf files exist, we don't know which one to use.
     Warn and return any"""
+    if bookfile:
+        basename = os.path.splitext(os.path.basename(bookfile))[0]
+        candidate = os.path.join(search_dir, f"{basename}.opf")
+        if path_isfile(candidate):
+            return candidate
+        candidate = os.path.join(search_dir, 'metadata.opf')
+        if path_isfile(candidate) and only_book_in_dir(search_dir, basename):
+            return candidate
+        return ''
     cnt = 0
     res = ''
     meta = ''

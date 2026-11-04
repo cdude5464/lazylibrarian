@@ -10,7 +10,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
 
-
+import contextlib
 import io
 import json
 import logging
@@ -24,8 +24,11 @@ from secrets import choice
 from shutil import rmtree
 from urllib.parse import quote_plus
 
+from curl_cffi import requests
+
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.providerlogging import provider_log_origin
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import ImageType, cache_img, fetch_url
 from lazylibrarian.config2 import CONFIG
@@ -84,6 +87,16 @@ GS = ''
 GS_VER = ''
 generator = ''
 
+# these are currently blocked, broken, or need api key
+# flickr needs an apikey and doesn't seem to have authors or book covers
+# baidu doesn't like bots, message: "Forbid spider access"
+# librarything currently gived 403 errors
+# googleimages and googleisbn now require a browser with javascript enabled
+# (both are switched off by googleapis)
+# bing gives seemingly random results, some NSFW, sometimes based on first word of
+# search query, eg "Michael Agnew" returns lots of pictures of Michael Jackson
+force_ignore = 'flickr, baidu, librarything, googleapis, bing'
+
 
 def img_id(length=10):
     return ''.join([choice(string.ascii_letters + string.digits) for _ in range(length)])
@@ -139,16 +152,17 @@ def createthumb(jpeg, basewidth=None, overwrite=True):
     return outfile
 
 
-def valid_pdf(sourcefile):
+def pdf_pagecount(sourcefile):
     # check we can read/parse the pdf file, ie it's not corrupted
+    # Return int(pagecount) or zero if no readable pages
     logger = logging.getLogger(__name__)
     if PdfWriter is None:
         logger.warning("pypdf is not loaded")
-        return False
+        return 0
     _, extn = splitext(sourcefile)
     if extn.lower() != '.pdf':
         logger.warning(f"Cannot swap cover on [{sourcefile}]")
-        return False
+        return 0
 
     try:
         writer = PdfWriter()
@@ -160,10 +174,10 @@ def valid_pdf(sourcefile):
             while p < cnt:
                 writer.add_page(reader.pages[p])
                 p += 1
-        return True
+        return cnt
     except Exception as e:
         logger.warning(str(e))
-        return False
+        return 0
 
 
 def coverswap(sourcefile, coverpage=2):
@@ -209,8 +223,9 @@ def coverswap(sourcefile, coverpage=2):
         except Exception as e:
             logger.warning(f"Failed to copy output file: {str(e)}")
             return False
-        os.remove(srcfile)
-        os.remove(f"{srcfile}new")
+        with contextlib.suppress(OSError):
+            os.remove(srcfile)
+            os.remove(f"{srcfile}new")
         logger.info(f"{sourcefile} has {cnt:d} pages. Swapped pages 1 and 2\n")
         return True
 
@@ -288,6 +303,23 @@ def _usable_author_image(filename):
     return True, ''
 
 
+def _author_candidate_count(directory, max_num):
+    """Count usable automatic portraits so rejected covers do not stop fallback."""
+    candidates = _author_image_files(directory)
+    if max_num != 1:
+        return len(candidates)
+    usable_count = 0
+    for filename in candidates:
+        usable, reason = _usable_author_image(filename)
+        if usable:
+            usable_count += 1
+        else:
+            logging.getLogger(__name__).debug(f"Rejecting author image candidate: {reason}")
+            with contextlib.suppress(OSError):
+                os.remove(filename)
+    return usable_count
+
+
 def get_book_covers():
     """ Try to get a cover image for all books """
 
@@ -325,6 +357,8 @@ def get_book_covers():
 
 
 def cache_bookimg(img, bookid, src, suffix='', imgid=None):
+    # img can be a file or a url, store image in our cache
+    # return the filename in the cache, eg cache/book/12345.jpg
     logger = logging.getLogger(__name__)
     if not imgid:
         imgid = bookid
@@ -335,13 +369,11 @@ def cache_bookimg(img, bookid, src, suffix='', imgid=None):
         src = suffix
 
     # if librarything has no image they return a 1x1 gif
-    data = ''
     coverfile = os.path.join(DIRS.DATADIR, coverlink)
-    if path_isfile(coverfile):
-        with open(syspath(coverfile), 'rb') as f:
-            data = f.read()
-    if len(data) < 50:
+    if empty_image(coverfile):
         logger.debug(f"Got an empty {src} image for {bookid} [{img}]")
+        with contextlib.suppress(OSError):
+            os.remove(coverfile)
     elif success:
         logger.debug(f"Caching {src} cover for {bookid}")
         return coverlink
@@ -350,18 +382,28 @@ def cache_bookimg(img, bookid, src, suffix='', imgid=None):
     return ''
 
 
+def empty_image(coverfile):
+    """ some providers send a 1x1 image if no cover, rather than an error code """
+    data = ''
+    if path_isfile(coverfile):
+        with open(syspath(coverfile), 'rb') as f:
+            data = f.read()
+    return len(data) < 50
+
+
 def get_book_cover(bookid=None, src=None, ignore=''):
     """ Return link to a local file containing a book cover image for a bookid, and which source used.
-        Try 1. Local file cached from goodreads/googlebooks when book was imported
-            2. cover.jpg if we have the book
-            3. LibraryThing cover image (if you have a dev key)
-            5. Goodreads search (if book was imported from goodreads)
-            6. OpenLibrary image
-            7. Google isbn search (if google has a link to book for sale)
-            8. Google images search (if lazylibrarian config allows)
+        Try  Local file cached from goodreads/googlebooks when book was imported
+             cover.jpg if we have the book
+             LibraryThing cover image (if you have a dev key)
+             Goodreads search (if book was imported from goodreads)
+             OpenLibrary image
+             RanobeDB image (if book was imported from ranobedb)
+             Google isbn search (if google has a link to book for sale)
+             Google images search (if lazylibrarian config allows)
 
-        src = cache, cover, goodreads, librarything, googleisbn, openlibrary, googleimage
-        ignore = list of sources to skip
+        src = cache, cover, goodreads, librarything, googleisbn, openlibrary, googleimage, ranobedb
+        ignore = csv of sources to skip
         Return None if no cover available. """
     logger = logging.getLogger(__name__)
     if not bookid:
@@ -374,7 +416,11 @@ def get_book_cover(bookid=None, src=None, ignore=''):
     else:
         imgid = None
 
-    logger.debug(f"Getting {src} cover for {bookid}, ignore [{ignore}]")
+    if ignore:
+        ignore += ', '
+    ignore += force_ignore
+
+    logger.debug(f"Getting cover for {bookid}, ignore [{ignore}], src {src}")
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
@@ -383,7 +429,7 @@ def get_book_cover(bookid=None, src=None, ignore=''):
         if item and item['BookImg']:
             coverlink = item['BookImg']
             coverfile = os.path.join(cachedir, coverlink.replace('cache/', ''))
-            if coverlink != 'images/nocover.png' and 'nocover' in coverlink or 'nophoto' in coverlink:
+            if coverlink != 'images/nocover.png' and ('nocover' in coverlink or 'nophoto' in coverlink):
                 coverfile = os.path.join(DIRS.DATADIR, 'images', 'nocover.png')
                 coverlink = 'images/nocover.png'
                 db.action("UPDATE books SET BookImg=? WHERE BookID=?", (coverlink, bookid))
@@ -398,7 +444,7 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                 lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
                 return None, src
 
-        if not src or src == 'cover' and 'cover' not in ignore:
+        if (not src or src == 'cover') and 'cover' not in ignore:
             item = db.match('select BookFile,Audiofile from books where bookID=?', (bookid,))
             if item:
                 # get either ebook or audiobook if they exist
@@ -430,7 +476,7 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                 return None, src
 
         # see if librarything has a cover
-        if not src or src == 'librarything' and 'librarything' not in ignore:
+        if (not src or src == 'librarything') and 'librarything' not in ignore:
             if CONFIG['LT_DEVKEY']:
                 cmd = "select BookISBN from books where bookID=?"
                 item = db.match(cmd, (bookid,))
@@ -444,7 +490,7 @@ def get_book_cover(bookid=None, src=None, ignore=''):
             if src:
                 return None, src
 
-        cmd = ("select BookName,AuthorName,BookLink,BookISBN,books.gr_id,books.hc_id,books.ol_id"
+        cmd = ("select BookName,AuthorName,BookLink,BookISBN,books.gr_id,books.hc_id,books.ol_id,books.ran_id"
                " from books,authors where bookID=? and books.AuthorID = authors.AuthorID")
         item = db.match(cmd, (bookid,))
         if not item:
@@ -452,23 +498,41 @@ def get_book_cover(bookid=None, src=None, ignore=''):
 
         title = safe_unicode(item['BookName'])
         author = safe_unicode(item['AuthorName'])
-        safeparams = quote_plus(make_utf8bytes(f"{author} {title}")[0])
+        # "book cover" biases the keyword image search away from generic-noun collisions in
+        # the author name or title (e.g. an author called "Jade" returning gemstone photos,
+        # or a title containing "Annie" returning stills from the musical) - see WI-011.
+        safeparams = quote_plus(make_utf8bytes(f"{author} {title} book cover")[0])
 
         # see if hardcover has a cover
-        if not src or src == 'hardcover' and 'hardcover' not in ignore:
+        if (not src or src == 'hardcover') and 'hardcover' not in ignore:
             if item['hc_id']:
                 h_c = lazylibrarian.hc.HardCover()
                 bookdict, _ = h_c.get_bookdict_for_bookid(item['hc_id'])
-                img = bookdict.get('cover')
+                img = bookdict.get('bookimg')
                 if img:
                     coverlink = cache_bookimg(img, bookid, src, suffix='_hc', imgid=imgid)
                     if coverlink:
                         return coverlink, 'hardcover'
+                logger.debug(f"No img in hardcover bookdict {bookdict}")
+            if src:
+                return None, src
+
+        # see if ranobedb has a cover
+        if (not src or src == 'ranobedb') and 'ranobedb' not in ignore:
+            if item['ran_id']:
+                r_a = lazylibrarian.ran.RanobeDB()
+                bookdict, _ = r_a.get_bookdict_for_bookid(item['ran_id'])
+                img = bookdict.get('bookimg')
+                if img:
+                    coverlink = cache_bookimg(img, bookid, src, suffix='_ra', imgid=imgid)
+                    if coverlink:
+                        return coverlink, 'ranobedb'
+                logger.debug(f"No img in ranobedb bookdict {bookdict}")
             if src:
                 return None, src
 
         # try to get a cover from goodreads
-        if not src or src == 'goodreads' and 'goodreads' not in ignore:
+        if (not src or src == 'goodreads') and 'goodreads' not in ignore:
             if item['gr_id']:
                 # if we have a goodreads bookid, we can call https://www.goodreads.com/book/show/{bookID}
                 # and scrape the page for og:image
@@ -497,7 +561,7 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                 return None, src
 
         # try to get a cover from openlibrary
-        if not src or src == 'openlibrary' and 'openlibrary' not in ignore:
+        if (not src or src == 'openlibrary') and 'openlibrary' not in ignore:
             if item and item['ol_id']:
                 baseurl = f"https://covers.openlibrary.org/b/olid/{item['ol_id']}-M.jpg"
                 result, success = fetch_url(baseurl, raw=True)
@@ -505,14 +569,17 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                     with tempfile.NamedTemporaryFile(delete_on_close=False) as f:
                         f.write(result)
                         f.close()
+
+                    if empty_image(f.name):
+                        logger.debug(f"Got an empty OpenLibrary image for id {item['ol_id']}")
+                    else:
                         coverlink = cache_bookimg(f.name, bookid, src, suffix='_ol', imgid=imgid)
                         if coverlink:
                             return coverlink, 'openlibrary'
 
             if item and item['BookISBN']:
-                baseurl = '/'.join([CONFIG['OL_URL'],
-                                   'api/books?format=json&jscmd=data&bibkeys=ISBN:'])
-                result, success = fetch_url(baseurl + item['BookISBN'])
+                baseurl = f"{CONFIG['OL_URL']}/isbn/{item['BookISBN']}.json"
+                result, success = fetch_url(baseurl)
                 if success:
                     try:
                         source = json.loads(result)  # type: dict
@@ -521,16 +588,22 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                         source = {}
 
                     img = ''
-                    if source:
-                        # noinspection PyUnresolvedReferences
-                        k = list(source.keys())[0]
-                        try:
-                            img = source[k]['cover']['medium']
-                        except KeyError:
-                            try:
-                                img = source[k]['cover']['large']
-                            except KeyError:
-                                logger.debug(f"No openlibrary image for {item['BookISBN']}")
+                    if source and source.get('covers'):
+                        baseurl = f"https://covers.openlibrary.org/b/id/{source['covers'][0]}-M.jpg"
+                        result, success = fetch_url(baseurl, raw=True)
+                        if success:
+                            with tempfile.NamedTemporaryFile(delete_on_close=False) as f:
+                                f.write(result)
+                                f.close()
+
+                            if empty_image(f.name):
+                                logger.debug(f"Got an empty OpenLibrary image for isbn {item['BookISBN']}")
+                            else:
+                                coverlink = cache_bookimg(f.name, bookid, src, suffix='_ol', imgid=imgid)
+                                if coverlink:
+                                    return coverlink, 'openlibrary'
+                        else:
+                            logger.debug(f"No openlibrary image for {item['BookISBN']}")
 
                     if img and img.startswith('http') and 'nocover' not in img and 'nophoto' not in img:
                         coverlink = cache_bookimg(img, bookid, src, suffix='_ol', imgid=imgid)
@@ -538,11 +611,14 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                             return coverlink, 'openlibrary'
                 else:
                     logger.debug(f"OpenLibrary error: {result}")
-                    BLOCKHANDLER.block_provider("openlibrary", result)
+                    # 404 (or 400) means book/cover was not found for this ISBN, NOT a service outage
+                    if '404' not in result and '400' not in result:
+                        delay = 60 if ('429' in result or '503' in result) else None
+                        BLOCKHANDLER.block_provider("openlibrary", result, delay=delay)
             if src:
                 return None, src
 
-        if not src or src == 'googleisbn' and 'googleapis' not in ignore:
+        if (not src or src == 'googleisbn') and 'googleapis' not in ignore and not BLOCKHANDLER.is_blocked('googleapis'):
             # try a google isbn page search...
             if item and item['BookISBN']:
                 url = f"https://www.googleapis.com/books/v1/volumes?q=isbn:{item['BookISBN']}"
@@ -571,25 +647,22 @@ def get_book_cover(bookid=None, src=None, ignore=''):
                 return None, src
 
         if PIL and safeparams:
-            if not src or src == 'baidu' and 'baidu' not in ignore:
+            if (not src or src == 'baidu') and 'baidu' not in ignore:
                 res, src = crawl_image('baidu', src, cachedir, bookid, safeparams, imgid=imgid)
                 if res:
                     return res, src
-            if not src or src == 'bing' and 'bing' not in ignore:
+            if (not src or src == 'bing') and 'bing' not in ignore:
                 res, src = crawl_image('bing', src, cachedir, bookid, safeparams, imgid=imgid)
                 if res:
                     return res, src
-            # flikr now needs an api key
-            # if not src or src == 'flikr' and 'flikr' not in ignore:
-            #     res, src = crawl_image('flickr', src, cachedir, bookid, safeparams, imgid=imgid)
-            #     if res:
-            #         return res, src
-            if not src or src == 'googleimage' and 'googleapis' not in ignore:
+            if (not src or src == 'flickr') and 'flickr' not in ignore:
+             res, src = crawl_image('flickr', src, cachedir, bookid, safeparams, imgid=imgid)
+             if res:
+                 return res, src
+            if (not src or src == 'googleimage') and 'googleapis' not in ignore and not BLOCKHANDLER.is_blocked('googleapis'):
                 res, src = crawl_image('google', src, cachedir, bookid, safeparams, imgid=imgid)
                 if res:
                     return res, src
-
-        logger.debug("No image found from any configured source")
         return None, src
     except Exception:
         logger.error(f'Unhandled exception in get_book_cover: {traceback.format_exc()}')
@@ -637,6 +710,25 @@ def crawl_image(crawler_name, src, cachedir, bookid, safeparams, imgid=None):
     if res:
         img = os.path.join(icrawlerdir, os.listdir(icrawlerdir)[0])
 
+        # A raw keyword image search has no way to confirm a result is actually a book
+        # cover - it just returns whatever ranks first for the text, which can be a
+        # completely unrelated image if the author/title contains a common noun (seen
+        # live: an author named "Jade" got a photo of a jade gemstone, WI-011). Book
+        # covers are reliably portrait; a near-square or landscape result is a strong
+        # signal the crawler matched on the wrong thing rather than found a real cover,
+        # so reject those instead of silently caching them.
+        try:
+            with PILImage.open(img) as pil_img:
+                width, height = pil_img.size
+            if height and width / height >= 0.95:
+                logger.debug(
+                    f"Rejecting {crawler_name} image for {bookid}, aspect ratio "
+                    f"{width}x{height} doesn't look like a book cover")
+                rmtree(icrawlerdir, ignore_errors=True)
+                return None, src
+        except Exception as e:
+            logger.debug(f"Could not check aspect ratio of {crawler_name} image for {bookid}: {e}")
+
         coverlink = cache_bookimg(img, bookid, src, suffix=f"_{crawler_name[:2]}", imgid=imgid)
         rmtree(icrawlerdir, ignore_errors=True)
         if coverlink:
@@ -647,72 +739,150 @@ def crawl_image(crawler_name, src, cachedir, bookid, safeparams, imgid=None):
     return None, src
 
 
-def get_author_image(authorid=None, refresh=False, max_num=1):
+def get_author_image(authorid=None, refresh=False, max_num=1, ignore=''):
     logger = logging.getLogger(__name__)
     if not authorid:
         logger.error("get_author_image: No authorid")
         return None
-
     db = database.DBConnection()
     try:
-        author = db.match('select AuthorName,AuthorIMG from authors where AuthorID=?', (authorid,))
+        keys = lazylibrarian.importer.author_keys()
+        cmd = "SELECT * from authors WHERE AuthorID=?"
+        for k in keys:
+            cmd += f" or {k}=?"
+        author = db.match(cmd, tuple([str(authorid)] * (len(keys) + 1)))
     finally:
         db.close()
 
+    if ignore:
+        ignore += ', '
+    ignore += force_ignore
+
     cachedir = DIRS.CACHEDIR
     datadir = DIRS.DATADIR
+    got_images = 0
+    cnt = 0
+
+    icrawlerdir = os.path.join(cachedir, 'icrawler', str(authorid))
+    rmtree(icrawlerdir, ignore_errors=True)
+    if not os.path.isdir(icrawlerdir):
+        os.mkdir(icrawlerdir)
+
     if author:
         coverfile = os.path.join(datadir, author['AuthorIMG'])
     else:
         coverfile = os.path.join(cachedir, "author", f"{authorid}.jpg")
 
-    if path_isfile(coverfile) and max_num == 1 and not refresh:  # use cached image if there is one
-        lazylibrarian.CACHE_HIT = int(lazylibrarian.CACHE_HIT) + 1
-        logger.debug(f"get_author_image: Returning Cached response for {coverfile}")
-        coverlink = coverfile.lstrip(datadir)
-        return coverlink
+    if path_isfile(coverfile):
+        if max_num == 1 and not refresh:  # use cached image if there is one
+            lazylibrarian.CACHE_HIT = int(lazylibrarian.CACHE_HIT) + 1
+            logger.debug(f"get_author_image: Returning Cached response for {coverfile}")
+            coverlink = coverfile.lstrip(datadir)
+            return coverlink
+        _ = safe_copy(coverfile, os.path.join(icrawlerdir, 'cover.jpg'))
+        got_images += 1
+    else:
+        lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
 
-    lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
     if PIL and author:
         authorname = safe_unicode(author['AuthorName'])
-        safeparams = quote_plus(make_utf8bytes(f"author {authorname}")[0])
-        icrawlerdir = os.path.join(cachedir, 'icrawler', authorid)
-        rmtree(icrawlerdir, ignore_errors=True)
+        safeparams = authorname.replace('. ', ' ').replace(' ', '_')
+        headers = {
+            'Accept': 'application/xml, text/xml',
+            'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
+            'Accept-Encoding': 'gzip, deflate',
+            'Connection': 'keep-alive'
+        }
+
+        for api_source in lazylibrarian.INFOSOURCES.keys():
+            if got_images >= max_num:
+                break
+            this_source = lazylibrarian.INFOSOURCES[api_source]
+            # 2-letter_code, class, author_key, api_enabled
+            if this_source['author_key'] and this_source['author_key']!= 'authorid' and CONFIG[this_source['enabled']] and api_source not in ignore:
+                crawler_name = api_source
+                book_api = this_source['api']
+                book_api = book_api()
+                img = book_api.get_author_image(authorname=authorname, authorid=author[this_source['author_key']])
+                if img.startswith('http'):
+                    img_data = requests.get(img, headers=headers, impersonate='chrome')
+                    if img_data.status_code == 200:
+                        img_file = os.path.join(icrawlerdir, f"{api_source}.jpg")
+                        with open(img_file, 'wb') as f:
+                            f.write(img_data.content)
+                        got_images = _author_candidate_count(icrawlerdir, max_num)
+                        logger.debug(f"{crawler_name} found {got_images} usable images")
+                    else:
+                        logger.debug(f"Got {img_data.status_code} from {crawler_name} image {provider_log_origin(img)}")
+                else:
+                    logger.debug(f"No image from {crawler_name} for {author[this_source['author_key']]}")
+
+        if got_images < max_num:
+            crawler_name = 'wikipedia'
+            if crawler_name not in ignore:
+                try:
+                    url = f"https://en.wikipedia.org/wiki/{safeparams}"
+                    response = requests.get(url, headers=headers, impersonate='chrome')
+                    if response.status_code == 200:
+                        try:
+                            img_name = make_unicode(response.content.split(b"infobox-image")[1].split(b'src="')[1].split(b'"')[0])
+                        except IndexError:
+                            logger.debug(f"No image from wikipedia for {safeparams}")
+                            img_name = None
+                        if img_name:
+                            img_data = requests.get(f"https:{img_name}", headers=headers, impersonate='chrome')
+                            if img_data.status_code == 200:
+                                img_file = os.path.join(icrawlerdir, f'{crawler_name}.jpg')
+                                with open(img_file, 'wb') as f:
+                                    f.write(img_data.content)
+                                got_images = _author_candidate_count(icrawlerdir, max_num)
+                                logger.debug(f"{crawler_name} found {got_images} usable images")
+                            else:
+                                logger.debug(f"Got a {img_data.status_code} from {crawler_name} image {provider_log_origin(img_name)}")
+                    else:
+                        logger.debug(f"Got a {response.status_code} from {crawler_name} search {provider_log_origin(url)}")
+                except Exception as e:
+                    logger.debug(type(e).__name__)
+
+        if got_images < max_num:
+            safeparams = quote_plus(make_utf8bytes(f"author {authorname}")[0])
+            crawler_name = 'google'
+            if crawler_name not in ignore:
+                gc = GoogleImageCrawler(storage={'root_dir': icrawlerdir})
+                gc.crawl(keyword=safeparams, max_num=int(max_num - got_images), file_idx_offset='auto')
+                if os.path.exists(icrawlerdir):
+                    cnt = _author_candidate_count(icrawlerdir, max_num)
+                    logger.debug(f"{crawler_name} found {cnt - got_images} {plural(cnt - got_images, 'image')}")
+                got_images = cnt
+                if cnt < max_num:
+                    # not enough results, try bing
+                    crawler_name = 'bing'
+                    if crawler_name not in ignore:
+                        safeparams = quote_plus(make_utf8bytes(f"{authorname.replace('. ', ' ')}")[0])
+                        bc = BingImageCrawler(storage={'root_dir': icrawlerdir})
+                        bc.crawl(keyword=safeparams, max_num=int(max_num - got_images), file_idx_offset='auto')
+                        if os.path.exists(icrawlerdir):
+                            cnt = _author_candidate_count(icrawlerdir, max_num)
+                            logger.debug(f"{crawler_name} found {cnt - got_images} {plural(cnt - got_images, 'image')}")
+                        else:
+                            cnt = 0
+                        got_images = cnt
         if max_num == 1:
-            for crawler_name, crawler_class in [('google', GoogleImageCrawler), ('bing', BingImageCrawler)]:
-                rmtree(icrawlerdir, ignore_errors=True)
-                crawler = crawler_class(storage={'root_dir': icrawlerdir})
-                crawler.crawl(keyword=safeparams, max_num=5)
-                images = _author_image_files(icrawlerdir)
-                logger.debug(f"{crawler_name} found {len(images)} {plural(len(images), 'image')}")
-                for img in images:
+            if got_images:
+                for img in _author_image_files(icrawlerdir):
                     usable, reason = _usable_author_image(img)
                     if not usable:
-                        logger.debug(f"Skipping {crawler_name} author image for {authorname}: {reason}")
+                        logger.debug(f"Skipping author image for {authorname}: {reason}")
                         continue
                     coverlink, success, _ = cache_img(ImageType.AUTHOR, img_id(), img, refresh=refresh)
                     if success:
                         logger.debug(f"Cached {crawler_name} image for {authorname}")
                         rmtree(icrawlerdir, ignore_errors=True)
                         return coverlink
-                logger.debug(f"No usable {crawler_name} image found for {authorname}")
+            else:
+                logger.debug(f"No {crawler_name} images found for {authorname}")
             rmtree(icrawlerdir, ignore_errors=True)
         else:
-            crawler_name = 'google'
-            gc = GoogleImageCrawler(storage={'root_dir': icrawlerdir})
-            gc.crawl(keyword=safeparams, max_num=int(max_num))
-            if os.path.exists(icrawlerdir):
-                res = len(os.listdir(icrawlerdir))
-            else:
-                # nothing from google, try bing
-                crawler_name = 'bing'
-                bc = BingImageCrawler(storage={'root_dir': icrawlerdir})
-                bc.crawl(keyword=safeparams, max_num=int(max_num))
-                if os.path.exists(icrawlerdir):
-                    res = len(os.listdir(icrawlerdir))
-                else:
-                    res = 0
-            logger.debug(f"{crawler_name} found {res} {plural(res, 'image')}")
             return icrawlerdir
     elif not PIL:
         logger.debug("PIL not installed, not looking for author image")
@@ -856,9 +1026,7 @@ def shrink_mag(issuefile, dpi=0):
     return ''
 
 
-# noinspection PyUnresolvedReferences
 def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
-    global GS, GS_VER, generator
     logger = logging.getLogger(__name__)
     if is_valid_type(issuefile, extensions=get_list(CONFIG['MAG_TYPE'])) and (not CONFIG.get_bool('IMP_MAGCOVER')
                                                                               or not pagenum):
@@ -870,22 +1038,28 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
     if not issuefile or not path_isfile(issuefile):
         logger.warning(f'No issuefile {issuefile}')
         return ''
-
-    base, extn = splitext(issuefile)
+    _, extn = splitext(issuefile)
     if not extn:
         logger.warning(f'Unable to create cover for {issuefile}, no extension?')
         return ''
+    return extract_image_from_page(issuefile, refresh, pagenum, cover=True)
 
-    coverfile = f"{base}.jpg"
 
-    if path_isfile(coverfile):
-        if refresh:
-            os.remove(syspath(coverfile))
-        else:
-            logger.debug(f'Cover for {issuefile} exists')
-            return coverfile  # quit if cover already exists and we didn't want to refresh
+def extract_image_from_page(issuefile=None, refresh=True, pagenum=1, cover=False):
+    global GS, GS_VER, generator
+    logger = logging.getLogger(__name__)
+    base, extn = splitext(issuefile)
+    imagefile = f"{base}.jpg"
 
-    logger.debug(f'Creating cover for {issuefile}, page {pagenum}')
+    if cover and path_isfile(imagefile) and not refresh:
+        return imagefile
+
+    if not cover:
+        imagefile = f"{base}_p{pagenum}.jpg"
+        if path_isfile(imagefile) and not refresh:
+            return imagefile
+
+    logger.debug(f'Extracting image for {issuefile} from page {pagenum}')
     data = ''  # result from unzip or unrar
     extn = extn.lower()
     if extn in ['.cbz', '.epub']:
@@ -907,13 +1081,19 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
         img = None
         fextn = ''
         try:
-            for item in ['cover.', '000.', '001.', '00.', '01.']:
+            extns = ['.jpg', '.jpeg', '.png', '.webp']
+            if cover:
+                formats = ['cover.', '000.', '001.', '00.', '01.']
+            else:
+                formats = [f'{pagenum:03d}.', f'{pagenum:02d}.']
+
+            for item in formats:
                 if getattr(data, 'infoiter', None):
                     for member in data.infoiter():
                         fname = member.filename.lower()
                         if item in fname:
                             _, fextn = splitext(fname)
-                            if fextn in ['.jpg', '.jpeg', '.png', '.webp']:
+                            if fextn in extns:
                                 r = data.read_files(member.filename)
                                 img = r[0][1]
                                 break
@@ -922,7 +1102,7 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                         fname = member.lower()
                         if item in fname:
                             _, fextn = splitext(fname)
-                            if fextn in ['.jpg', '.jpeg', '.png', '.webp']:
+                            if fextn in extns:
                                 img = data.read(member)
                                 break
                 if img:
@@ -931,12 +1111,12 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                 if PIL and fextn in ['.png', '.webp']:
                     image = PILImage.open(io.BytesIO(img))
                     image = image.convert('RGB')
-                    image.save(syspath(coverfile), 'jpeg')
+                    image.save(imagefile, 'jpeg')
                 else:
-                    with open(syspath(coverfile), 'wb') as f:
+                    with open(imagefile, 'wb') as f:
                         f.write(img)
-                return coverfile
-            logger.debug(f"Failed to find image in {issuefile}")
+                return imagefile
+            logger.debug(f"Failed to find page in {issuefile}")
         except Exception as why:
             logger.error(f"Failed to extract image from {issuefile}, {type(why).__name__} {str(why)}")
 
@@ -944,8 +1124,8 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
         if len(CONFIG['IMP_CONVERT']):  # allow external convert to override libraries
             generator = f"external program: {CONFIG['IMP_CONVERT']}"
             if "gsconvert.py" in CONFIG['IMP_CONVERT']:
-                msg = "Use of gsconvert.py is deprecated, equivalent functionality is now built in. "
-                msg += "Support for gsconvert.py may be removed in a future release. See wiki for details."
+                msg = ("Use of gsconvert.py is deprecated, equivalent functionality is now built in. "
+                        "Support for gsconvert.py may be removed in a future release. See wiki for details.")
                 logger.warning(msg)
             converter = CONFIG['IMP_CONVERT']
             postfix = ''
@@ -956,7 +1136,7 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                 postfix = '[0]'
             params = []
             try:
-                params = [converter, f'{issuefile}{postfix}', f'{coverfile}']
+                params = [converter, f'{issuefile}{postfix}', imagefile]
                 if os.name != 'nt':
                     res = subprocess.check_output(params, preexec_fn=lambda: os.nice(10),
                                                   stderr=subprocess.STDOUT)
@@ -980,14 +1160,14 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                 params = [GS, "-sDEVICE=jpeg", "-dJPEGQ=100", "-dNOPAUSE", "-dBATCH", "-dSAFER",
                           f"-dFirstPage={check_int(pagenum, 1):d}",
                           f"-dLastPage={check_int(pagenum, 1):d}",
-                          "-dUseCropBox", f"-sOutputFile={coverfile}", issuefile]
+                          "-dUseCropBox", f"-sOutputFile={imagefile}", issuefile]
                 try:
                     res = subprocess.check_output(params, stderr=subprocess.STDOUT)
                     res = make_unicode(res).strip()
-                    if not path_isfile(coverfile):
+                    if not path_isfile(imagefile):
                         logger.debug(f"Failed to create jpg: {res}")
                 except Exception as e:
-                    logger.debug(f"Failed to create cover with {str(params)} [{e}]")
+                    logger.debug(f"Failed to extract page with {str(params)} [{e}]")
             else:
                 logger.warning(f"Failed to create jpg for {issuefile}")
         else:  # not windows
@@ -1003,7 +1183,7 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                     generator = "wand interface"
                     # noinspection PyCallingNonCallable
                     with wand_Image(filename=f"{issuefile}[{str(check_int(pagenum, 1) - 1)}]") as img:
-                        img.save(filename=coverfile)
+                        img.save(filename=imagefile)
                 else:
                     if not GS:
                         GS, GS_VER, generator = find_gs()
@@ -1012,31 +1192,32 @@ def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
                         params = [GS, "-sDEVICE=jpeg", "-dJPEGQ=100", "-dNOPAUSE", "-dBATCH", "-dSAFER",
                                   f"-dFirstPage={check_int(pagenum, 1):d}",
                                   f"-dLastPage={check_int(pagenum, 1):d}",
-                                  "-dUseCropBox", f"-sOutputFile={coverfile}", issuefile]
+                                  "-dUseCropBox", f"-sOutputFile={imagefile}", issuefile]
                         try:
                             res = subprocess.check_output(params, preexec_fn=lambda: os.nice(10),
                                                           stderr=subprocess.STDOUT)
                             res = make_unicode(res).strip()
-                            if not path_isfile(coverfile):
+                            if not path_isfile(imagefile):
                                 logger.debug(f"Failed to create jpg: {res}")
                         except Exception as e:
-                            logger.debug(f"Failed to create cover with {str(params)} [{e}]")
+                            logger.debug(f"Failed to extract page with {str(params)} [{e}]")
                     else:
                         logger.warning(f"Failed to create jpg for {issuefile}")
             except Exception as e:
-                logger.warning(f"Unable to create cover for {issuefile} using {type(e).__name__} {generator}")
-                logger.debug(f"Exception in create_cover: {traceback.format_exc()}")
+                logger.warning(f"Unable to extract image for {issuefile} using {type(e).__name__} {generator}")
+                logger.debug(f"Exception in extract_image: {traceback.format_exc()}")
 
-        if path_isfile(coverfile):
-            setperm(coverfile)
-            logger.debug(f"Created cover (page {check_int(pagenum, 1):d}) for {issuefile} using {generator}")
-            return coverfile
+        if path_isfile(imagefile):
+            setperm(imagefile)
+            logger.debug(f"Extracted image (page {check_int(pagenum, 1):d}) for {issuefile} using {generator}")
+            return imagefile
 
     # if not recognised extension or cover creation failed
     try:
-        coverfile = safe_copy(os.path.join(DIRS.PROG_DIR, 'data', 'images', 'nocover.jpg'), coverfile)
-        setperm(coverfile)
-        return coverfile
+        if cover:
+            imagefile = safe_copy(os.path.join(DIRS.PROG_DIR, 'data', 'images', 'nocover.jpg'), imagefile)
+            setperm(imagefile)
+            return imagefile
     except Exception as why:
         logger.error(f"Failed to copy nocover file, {type(why).__name__} {str(why)}")
     return ''

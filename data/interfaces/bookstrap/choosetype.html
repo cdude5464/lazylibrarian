@@ -15,9 +15,9 @@
     <script type="text/javascript">
     $(document).ready(function()
     {
-        var title = '${title}';
+        var title = ${js(title)};
         var prefix = window.location.href;
-        var pop_message = '${pop_message}';
+        var pop_message = ${js(pop_message)};
         var bookid = '${bookid}';
         var pop_types = '${pop_types}';
         var array = pop_types.split(' ');
@@ -45,7 +45,7 @@
 
         var buttons = {
                     bt0: {
-                        label: "Close",
+                        label: ${_js('Close')},
                         className: 'btn-primary',
                         callback: function(result){ window.location.assign(ret) }
                     },

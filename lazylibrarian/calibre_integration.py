@@ -58,6 +58,9 @@ from lazylibrarian.metadata_opf import create_comic_opf, create_mag_opf, create_
 
 
 
+CALIBRE_DUPLICATE_UNVERIFIED = "Calibre duplicate has no verified existing ebook file"
+
+
 def _enhance_cover_before_calibre(bookid, data, logger):
     """Best-effort high-resolution cover selection before Calibre import."""
     helper = "/config/scripts/ll_cover_quality.py"
@@ -149,17 +152,17 @@ def _refresh_author_totals_for_book(bookid, logger):
 
 
 def _record_existing_calibre_ebook_file(bookid, logger):
-    """Mark an LL row Have when Calibre reports a duplicate with a verified existing file."""
+    """Return the verified existing file and mark only its LL row owned."""
     if not bookid:
-        return False
+        return ""
     db = database.DBConnection()
     try:
         row = db.match("SELECT BookFile FROM books WHERE BookID=?", (bookid,))
         if not row:
-            return False
+            return ""
         bookfile = row["BookFile"]
         if not bookfile or not path_isfile(bookfile):
-            return False
+            return ""
         db.action(
             "UPDATE books SET Status=?, BookLibrary=CASE WHEN BookLibrary IS NULL OR BookLibrary='' THEN ? "
             "ELSE BookLibrary END WHERE BookID=?",
@@ -169,7 +172,7 @@ def _record_existing_calibre_ebook_file(bookid, logger):
     finally:
         db.close()
     _refresh_author_totals_for_book(bookid, logger)
-    return True
+    return bookfile
 
 
 def send_to_calibre(booktype, global_name, folder, data):
@@ -179,7 +182,7 @@ def send_to_calibre(booktype, global_name, folder, data):
     folder = folder containing the file(s)
     data = various data for the item, varies according to booktype
 
-    return True,filename,folder (Filename empty if already exists)
+    return True,filename,folder (ebook success always includes a verified file)
     on fail return False,message,folder
     """
     issueid = data.get("IssueDate", "")  # comic issueid
@@ -246,6 +249,12 @@ def send_to_calibre(booktype, global_name, folder, data):
                 identifier = f"google:{bookid}"
             elif data.get("dnb_id") == bookid:
                 identifier = f"dnb:{bookid}"
+            elif data.get("bn_id") == bookid:
+                identifier = f"bn:{bookid}"
+            elif data.get("dbk_id") == bookid:
+                identifier = f"databazeknih:{bookid}"
+            elif data.get("ran_id") == bookid:
+                identifier = f"RanobeDB:{bookid}"
         elif booktype == "comic":
             if bookid.startswith("CV"):
                 identifier = f"ComicVine:{bookid[2:]}"
@@ -316,16 +325,15 @@ def send_to_calibre(booktype, global_name, folder, data):
         if rc:
             return False, f"calibredb rc {rc} from {CONFIG['IMP_CALIBREDB']}", folder
         if booktype == "ebook" and (" --duplicates" in res or " --duplicates" in err):
-            if _record_existing_calibre_ebook_file(bookid, logger):
-                logger.warning(
-                    f"Calibre duplicate for {authorname} {bookname}; existing LazyLibrarian BookFile verified"
-                )
-            else:
-                logger.warning(
-                    f"Calibre failed to import {authorname} {bookname}, already exists; "
-                    "leaving LazyLibrarian row unchanged"
-                )
-            return True, "", folder
+            existing_file = _record_existing_calibre_ebook_file(bookid, logger)
+            if not existing_file:
+                message = f"{CALIBRE_DUPLICATE_UNVERIFIED}; source retained for reconciliation"
+                logger.warning(message)
+                return False, message, folder
+            logger.warning(
+                f"Calibre duplicate for {authorname} {bookname}; existing LazyLibrarian BookFile verified"
+            )
+            return True, existing_file, folder
         # Answer should look like "Added book ids : bookID" (string may be translated!)
         try:
             calibre_id = res.rsplit(": ", 1)[1].split("\n", 1)[0].split(",")[0].strip()
@@ -379,8 +387,10 @@ def send_to_calibre(booktype, global_name, folder, data):
                     lazylibrarian.postprocess.process_img(
                         folder, bookid, data["BookImg"], global_name, ImageType.BOOK
                     )
-                    opfpath, our_opf = create_opf(folder, data, global_name, True)
-                    # if we send an opf, does calibre update the book-meta as well?
+                    if not CONFIG.get_bool('IMP_EBOOKOPF'):
+                        logger.debug("create_book_opf is disabled")
+                    else:
+                        opfpath, our_opf = create_opf(folder, data, global_name, True)
                 elif booktype == "comic":
                     if data.get("Cover"):
                         lazylibrarian.postprocess.process_img(
@@ -672,7 +682,7 @@ def send_ebook_to_calibre(data):
     logger.debug(f"Calibre ID does not exist: {data['AuthorName']} {data['BookName']}")
     global_name = os.path.splitext(os.path.basename(data["BookFile"]))[0]
     with tempfile.TemporaryDirectory() as temp_dir:
-        sourcedir = os.path.dirname(data["IssueFile"])
+        sourcedir = os.path.dirname(data["BookFile"])
         for item in listdir(sourcedir):
             if item.startswith(global_name):
                 logger.debug(f"Copy file [{item}]")

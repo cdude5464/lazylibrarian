@@ -180,6 +180,23 @@ class TestLogConfig(LLTestCaseWithConfigandDIRS):
         rows, _ = LOGCONFIG.get_ui_logrows('warn')
         self.assertEqual(1, len(rows), 'Expected 1 filtered row')
 
+    def test_get_ui_logrows_minlevel(self):
+        logger = logging.getLogger('root')
+        LOGCONFIG.ensure_memoryhandler_for_ui(capacity_lines=-1, redact=False)
+        logger.info('Testing info')
+        logger.warning('Testing warning')
+        logger.error('Testing error')
+
+        rows, total = LOGCONFIG.get_ui_logrows(minlevel=logging.WARNING)
+        self.assertEqual(3, total, 'Expected the total to count all rows')
+        self.assertEqual(['WARNING', 'ERROR'], [row[1] for row in rows], 'Expected warnings and errors')
+
+        rows, _ = LOGCONFIG.get_ui_logrows('testing error', logging.WARNING)
+        self.assertEqual(1, len(rows), 'Expected the text filter to apply as well')
+
+        rows, _ = LOGCONFIG.get_ui_logrows(minlevel=logging.ERROR)
+        self.assertEqual(['ERROR'], [row[1] for row in rows], 'Expected only errors')
+
     def test_get_ui_logrows_overrun(self):
         logger = logging.getLogger('root')
         test_capacity = 5

@@ -28,12 +28,21 @@ import traceback
 import zipfile
 
 import lazylibrarian
-from lazylibrarian import RARFILE
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import listdir, make_dirs, path_isfile, syspath
 from lazylibrarian.formatter import is_valid_type, make_unicode
 from lazylibrarian.postprocess_utils import enforce_str
 from lazylibrarian.telemetry import TELEMETRY
+
+
+def _safe_extract_path(item, targetdir):
+    if os.path.__name__ == "ntpath":
+        dst = os.path.join(targetdir, item.replace("/", "\\"))
+    else:
+        dst = os.path.join(targetdir, item)
+    if not os.path.realpath(dst).startswith(os.path.realpath(targetdir) + os.sep):
+        return None
+    return dst
 
 
 def unpack_multipart(source_dir, download_dir, title):
@@ -62,17 +71,16 @@ def unpack_multipart(source_dir, download_dir, title):
         for f in listdir(source_dir):
             archivename = os.path.join(source_dir, str(f))
             xtn = os.path.splitext(archivename)[1].lower()
-            if xtn not in [".epub", ".cbz"] and zipfile.is_zipfile(archivename):
+            if xtn not in [".epub", ".cbz", ".r00"] and zipfile.is_zipfile(archivename):
                 try:
                     z = zipfile.ZipFile(archivename)
                     for item in z.namelist():
                         if not item.endswith("/"):
-                            # not if it's a directory
+                            dst = _safe_extract_path(item, targetdir)
+                            if not dst:
+                                logger.warning(f"Skipping {item}: path escapes target directory")
+                                continue
                             logger.debug(f"Extracting {item} to {targetdir}")
-                            if os.path.__name__ == "ntpath":
-                                dst = os.path.join(targetdir, item.replace("/", "\\"))
-                            else:
-                                dst = os.path.join(targetdir, item)
                             with open(syspath(dst), "wb") as d:
                                 d.write(z.read(item))
                 except Exception as e:
@@ -80,6 +88,8 @@ def unpack_multipart(source_dir, download_dir, title):
                     return ""
         for f in listdir(targetdir):
             f = str(f)
+            if not os.path.exists(os.path.join(targetdir, f)):
+                continue
             if f.endswith(".rar"):
                 resultdir = unpack_archive(
                     os.path.join(targetdir, f), targetdir, title, targetdir=targetdir
@@ -125,7 +135,7 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
     # noinspection PyBroadException
     try:
         xtn = os.path.splitext(archivename)[1].lower()
-        if xtn not in [".epub", ".cbz"] and zipfile.is_zipfile(archivename):
+        if xtn not in [".epub", ".cbz", ".r00"] and zipfile.is_zipfile(archivename):
             TELEMETRY.record_usage_data("Process/Archive/Zip")
             postprocesslogger.debug(f"{archivename} is a zip file")
             try:
@@ -145,12 +155,11 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                 if is_valid_type(
                     item, extensions=CONFIG.get_all_types_list()
                 ) and not item.endswith("/"):
-                    # not if it's a directory
+                    dst = _safe_extract_path(item, targetdir)
+                    if not dst:
+                        logger.warning(f"Skipping {item}: path escapes target directory")
+                        continue
                     logger.debug(f"Extracting {item} to {targetdir}")
-                    if os.path.__name__ == "ntpath":
-                        dst = os.path.join(targetdir, item.replace("/", "\\"))
-                    else:
-                        dst = os.path.join(targetdir, item)
                     dstdir = os.path.dirname(dst)
                     if not make_dirs(dstdir):
                         logger.error(f"Failed to create directory {dstdir}")
@@ -182,11 +191,11 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                     item, extensions=CONFIG.get_all_types_list()
                 ) and not item.endswith("/"):
                     # not if it's a directory
+                    dst = _safe_extract_path(item, targetdir)
+                    if not dst:
+                        logger.warning(f"Skipping {item}: path escapes target directory")
+                        continue
                     logger.debug(f"Extracting {item} to {targetdir}")
-                    if os.path.__name__ == "ntpath":
-                        dst = os.path.join(targetdir, item.replace("/", "\\"))
-                    else:
-                        dst = os.path.join(targetdir, item)
                     dstdir = os.path.dirname(dst)
                     if not make_dirs(dstdir):
                         logger.error(f"Failed to create directory {dstdir}")
@@ -198,11 +207,11 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                         logger.error(f"Unable to extract {item} from {archivename}: {e}")
                         continue
 
-        elif lazylibrarian.UNRARLIB == 1 and RARFILE.is_rarfile(archivename):
+        elif lazylibrarian.UNRARLIB == 1 and lazylibrarian.RARFILE and lazylibrarian.RARFILE.is_rarfile(archivename):
             TELEMETRY.record_usage_data("Process/Archive/RarOne")
             postprocesslogger.debug(f"{archivename} is a rar file")
             try:
-                z = RARFILE.RarFile(archivename)
+                z = lazylibrarian.RARFILE.RarFile(archivename)
             except Exception as e:
                 logger.error(f"Failed to unrar {archivename}: {e}")
                 return ""
@@ -218,11 +227,11 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                     item, extensions=CONFIG.get_all_types_list()
                 ) and not item.endswith("/"):
                     # not if it's a directory
+                    dst = _safe_extract_path(item, targetdir)
+                    if not dst:
+                        logger.warning(f"Skipping {item}: path escapes target directory")
+                        continue
                     logger.debug(f"Extracting {item} to {targetdir}")
-                    if os.path.__name__ == "ntpath":
-                        dst = os.path.join(targetdir, item.replace("/", "\\"))
-                    else:
-                        dst = os.path.join(targetdir, item)
                     dstdir = os.path.dirname(dst)
                     if not make_dirs(dstdir):
                         logger.error(f"Failed to create directory {dstdir}")
@@ -234,7 +243,7 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                         logger.error(f"Unable to extract {item} from {archivename}: {e}")
                         continue
 
-        elif lazylibrarian.UNRARLIB == 2:
+        elif lazylibrarian.UNRARLIB == 2 and lazylibrarian.RARFILE:
             # noinspection PyBroadException
             try:
                 z = lazylibrarian.RARFILE(archivename)
@@ -263,11 +272,11 @@ def unpack_archive(archivename, download_dir, title, targetdir=""):
                 for entry in data:
                     for item in wanted_files:
                         if entry[0].filename.endswith(item):
+                            dst = _safe_extract_path(item, targetdir)
+                            if not dst:
+                                logger.warning(f"Skipping {item}: path escapes target directory")
+                                continue
                             logger.debug(f"Extracting {item} to {targetdir}")
-                            if os.path.__name__ == "ntpath":
-                                dst = os.path.join(targetdir, item.replace("/", "\\"))
-                            else:
-                                dst = os.path.join(targetdir, item)
                             dstdir = os.path.dirname(dst)
                             if not make_dirs(dstdir):
                                 logger.error(f"Failed to create directory {dstdir}")

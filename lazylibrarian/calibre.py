@@ -16,9 +16,13 @@ import re
 import string
 import time
 import traceback
+from urllib.parse import quote, urlencode
 
 import cherrypy
+import requests
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
+from requests.auth import HTTPBasicAuth, HTTPDigestAuth
 
 from lazylibrarian import database
 from lazylibrarian.common import get_readinglist, run_script, set_readinglist
@@ -35,6 +39,87 @@ from lazylibrarian.librarysync import find_book_in_db
 # calibredb search "#label":"false"  # returns list of ids (slow)
 
 
+def calibre_server_request(endpoint, params=None, method='GET', data=None, timeout=15, with_library=False):
+    """ Generic REST API client for Calibre Content Server.
+        Enables seamless network communication with Calibre across Docker containers,
+        LANs, or remote instances without requiring local calibredb CLI or direct database access. """
+    logger = logging.getLogger(__name__)
+    server = (CONFIG['CALIBRE_SERVER'] or '').strip().rstrip('/')
+    if not server:
+        return None, "No CALIBRE_SERVER configured"
+    # CALIBRE_SERVER may carry a "#library" fragment (the calibredb --with-library convention).
+    # In a REST URL everything after "#" is never sent to the server, which would silently
+    # swallow the endpoint, so split the fragment off. The server ignores a library query
+    # parameter, endpoints that take a library have it as the last path segment instead
+    library = None
+    if '#' in server:
+        server, library = server.split('#', 1)
+        server = server.rstrip('/')
+        library = library.strip()
+    if not server.startswith('http'):
+        scheme = 'https://' if CONFIG.get_bool('HTTPS_ENABLED') else 'http://'
+        server = f"{scheme}{server}"
+
+    params = dict(params) if params else {}
+    url = f"{server}/{endpoint.lstrip('/')}"
+    if with_library and library:
+        url += f"/{quote(library, safe='')}"
+    if params:
+        url += f"?{urlencode(params)}"
+
+    headers = {'Accept': 'application/json, text/plain, */*'}
+    auth = None
+    if CONFIG['CALIBRE_USER'] and CONFIG['CALIBRE_PASS']:
+        # Calibre Content Server serves HTTP Digest challenges when auth is enabled;
+        # Basic auth gets rejected with "400 Unsupported authentication method"
+        auth = HTTPDigestAuth(CONFIG['CALIBRE_USER'], CONFIG['CALIBRE_PASS'])
+
+    try:
+        r = requests.request(method, url, headers=headers, auth=auth, json=data, timeout=timeout)
+        challenge = r.headers.get('WWW-Authenticate', '').lower() if r.status_code == 401 else ''
+        if auth and challenge.startswith('basic'):
+            # the server uses basic auth when it has ssl, or is started with --auth-mode basic.
+            # Only send the password that way over https, and not on to wherever a redirect goes
+            if not url.startswith('https://') or not r.url.startswith('https://'):
+                return None, "HTTP 401: server wants basic auth, which needs an https CALIBRE_SERVER"
+            auth = HTTPBasicAuth(CONFIG['CALIBRE_USER'], CONFIG['CALIBRE_PASS'])
+            r = requests.request(method, url, headers=headers, auth=auth, json=data, timeout=timeout,
+                                 allow_redirects=False)
+        if r.status_code == 200:
+            try:
+                return r.json(), None
+            except Exception:
+                return r.text, None
+        return None, f"HTTP {r.status_code}: {r.text[:200]}"
+    except Exception as e:
+        logger.debug(f"Calibre server API error for {url}: {e}")
+        return None, str(e)
+
+
+def calibre_server_search(query):
+    """ Search Calibre library via Content Server REST API.
+        Query can be a free text search, title:"...", author:"...", or identifiers:goodreads:... / identifiers:isbn:...
+        Returns a list of matching Calibre book IDs. """
+    data, err = calibre_server_request('ajax/search', params={'query': query}, with_library=True)
+    if data and isinstance(data, dict) and 'book_ids' in data:
+        return data['book_ids'], None
+    return [], err
+
+
+def calibre_server_get_books():
+    """ Fetch the entire Calibre library in a single REST API call via /ajax/books.
+        Returns dict of {book_id: book_metadata_dict}. """
+    data, err = calibre_server_request('ajax/books', with_library=True)
+    if data and isinstance(data, dict):
+        return data, None
+    return {}, err
+
+
+def calibre_server_get_book(book_id):
+    """ Retrieve full book metadata from Calibre Content Server REST API """
+    return calibre_server_request(f"ajax/book/{quote(str(book_id), safe='')}", with_library=True)
+
+
 def calibre_list(col_read, col_toread):
     """ Get a list from calibre of all books in its library, including optional 'read' and 'toread' columns
         If success, return list of dicts {"title": "", "id": 0, "authors": ""}
@@ -42,6 +127,37 @@ def calibre_list(col_read, col_toread):
         Can be true, false, or empty in which case not included in dict. We only use the "true" state
         If error, return error message (not a dict) """
 
+    # 1. Try Calibre Content Server REST API first if configured
+    if CONFIG.get_bool('CALIBRE_USE_SERVER') and CONFIG['CALIBRE_SERVER']:
+        books_dict, _ = calibre_server_get_books()
+        if books_dict:
+            results = []
+            for bid_str, bdata in books_dict.items():
+                if isinstance(bdata, dict):
+                    bid = int(bid_str) if str(bid_str).isdigit() else bid_str
+                    item = {
+                        'id': bid,
+                        'title': bdata.get('title', ''),
+                        # same separator as calibredb list, a comma reads as surname, forename
+                        'authors': ' & '.join(bdata.get('authors', [])),
+                        'identifiers': bdata.get('identifiers', {}),
+                        'formats': bdata.get('formats', []),
+                        'pubdate': bdata.get('pubdate', ''),
+                    }
+                    user_metadata = bdata.get('user_metadata', {})
+                    if col_read and f'#{col_read}' in user_metadata:
+                        val = user_metadata[f'#{col_read}'].get('#value#')
+                        if val:
+                            item[f'*{col_read}'] = val
+                    if col_toread and f'#{col_toread}' in user_metadata:
+                        val = user_metadata[f'#{col_toread}'].get('#value#')
+                        if val:
+                            item[f'*{col_toread}'] = val
+                    results.append(item)
+            if results:
+                return results
+
+    # 2. Try calibredb CLI binary
     fieldlist = 'title,authors'
     if col_read:
         fieldlist += f",*{col_read}"
@@ -49,12 +165,48 @@ def calibre_list(col_read, col_toread):
         fieldlist += f",*{col_toread}"
     res, err, rc = calibredb("list", "", ['--for-machine', '--fields', fieldlist])
     if rc:
+        ebook_dir = get_directory('eBook')
+        meta_db = os.path.join(ebook_dir, 'metadata.db') if ebook_dir else ''
+        if meta_db and os.path.isfile(meta_db):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(f"file:{meta_db}?mode=ro", uri=True)
+                conn.row_factory = sqlite3.Row
+                query = """SELECT b.id, b.title, a.name as authors
+                           FROM books b
+                           JOIN books_authors_link bal ON b.id = bal.book
+                           JOIN authors a ON bal.author = a.id"""
+                rows = conn.execute(query).fetchall()
+                conn.close()
+                return [{'id': r['id'], 'title': r['title'], 'authors': r['authors']} for r in rows]
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Failed to read Calibre metadata.db: {e}")
         if res:
             return res
         return err
     logger = logging.getLogger(__name__)
     logger.debug(f"{res}")
-    return json.loads(res)
+    # Issue #2852: `calibredb list --for-machine` returned a complete, valid JSON array on a
+    # large real-world library, but with extra bytes trailing after it (the exact content was
+    # never pinned down across several debug rounds on the issue - only the "Extra data" symptom
+    # was, at a shifting offset as the reporter's library changed size, consistent with something
+    # genuinely appended after a valid array rather than a parse-position bug of ours). A plain
+    # json.loads() rejects the whole response outright over that trailing content, and did so
+    # uncaught here - contradicting this function's own documented "return an error message
+    # (not a dict) on failure" contract, which is what turned this into an unhandled exception
+    # instead of the graceful failure sync_calibre_list()'s caller already expects.
+    decoder = json.JSONDecoder()
+    try:
+        data, end = decoder.raw_decode(res.strip())
+    except json.JSONDecodeError as e:
+        logger.error(f"calibredb list returned unparseable JSON: {e}")
+        return str(e)
+    trailing = res.strip()[end:].strip()
+    if trailing:
+        logger.warning(f"calibredb list returned {len(trailing)} byte(s) of unexpected data "
+                       f"after its JSON list, ignored: {trailing[:200]!r}")
+    return data
 
 
 def sync_calibre_list(col_read=None, col_toread=None, userid=None):
@@ -195,7 +347,7 @@ def sync_calibre_list(col_read=None, col_toread=None, userid=None):
                             highid = ''
                             for item in calibrelist:
                                 if item['authors'] == author['AuthorName']:
-                                    n = fuzz.token_sort_ratio(item['title'], book['BookName'])
+                                    n = fuzz.token_sort_ratio(item['title'], book['BookName'], processor=default_process)
                                     if n > high:
                                         high = n
                                         highname = item['title']
@@ -375,6 +527,38 @@ def sync_calibre_list(col_read=None, col_toread=None, userid=None):
 
 
 def calibre_test():
+    # 1. Test Calibre Content Server REST API if configured
+    if CONFIG.get_bool('CALIBRE_USE_SERVER') and CONFIG['CALIBRE_SERVER']:
+        info, err = calibre_server_request('ajax/library-info')
+        if not info or not isinstance(info, dict):
+            res = f"Calibre Content Server REST API communication failed: {err or 'No response'}"
+            if CONFIG['IMP_CALIBREDB']:
+                # calibredb doesn't go through the REST api, so it can still work
+                res += f"\n{calibredb_test()}"
+            return res
+
+        default_lib = info.get('default_library', 'default')
+        libs = list(info.get('library_map', {}).values())
+
+        search_res, err = calibre_server_request('ajax/search', params={'query': 'id:>0'}, with_library=True)
+        res = f"Calibre Content Server REST API ok. Default library: '{default_lib}', Libraries: {libs}"
+        if search_res and isinstance(search_res, dict):
+            res += f"\nDatabase READ ok ({search_res.get('total_num', 0)} books found)"
+        else:
+            # eg a #library that isn't in the library map
+            res += f"\nDatabase READ failed: {err or 'No response'}"
+        if CONFIG['IMP_CALIBREDB']:
+            cres, cerr, crc = calibredb('--version')
+            if not crc:
+                vernum = cres.split('(calibre ')[1].split(')')[0] if '(calibre ' in cres else cres.strip()
+                res += f"\ncalibredb CLI ok, version {vernum}"
+        return res
+
+    # 2. calibredb CLI binary test
+    return calibredb_test()
+
+
+def calibredb_test():
     logger = logging.getLogger(__name__)
     res, err, rc = calibredb('--version')
     if rc:
@@ -493,6 +677,12 @@ def calibredb(cmd=None, prelib=None, postlib=None):
 def delete_from_calibre(calibre_id):
     logger = logging.getLogger(__name__)
     if calibre_id:
+        # the endpoint takes a list of ids, only ever send it one
+        if CONFIG.get_bool('CALIBRE_USE_SERVER') and CONFIG['CALIBRE_SERVER'] and str(calibre_id).isdigit():
+            res, err = calibre_server_request(f'cdb/delete-books/{calibre_id}', method='POST', with_library=True)
+            if not err:
+                logger.debug(f"Deleted calibre ID {calibre_id} via REST API")
+                return True
         res, err, rc = calibredb('remove', [calibre_id])
         logger.debug(f"Delete result: {res} [{err}] {rc}")
         return rc == 0
@@ -510,10 +700,12 @@ def get_calibre_id(data, try_filename=True):
             data = dict(data)
         except ValueError:
             return ''
-    fname = data.get('BookFile', '')
-    if fname:  # it's a book
+    if 'BookName' in data or 'BookFile' in data:  # it's a book
         author = data.get('AuthorName', '')
         title = data.get('BookName', '')
+        fname = data.get('BookFile', '')
+        isbn = data.get('BookIsbn', '') or data.get('ISBN', '')
+        bookid = data.get('BookID', '')
     else:
         title = data.get('IssueDate', '')
         if title:  # it's a magazine issue
@@ -523,28 +715,83 @@ def get_calibre_id(data, try_filename=True):
             title = data.get('IssueID', '')
             author = data.get('ComicID', '')
             fname = data.get('IssueFile', '')
-    if try_filename:
+        isbn = ''
+        bookid = ''
+
+    if try_filename and fname:
         try:
             fname = os.path.dirname(fname)
-            calibre_id = fname.rsplit('(', 1)[1].split(')')[0]
-            if not calibre_id.isdigit():
-                calibre_id = ''
+            cid = fname.rsplit('(', 1)[1].split(')')[0]
+            if cid.isdigit():
+                calibre_id = cid
         except IndexError:
             calibre_id = ''
 
-    if not calibre_id:
-        # ask calibre for id of this issue
+    # 1. Calibre Content Server REST API lookup (generic network API, no calibredb CLI or direct DB needed)
+    if not calibre_id and CONFIG.get_bool('CALIBRE_USE_SERVER') and CONFIG['CALIBRE_SERVER']:
+        # Match by ISBN if present
+        if isbn:
+            clean_isbn = re.sub(r'[^0-9X]', '', str(isbn).upper())
+            if clean_isbn:
+                bids, _ = calibre_server_search(f'isbn:{clean_isbn}')
+                if bids:
+                    calibre_id = str(bids[0])
+                    logger.debug(f"Found Calibre ID {calibre_id} via ISBN {clean_isbn}")
+
+        # Match by Goodreads ID if BookID is numeric
+        if not calibre_id and bookid and str(bookid).isdigit():
+            bids, _ = calibre_server_search(f'identifiers:goodreads:{bookid}')
+            if bids:
+                calibre_id = str(bids[0])
+                logger.debug(f"Found Calibre ID {calibre_id} via goodreads:{bookid}")
+
+        # Match by Title and Author
+        if not calibre_id and title:
+            safe_title = title.replace('"', '\\"')
+            safe_author = author.replace('"', '\\"') if author else ''
+            query = f'title:"{safe_title}"'
+            if safe_author:
+                query += f' author:"{safe_author}"'
+            bids, _ = calibre_server_search(query)
+            if bids:
+                calibre_id = str(bids[0])
+                logger.debug(f"Found Calibre ID {calibre_id} via title/author search")
+            elif safe_author:
+                bids, _ = calibre_server_search(f'title:"{safe_title}"')
+                if bids and len(bids) == 1:
+                    calibre_id = str(bids[0])
+                    logger.debug(f"Found Calibre ID {calibre_id} via single title match")
+
+    # 2. calibredb CLI search fallback
+    if not calibre_id and CONFIG['IMP_CALIBREDB']:
         res, err, rc = calibredb('search', [f'author:"{author}" title:"{title}"'])
-        if rc:
-            if res:
-                logger.debug(f'Calibre rc {rc} res [{res}]')
-            else:
-                logger.debug(f'Calibre rc {rc} err [{err}]')
-        else:
-            logger.debug(f'Calibre res [{res}]')
+        if not rc and res:
             try:
                 calibre_id = res.split(',')[0].strip()
             except IndexError:
                 calibre_id = ''
+
+    # 3. Direct metadata.db SQLite lookup fallback if local file path is configured
+    if not calibre_id:
+        ebook_dir = get_directory('eBook')
+        meta_db = os.path.join(ebook_dir, 'metadata.db') if ebook_dir else ''
+        if meta_db and os.path.isfile(meta_db):
+            try:
+                import sqlite3
+                conn = sqlite3.connect(f"file:{meta_db}?mode=ro", uri=True)
+                if author:
+                    q = """SELECT b.id FROM books b
+                           JOIN books_authors_link bal ON b.id = bal.book
+                           JOIN authors a ON bal.author = a.id
+                           WHERE b.title=? COLLATE NOCASE AND a.name=? COLLATE NOCASE LIMIT 1"""
+                    row = conn.execute(q, (title, author)).fetchone()
+                else:
+                    row = conn.execute("SELECT id FROM books WHERE title=? COLLATE NOCASE LIMIT 1", (title,)).fetchone()
+                conn.close()
+                if row:
+                    calibre_id = str(row[0])
+            except Exception as e:
+                logger.debug(f"Direct metadata.db lookup error: {e}")
+
     logger.debug(f'Calibre ID [{calibre_id}]')
     return calibre_id

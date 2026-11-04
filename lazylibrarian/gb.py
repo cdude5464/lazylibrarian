@@ -20,9 +20,11 @@ import traceback
 from urllib.parse import quote, quote_plus, urlencode
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import ROLE, database
+from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.bookwork import (
     delete_empty_series,
     get_status,
@@ -70,6 +72,9 @@ class GoogleBooks:
             Lazylibrarian searches use <ll> to separate title from author in searchterm
             If this token isn't present, it's an isbn or searchterm as supplied by user
         """
+        if BLOCKHANDLER.is_blocked('googleapis'):
+            self.logger.debug("GoogleBooks search skipped: googleapis quota blocked")
+            return []
         try:
             resultlist = []
             # See if we should check ISBN field, otherwise ignore it
@@ -173,20 +178,20 @@ class GoogleBooks:
                                     continue
 
                             if authorname:
-                                author_fuzz = fuzz.token_sort_ratio(book['author'], authorname)
+                                author_fuzz = fuzz.token_sort_ratio(book['author'], authorname, processor=default_process)
                             else:
-                                author_fuzz = fuzz.token_sort_ratio(book['author'], fullterm)
+                                author_fuzz = fuzz.token_sort_ratio(book['author'], fullterm, processor=default_process)
 
                             if title:
                                 if title.endswith(')'):
                                     title = title.rsplit('(', 1)[0]
-                                book_fuzz = fuzz.token_set_ratio(book['name'].lower(), title.lower())
+                                book_fuzz = fuzz.token_set_ratio(book['name'], title, processor=default_process)
                                 # lose a point for each extra word in the fuzzy matches so we get the closest match
                                 words = len(get_list(book['name']))
                                 words -= len(get_list(title))
                                 book_fuzz -= abs(words)
                             else:
-                                book_fuzz = fuzz.token_set_ratio(book['name'].lower(), fullterm.lower())
+                                book_fuzz = fuzz.token_set_ratio(book['name'], fullterm, processor=default_process)
 
                             isbn_fuzz = 0
                             if is_valid_isbn(fullterm):
@@ -252,6 +257,9 @@ class GoogleBooks:
 
     def get_author_books(self, authorid=None, authorname=None, bookstatus="Skipped",
                          audiostatus="Skipped", entrystatus='Active', refresh=False, reason='gb.get_author_books'):
+        if BLOCKHANDLER.is_blocked('googleapis'):
+            self.logger.debug(f'[{authorname}] Skipping Google Books API: googleapis quota blocked')
+            return 0
         # noinspection PyBroadException
         self.logger.debug(f'[{authorname}] Now processing books with Google Books API')
         db = database.DBConnection()
@@ -688,6 +696,9 @@ class GoogleBooks:
             db.close()
 
     def add_bookid_to_db(self, bookid=None, bookstatus=None, audiostatus=None, reason='gb.add_bookid'):
+        if BLOCKHANDLER.is_blocked('googleapis'):
+            self.logger.debug(f'GoogleBooks add_bookid_to_db {bookid} skipped: googleapis quota blocked')
+            return False
         if not CONFIG['GB_API']:
             self.logger.warning('No GoogleBooks API key, check config')
             return False
@@ -813,6 +824,9 @@ class GoogleBooks:
                 "gb_id": bookid
             }
             db.upsert("books", new_value_dict, control_value_dict)
+            db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
+                      (author_id, bookid, ROLE['PRIMARY']), suppress='UNIQUE')
+            self.logger.debug(f'Added {author_id} as primary')
 
             if 'nocover' in book['img'] or 'nophoto' in book['img']:
                 # try to get a cover from another source

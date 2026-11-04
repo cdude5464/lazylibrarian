@@ -3,8 +3,10 @@
 # Purpose:
 #   Testing the functions in filesystem.py
 
+import ntpath
 import os
 import sys
+import tempfile
 import mock
 import unittest
 import logging
@@ -39,14 +41,18 @@ class FilesystemTest(LLTestCaseWithConfigandDIRS):
     def test_syspath(self):
         """ Test that syspath returns a proper path in both Linux and Windows"""
         paths_input_windows = [
-            ['', '\\\\?\\'],
-            ['simple', '\\\\?\\simple'],
+            # Left as they are
+            ['', ''],
             ['./relative/path', './relative/path'],
-            ['/absolute/path', '\\\\?\\/absolute/path'],
-            [b'not a string', '\\\\?\\not a string'],
             ['D:\\', 'D:\\'],
+            ['\\\\?\\C:\\Users\\x', '\\\\?\\C:\\Users\\x'],
+            # Prefixed, after making them absolute with backslashes
+            ['C:/Users/x/config.ini', '\\\\?\\C:\\Users\\x\\config.ini'],
+            ['C:\\Users\\x\\..\\y', '\\\\?\\C:\\Users\\y'],
+            [b'C:\\not a string', '\\\\?\\C:\\not a string'],
             ['\\\\SERVER\\SHARE\\dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
-            ['\\\\SERVER\\SHARE/dir', '\\\\?\\UNC\\SERVER\\SHARE/dir'],
+            ['\\\\SERVER\\SHARE/dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
+            ['//SERVER/SHARE/dir', '\\\\?\\UNC\\SERVER\\SHARE\\dir'],
         ]
         with mock.patch('os.path.__name__', 'posixpath'):
             for path1, _ in paths_input_windows:
@@ -55,6 +61,9 @@ class FilesystemTest(LLTestCaseWithConfigandDIRS):
         with mock.patch('os.path.__name__', 'ntpath'):
             for path1, path2 in paths_input_windows:
                 self.assertEqual(filesystem.syspath(path1), path2)
+            # Other relative paths are made absolute, which depends on the current directory
+            self.assertEqual(filesystem.syspath('simple'), '\\\\?\\' + ntpath.abspath('simple'))
+            self.assertEqual(filesystem.syspath('C:/Users/x', prefix=False), 'C:/Users/x')
 
     # Tests for set_datadir
 
@@ -247,6 +256,46 @@ class FilesystemTest(LLTestCaseWithConfigandDIRS):
 
         opf = filesystem.opf_file(DIRS.DATADIR)
         self.assertEqual(opf, '')
+
+    def test_opf_file_with_bookfile(self):
+        def make_files(folder, names):
+            for name in names:
+                with open(os.path.join(folder, name), 'w') as f:
+                    f.write('')
+
+        with tempfile.TemporaryDirectory() as folder:
+            # calibre folder: one book in several formats with metadata.opf
+            make_files(folder, ['Title - Author.epub', 'Title - Author.mobi', 'cover.jpg', 'metadata.opf'])
+            opf = filesystem.opf_file(folder, bookfile='Title - Author.epub')
+            self.assertEqual(opf, os.path.join(folder, 'metadata.opf'))
+
+            # a matching bookname.opf is preferred over metadata.opf
+            make_files(folder, ['Title - Author.opf'])
+            opf = filesystem.opf_file(folder, bookfile='Title - Author.epub')
+            self.assertEqual(opf, os.path.join(folder, 'Title - Author.opf'))
+
+        with tempfile.TemporaryDirectory() as folder:
+            # series folder: metadata.opf could belong to any of the books
+            make_files(folder, ['Book One - Author.epub', 'Book Two - Author.epub', 'metadata.opf'])
+            self.assertEqual(filesystem.opf_file(folder, bookfile='Book One - Author.epub'), '')
+
+        with tempfile.TemporaryDirectory() as folder:
+            make_files(folder, ['Title - Author.epub'])
+            self.assertEqual(filesystem.opf_file(folder, bookfile='Title - Author.epub'), '')
+
+        # another book in a format that isn't in the configured types still shares the folder
+        for other in ['Book Two - Author.azw3', 'Book Two - Author.CBZ', 'Book Two - Author.kfx',
+                      'Book Two - Author.flac']:
+            with self.subTest(other=other), tempfile.TemporaryDirectory() as folder:
+                make_files(folder, ['Book One - Author.epub', other, 'metadata.opf'])
+                self.assertEqual(filesystem.opf_file(folder, bookfile='Book One - Author.epub'), '')
+
+        with tempfile.TemporaryDirectory() as folder:
+            # calibre extras next to a single book don't count as another book
+            make_files(folder, ['Title - Author.epub', 'Title - Author.azw3', 'cover.jpg', 'metadata.opf',
+                                'desktop.ini', '.DS_Store'])
+            opf = filesystem.opf_file(folder, bookfile='Title - Author.epub')
+            self.assertEqual(opf, os.path.join(folder, 'metadata.opf'))
 
     def test_book_file(self):
         book = filesystem.book_file(get_directory("Testdata"), '', config=self.cfg())

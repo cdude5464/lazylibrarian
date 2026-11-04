@@ -13,8 +13,7 @@
 import logging
 import os
 
-import lazylibrarian
-from lazylibrarian import database
+from lazylibrarian import database, emailtemplates
 from lazylibrarian.common import run_script
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import path_exists, splitext, syspath
@@ -150,6 +149,7 @@ def mailing_list(book_type, global_name, book_id):
             msg = ''
             res = db.match('SELECT SendTo,BookType from users where UserID=?', (user,))
             if res and res['SendTo']:
+                lang = emailtemplates.user_language(user)
                 if booktype == 'ebook':
                     pref = res['BookType']
                     basename, extn = splitext(filename)
@@ -157,8 +157,8 @@ def mailing_list(book_type, global_name, book_id):
                     if path_exists(prefname):
                         filename = prefname
                     else:
-                        msg = lazylibrarian.NEWFILE_MSG.replace('{name}', global_name).replace('{link}', '').replace(
-                            '{method}', f" is available for download, but not as {pref}")
+                        subject, msg = emailtemplates.file_message(global_name, emailtemplates.NOT_IN_FORMAT,
+                                                                   lang=lang, format=pref)
                         filename = ''
                 result = None
                 if not link:
@@ -170,9 +170,8 @@ def mailing_list(book_type, global_name, book_id):
                 if filename:
                     for addr in addrs:
                         logger.debug(f"Emailing {filename} to {addr}")
-                        msg = lazylibrarian.NEWFILE_MSG.replace('{name}', global_name).replace(
-                            '{method}', ' is attached').replace('{link}', '')
-                        result = email_notifier.email_file(subject="Message from LazyLibrarian",
+                        subject, msg = emailtemplates.file_message(global_name, emailtemplates.ATTACHED, lang=lang)
+                        result = email_notifier.email_file(subject=subject,
                                                            message=msg, to_addr=addr, files=[filename])
                         if not result:
                             break
@@ -181,9 +180,9 @@ def mailing_list(book_type, global_name, book_id):
                         if not addr.endswith('@kindle.com'):  # don't send to kindle if no attachment
                             logger.debug(f"Notifying {global_name} available to {res['SendTo']}")
                             if not msg:
-                                msg = lazylibrarian.NEWFILE_MSG.replace('{name}', global_name).replace(
-                                    '{link}', link).replace('{method}', ' is available for download ')
-                            result = email_notifier.email_file(subject="Message from LazyLibrarian",
+                                subject, msg = emailtemplates.file_message(global_name, emailtemplates.AVAILABLE,
+                                                                           link, lang=lang)
+                            result = email_notifier.email_file(subject=subject,
                                                                message=msg, to_addr=addr, files=[])
                 if result:
                     count += 1

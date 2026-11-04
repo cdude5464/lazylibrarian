@@ -35,7 +35,7 @@
                     // $('#countdown').html('Refreshing in '+countdown+' seconds')
                   }
                   if (countdown <= 10) {
-                    $('#countdown').html('Server is taking longer than expected to respond. Check the log.');
+                    $('#countdown').html(${_js('Server is taking longer than expected to respond. Check the log.')});
                     if (countdown <= 0) {
                       window.location = 'index';
                     }

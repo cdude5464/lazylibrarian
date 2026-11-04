@@ -11,23 +11,23 @@ h1 {text-align: center;}
 </style>
 <form accept-charset="UTF-8">
 <h1><img src="${img}" alt="" style="width:5%;">
-LazyLibrarian User Login</h1>
+${_('LazyLibrarian User Login')}</h1>
 <div class="container">
   <div class="row">
     <div class="col-sm-6 col-sm-offset-3">
       <div class="login-container">
         <div class="form-group col-md-12">
-          <label for="username">Username</label>
+          <label for="username">${_('Username')}</label>
           <input id="username" type="username" class="form-control" name="username" value="" autofocus>
         </div>
         <div class="form-group col-md-12">
-          <label for="password">Password</label>
+          <label for="password">${_('Password')}</label>
           <div class="">
             <input id="password" type="password" class="form-control" name="password">
           </div>
         </div>
         <div class="col-md-12">
-          <button type="button" value="login" name="login" id="login" class="btn btn-primary btn-block btn-lg btn-inverse">Login</button>
+          <button type="button" value="login" name="login" id="login" class="btn btn-primary btn-block btn-lg btn-inverse">${_('Login')}</button>
         </div>
         <div class="col-sm-6 col-sm-offset-3">
           <h4 id="message">${lazylibrarian.LOGIN_MSG}</h4>
@@ -35,9 +35,9 @@ LazyLibrarian User Login</h1>
       </div>
     </div>
     <div class="col-sm-6 col-sm-offset-3">
-      <button class="pull-left button btn btn-sm btn-primary" type="button" value="pwd" name="pwd" id="pwd">Reset Password</button>
+      <button class="pull-left button btn btn-sm btn-primary" type="button" value="pwd" name="pwd" id="pwd">${_('Reset Password')}</button>
       %if CONFIG['ADMIN_EMAIL'] != '':
-        <a href="user_register" class="pull-right button btn btn-sm btn-primary">Register</a>
+        <a href="user_register" class="pull-right button btn btn-sm btn-primary">${_('Register')}</a>
       %endif
     </div>
   </div>
@@ -62,11 +62,11 @@ LazyLibrarian User Login</h1>
                 function(data) {
                 if (data){
                 bootbox.dialog({
-                    title: 'User Login',
+                    title: ${_js('User Login')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -77,7 +77,7 @@ LazyLibrarian User Login</h1>
         });
         $('#pwd').on('click', function(e) {
             bootbox.prompt({
-                title: "Please enter your email address for confirmation",
+                title: ${_js('Please enter your email address for confirmation')},
                 inputType: 'email',
                 callback: function (result) {
                     var email = result;
@@ -85,11 +85,11 @@ LazyLibrarian User Login</h1>
                     $.get('password_reset', {'username': username, 'email': email},
                         function(data) {
                         bootbox.dialog({
-                            title: 'Password Reset',
+                            title: ${_js('Password Reset')},
                             message: '<pre>'+data+'</pre>',
                             buttons: {
                                 primary: {
-                                    label: "Close",
+                                    label: ${_js('Close')},
                                     className: 'btn-primary'
                                 }
                             }

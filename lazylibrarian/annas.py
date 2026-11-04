@@ -12,17 +12,20 @@
 
 # Heavily modified from code found at https://pypi.org/project/annas-py
 
+import hashlib
 import json
 import logging
 import os
 import re
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from enum import Enum
 from html import unescape as html_unescape
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlencode, urljoin, urlparse
 
+import curl_cffi
 from bs4 import BeautifulSoup, Tag
 from requests import get
 from requests.exceptions import RequestException
@@ -30,6 +33,7 @@ from requests.exceptions import RequestException
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.blockhandler import BLOCKHANDLER
+from lazylibrarian.booklanguages import anna_search_languages
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, get_directory, path_isfile, remove_file
 from lazylibrarian.formatter import check_int, get_list, md5_utf8, plural, sanitize, size_in_bytes
@@ -188,20 +192,142 @@ def extract_publish_info(raw: str) -> tuple[str, str]:
     return publisher, date
 
 
+# Credentials may be sent only to these independently verified official origins.
+# A scraped mirror list is discovery evidence, never credential authorization.
+ANNA_APPROVED_HOSTS = frozenset({"annas-archive.gl", "annas-archive.pk", "annas-archive.gd"})
+_annas_sessions = {}
+_annas_sessions_lock = threading.RLock()
+
+
+def _anna_origin(value):
+    try:
+        uri = urlparse(value if "://" in value else "https://" + value)
+        if (uri.scheme != "https" or uri.hostname not in ANNA_APPROVED_HOSTS
+                or uri.username or uri.password or uri.port not in (None, 443)):
+            raise ValueError("unapproved origin")
+        return "https://" + uri.hostname
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPFailedError("Anna host is not an approved HTTPS origin") from None
+
+
+def _anna_state(origin):
+    key = CONFIG.get('ANNA_KEY', '') if isinstance(CONFIG, dict) else CONFIG['ANNA_KEY']
+    fingerprint = hashlib.sha256(key.encode()).digest() if key else b''
+    with _annas_sessions_lock:
+        state = _annas_sessions.get(origin)
+        if state is None:
+            state = {"session": curl_cffi.requests.Session(impersonate="chrome"),
+                     "key": fingerprint, "lock": threading.RLock()}
+            _annas_sessions[origin] = state
+    # The per-origin lock also protects key rotation and cookie inspection.
+    return state, key, fingerprint
+
+
+def _anna_cookie_valid(session, origin):
+    host = urlparse(origin).hostname
+    try:
+        return any(cookie.name == 'aa_account_id2' and bool(cookie.value)
+                   and cookie.domain.lstrip('.') == host and not cookie.is_expired()
+                   for cookie in session.cookies.jar)
+    except (AttributeError, TypeError):
+        return False
+
+
+def _anna_login_locked(origin, state, key, fingerprint):
+    session = state['session']
+    if state['key'] != fingerprint:
+        session.cookies.clear()
+        state['key'] = fingerprint
+    if not key:
+        return False
+    if _anna_cookie_valid(session, origin):
+        return True
+    # Never follow a credential-bearing POST redirect, even to another mirror.
+    response = session.post(urljoin(origin, '/account/'), data={'key': key},
+                            timeout=ANNA_HTTP_TIMEOUT, allow_redirects=False)
+    if response.status_code not in (200, 302, 303) or not _anna_cookie_valid(session, origin):
+        session.cookies.clear()
+        raise HTTPFailedError("Anna member login did not establish a valid session")
+    return True
+
+
+def annas_login(host):
+    """Authenticate this approved origin using the existing configured member key."""
+    origin = _anna_origin(host)
+    state, key, fingerprint = _anna_state(origin)
+    with state['lock']:
+        # Re-read after waiting for another search so a rotated key is not reused.
+        _, key, fingerprint = _anna_state(origin)
+        try:
+            return _anna_login_locked(origin, state, key, fingerprint)
+        except HTTPFailedError:
+            raise
+        except Exception as exc:
+            raise HTTPFailedError("Anna login request failed: " + type(exc).__name__) from None
+
+
+def _anna_search_response(url, params):
+    origin = _anna_origin(url)
+    state, key, fingerprint = _anna_state(origin)
+    with state['lock']:
+        _, key, fingerprint = _anna_state(origin)
+        try:
+            for attempt in range(2):
+                _anna_login_locked(origin, state, key, fingerprint)
+                target = url
+                if params:
+                    target += ('&' if '?' in target else '?') + urlencode(params, doseq=True)
+                for redirect in range(4):
+                    response = state['session'].get(target, timeout=ANNA_HTTP_TIMEOUT, allow_redirects=False)
+                    if response.status_code not in (301, 302, 303, 307, 308):
+                        break
+                    next_target = urljoin(target, response.headers.get('Location', ''))
+                    if _anna_origin(next_target) != origin or not response.headers.get('Location'):
+                        raise HTTPFailedError("Anna search refused a cross-origin or invalid redirect")
+                    target = next_target
+                else:
+                    raise HTTPFailedError("Anna search exceeded its redirect limit")
+                login_redirect = urlparse(target).path.rstrip('/').lower() in ('/account', '/login')
+                if (response.status_code in (401, 403) or login_redirect) and key:
+                    state['session'].cookies.clear()
+                    if attempt == 0:
+                        continue
+                    if login_redirect:
+                        raise HTTPFailedError('Anna member session was not accepted')
+                return response
+        except HTTPFailedError:
+            raise
+        except Exception as exc:
+            # Exception strings can include member keys, cookies or signed URLs.
+            raise HTTPFailedError("Anna search request failed: " + type(exc).__name__) from None
+
+
+def _anna_clear_session(url):
+    origin = _anna_origin(url)
+    with _annas_sessions_lock:
+        state = _annas_sessions.get(origin)
+    if state:
+        with state['lock']:
+            state['session'].cookies.clear()
+
+
 # noinspection PyDefaultArgument
 def html_parser(url: str, params: dict = None) -> BeautifulSoup:
-    if not params:
-        params = {}
-    params = dict(filter(lambda i: i[1], params.items()))
-    response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT)
+    params = {key: value for key, value in (params or {}).items() if value}
+    response = _anna_search_response(url, params)
     if response.status_code >= 400:
+        _anna_clear_session(url)
         raise HTTPFailedError(f"server returned http status {response.status_code}")
     html = response.text.replace("<!--", "").replace("-->", "")
     soup = BeautifulSoup(html, "html5lib")
     title = soup.title.get_text(" ", strip=True).casefold() if soup.title else ""
     if (soup.select_one("#challenge-form, #cf-challenge-running")
             or title in {"just a moment...", "attention required! | cloudflare", "access denied", "ddos-guard"}):
+        _anna_clear_session(url)
         raise HTTPFailedError("provider returned an access challenge")
+    if 'log in' in title or 'sign in' in title:
+        _anna_clear_session(url)
+        raise HTTPFailedError("Anna member authentication required")
     return soup
 
 
@@ -216,24 +342,54 @@ def annas_hosts_update():
     annas_hosts = get_list(CONFIG['ANNA_HOST'])
     new_hosts = fetch_annas_archive_domains()
     annas_hosts.extend(new_hosts)
-    annas_hosts = set(annas_hosts)
+    annas_hosts = list(dict.fromkeys(host for host in annas_hosts
+                                   if urlparse(host if "://" in host else "https://" + host).hostname
+                                   in ANNA_APPROVED_HOSTS))
     CONFIG['ANNA_HOST'] = ','.join(annas_hosts)
+
+
+def anna_languages(value: str) -> list[Language]:
+    """ The Anna's Archive languages in a comma separated ANNA_SEARCH_LANG value, codes it doesn't
+        know are skipped. Any code or English name of a language counts, and the country codes in
+        COUNTRY_LANGUAGES (CZ for Czech). An empty list searches all languages, as does ANY anywhere
+        in the value """
+    from lazylibrarian.booklanguages import search_language_value
+
+    codes = [code.strip() for code in get_list(value, ',')]
+    if 'ANY' in (code.upper() for code in codes):
+        return []
+    languages = []
+    for code in codes:
+        code = search_language_value(code, 'anna')
+        if code and Language[code] not in languages:
+            languages.append(Language[code])
+    return languages
+
+
+def _anna_cache_key(query, languages=None, file_type=FileType.ANY, order_by=OrderBy.MOST_RELEVANT):
+    codes = sorted({language.value for language in languages or [] if language.value})
+    if not codes and file_type == FileType.ANY and order_by == OrderBy.MOST_RELEVANT:
+        return md5_utf8(query)  # Preserve compatible unfiltered historical caches.
+    return md5_utf8(json.dumps([query, codes, file_type.value, order_by.value], ensure_ascii=False))
 
 
 def annas_search(
     query: str,
-    language: Language = Language.ANY,
+    languages: list[Language] | None = None,
     file_type: FileType = FileType.ANY,
     order_by: OrderBy = OrderBy.MOST_RELEVANT,
+    language: Language | None = None,
 ) -> str | None:
 
     if not query.strip():
         raise ValueError("query can not be empty")
     if BLOCKHANDLER.is_blocked("annas-search"):
         raise HTTPFailedError("Anna HTML search is temporarily unavailable (search backoff)")
+    if language is not None:
+        languages = [language] if language != Language.ANY else []
     params = {
         "q": query,
-        "lang": language.value,
+        "lang": [language.value for language in languages or []],
         "ext": file_type.value,
         "sort": order_by.value,
     }
@@ -244,6 +400,7 @@ def annas_search(
     soup = None
     failures = []
     for host in annas_hosts:
+        lazylibrarian.test_data = f"Annas checking {host}"
         prefix = ''
         if not host.startswith('http'):
             prefix = "https://"
@@ -269,14 +426,20 @@ def annas_search(
                  f"({categories})")
         raise HTTPFailedError(error)
 
+    lazylibrarian.test_data = f"Annas searching {host}"
     raw_results = soup.select("div[class*='pt-3'][class*='border-b']")
     results = list(filter(lambda i: i is not None, map(parse_result, raw_results)))
     if raw_results and not results:
         raise HTTPFailedError("Anna search returned result cards that could not be parsed")
-    myhash = md5_utf8(query)
+    if not raw_results and not soup.find(string=lambda text: bool(text) and text.strip() == "No files found."):
+        # Official page.search.results.none renders this exact English text.
+        # A 200 maintenance/login/changed page does not prove an empty catalog.
+        raise HTTPFailedError("Anna search returned an unrecognized results page")
+    myhash = _anna_cache_key(query, languages, file_type, order_by)
     cache_location = os.path.join(DIRS.CACHEDIR, "IRCCache")
     hashfilename = os.path.join(cache_location, f"{myhash}.anna")
     resultslist = []
+    lazylibrarian.test_data = f"Annas found {len(results)} matches"
     for r in results:
         resultdict = {'title': r.title,
                       'id': r.id,
@@ -292,6 +455,7 @@ def annas_search(
 
     with open(hashfilename, 'w') as fp:
         json.dump(resultslist, fp)
+    lazylibrarian.test_data = ''
     return hashfilename
 
 
@@ -380,7 +544,9 @@ def parse_result(raw_content: Tag) -> SearchResult | None:
 def annas_download(md5, folder, title, extn, domain_index=0):
     logger = logging.getLogger(__name__)
     downloadlogger = logging.getLogger('special.dlcomms')
-    params = {'md5': md5, 'key': CONFIG['ANNA_KEY'], 'domain_index': domain_index}
+    params = {'md5': md5, 'key': CONFIG['ANNA_KEY']}
+    if domain_index:
+        params['domain_index'] = domain_index
     annas_hosts = get_list(CONFIG['ANNA_HOST'])
     response = None
     last_error = ''
@@ -388,9 +554,14 @@ def annas_download(md5, folder, title, extn, domain_index=0):
         prefix = ''
         if not host.startswith('http'):
             prefix = "https://"
-        url = urljoin(prefix + host, '/dyn/api/fast_download.json')
         try:
-            response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT)
+            origin = _anna_origin(prefix + host)
+        except HTTPFailedError:
+            last_error = 'unapproved origin'
+            continue
+        url = urljoin(origin, '/dyn/api/fast_download.json')
+        try:
+            response = get(url, params=params, timeout=ANNA_HTTP_TIMEOUT, allow_redirects=False)
         except RequestException as e:
             last_error = type(e).__name__
             downloadlogger.warning(f"Anna fast-download API request failed: {last_error}")
@@ -417,7 +588,7 @@ def annas_download(md5, folder, title, extn, domain_index=0):
             block_annas(counters['downloads_per_day'], reason=msg)
             return False, msg
         url = res['download_url']
-        if url and url.startswith('http'):
+        if url and url.startswith('https://'):
             try:
                 r = get(url, timeout=ANNA_HTTP_TIMEOUT)
                 if not str(r.status_code).startswith('2'):
@@ -483,11 +654,9 @@ def annas_download(md5, folder, title, extn, domain_index=0):
 def anna_search(book=None, searchtype='ebook', test=False):
     logger = logging.getLogger(__name__)
     provider = "annas"
-    lang = CONFIG['ANNA_SEARCH_LANG'].split(',')[0].strip().upper()
-    if lang and lang in Language.__members__:
-        language = Language[lang]
-    else:
-        language = Language.ANY
+    # iterate_over_direct_sites() passes comics as 'ebook', the original search type is in the book
+    languages = anna_languages(anna_search_languages(CONFIG['ANNA_SEARCH_LANG'], CONFIG.get('IMP_PREFLANG', '') if isinstance(CONFIG, dict) else CONFIG['IMP_PREFLANG'],
+                                                     (book or {}).get('searchtype') or searchtype))
 
     if BLOCKHANDLER.is_blocked(provider):
         if test:
@@ -517,7 +686,7 @@ def anna_search(book=None, searchtype='ebook', test=False):
 
     try:
         if cache:
-            myhash = md5_utf8(book['searchterm'])
+            myhash = _anna_cache_key(book['searchterm'], languages)
             valid_cache = False
             hashfilename = os.path.join(cache_location, f"{myhash}.anna")
             # cache results so we can do multiple searches for the same author
@@ -540,9 +709,9 @@ def anna_search(book=None, searchtype='ebook', test=False):
                 cachelogger.debug(f"CacheHandler: Found CACHED response {hashfilename} for {book['searchterm']}")
             else:
                 lazylibrarian.CACHE_MISS = int(lazylibrarian.CACHE_MISS) + 1
-                hashfilename = annas_search(book['searchterm'], language=language)
+                hashfilename = annas_search(book['searchterm'], languages=languages)
         else:
-            hashfilename = annas_search(book['searchterm'], language=language)
+            hashfilename = annas_search(book['searchterm'], languages=languages)
 
     except HTTPFailedError as exc:
         # Repeated lookups during one search outage must not spam warnings.
@@ -660,43 +829,25 @@ def anna_recent_rate_limit() -> int:
 def fetch_annas_archive_domains():
     """Fetch current Anna's Archive domains from Wikipedia. Returns list of bare domains."""
     logger = logging.getLogger(__name__)
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
-                      '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-    }
     try:
-        response = get(WIKIPEDIA_URL, headers=headers, timeout=10)
+        response = get(WIKIPEDIA_URL, timeout=10)
         if response.status_code != 200:
             logger.warning(f"Wikipedia returned status {response.status_code}")
             return []
     except Exception as e:
-        logger.warning(f"Failed to fetch domains from Wikipedia: {e}")
-        return []
-
-    pattern_table = re.compile(
-        r'<table[^>]*class="[^"]*infobox vcard[^"]*"[^>]*>(.*?)(?:<h2|</table)',
-        re.DOTALL | re.IGNORECASE
-    )
-    pattern_span = re.compile(
-        r'<span[^>]*class="[^"]*url[^"]*"[^>]*>(.*?)</span>',
-        re.DOTALL | re.IGNORECASE
-    )
-    pattern_link = re.compile(
-        r'<a[^>]*class="[^"]*external text[^"]*"[^>]*href="([^"]+)"',
-        re.IGNORECASE
-    )
-
-    table_match = pattern_table.search(response.text)
-    if not table_match:
-        logger.warning("Could not find infobox table in Wikipedia page")
+        logger.warning(f"Failed to fetch domains from Wikipedia: {type(e).__name__}")
         return []
 
     domains = []
-    for span_html in pattern_span.findall(table_match.group(0)):
-        for href in pattern_link.findall(span_html):
+    soup = BeautifulSoup(response.content.decode('utf-8', 'ignore'), 'html5lib')
+    urls = soup.find_all('span', class_='url')
+    for url in urls:
+        try:
+            href = str(url).rsplit('href="')[1].split('"')[0]
             parsed = urlparse(href if '://' in href else 'https:' + href)
-            if parsed.netloc:
-                domains.append(parsed.netloc)
-
+            if parsed.scheme == 'https' and parsed.hostname in ANNA_APPROVED_HOSTS:
+                domains.append(parsed.hostname)
+        except IndexError:
+            continue
     logger.info(f"Fetched {len(domains)} domain(s) from Wikipedia: {domains}")
     return domains

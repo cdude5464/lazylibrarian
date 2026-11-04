@@ -3,8 +3,8 @@ import enum
 import http.client
 import json
 import logging
-import os
 import platform
+import re
 import threading
 import time
 import traceback
@@ -13,6 +13,7 @@ from queue import Queue
 import cherrypy
 import requests
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
@@ -25,18 +26,19 @@ from lazylibrarian.bookdict import (
 )
 from lazylibrarian.common import get_readinglist, set_readinglist
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.filesystem import DIRS, path_isfile, syspath
+from lazylibrarian.filesystem import DIRS, syspath
 from lazylibrarian.formatter import (
     check_int,
+    check_year,
     date_format,
     format_author_name,
     get_list,
     is_valid_isbn,
-    md5_utf8,
     now,
     plural,
     thread_name,
 )
+from lazylibrarian.provider_utils import get_hashed_filename, is_in_cache, read_from_cache
 
 
 class ReadStatus(enum.Enum):
@@ -382,9 +384,10 @@ query FindBookByName {
 }
 '''
 
-        self.HC_ISBN13_BOOKS = self.HC_FINDBOOK.replace('[where]', '{isbn_13: {_eq: "[isbn]"}}'
+        # isbns live on editions, books has no isbn fields to filter on
+        self.HC_ISBN13_BOOKS = self.HC_FINDBOOK.replace('[where]', '{editions: {isbn_13: {_eq: "[isbn]"}}}'
                                                         ).replace('[order]', '')
-        self.HC_ISBN10_BOOKS = self.HC_FINDBOOK.replace('[where]', '{isbn_10: {_eq: "[isbn]"}}'
+        self.HC_ISBN10_BOOKS = self.HC_FINDBOOK.replace('[where]', '{editions: {isbn_10: {_eq: "[isbn]"}}}'
                                                         ).replace('[order]', '')
 
         # queries using bookid, authorid, seriesid should be faster if we query using _by_pk e.g.
@@ -501,50 +504,23 @@ query FindAuthor { authors_by_pk(id: [authorid])
     mutation DelUserBook { delete_user_book (id: [bookid]) { id }}
 '''
 
-    def is_in_cache(self, expiry: int, hashfilename: str, myhash: str) -> bool:
-        """Check if a cache file is valid."""
-        if path_isfile(hashfilename):
-            cache_modified_time = os.stat(hashfilename).st_mtime
-            time_now = time.time()
-            if expiry and cache_modified_time < time_now - expiry:
-                # Cache entry is too old, delete it
-                self.cachelogger.debug(f"Expiring {myhash}")
-                os.remove(syspath(hashfilename))
-                return False
-            return True
-        return False
-
-    @staticmethod
-    def read_from_cache(hashfilename: str) -> (str, bool):
-        """Read a cached API response from disk."""
-        with open(syspath(hashfilename), "rb") as cachefile:
-            source = cachefile.read()
-        return source, True
-
-    @staticmethod
-    def get_hashed_filename(cache_location: str, url: str) -> (str, str):
-        """Generate a hashed filename for caching."""
-        myhash = md5_utf8(url)
-        hashfilename = os.path.join(cache_location, myhash[0], myhash[1], f"{myhash}.json")
-        return hashfilename, myhash
-
     def result_from_cache(self, searchcmd: str, refresh=False) -> (str, bool):
         """Get API result from cache or fetch if needed."""
         headers = {'Content-Type': 'application/json',
                    'User-Agent': self.user_agent,
-                   'authorization': self.apikey
+                   'authorization': self.apikey if str(self.apikey).startswith('Bearer ') else f'Bearer {self.apikey}'
                    }
         query = {'query': searchcmd}
         cache_location = DIRS.get_cachedir('JSONCache')
         filename = f"{self.graphql_url}/{str(query)}"
-        hashfilename, myhash = self.get_hashed_filename(cache_location, filename)
+        hashfilename, myhash = get_hashed_filename(cache_location, filename)
         # CACHE_AGE is in days, so get it to seconds
         expire_older_than = CONFIG.get_int('CACHE_AGE') * 24 * 60 * 60
-        valid_cache = self.is_in_cache(expire_older_than, hashfilename, myhash)
+        valid_cache = is_in_cache(expire_older_than, hashfilename, myhash)
         if valid_cache and not refresh:
             lazylibrarian.CACHE_HIT += 1
             self.cachelogger.debug(f"CacheHandler: Returning CACHED response {hashfilename}")
-            source, ok = self.read_from_cache(hashfilename)
+            source, ok = read_from_cache(hashfilename)
             if ok:
                 res = json.loads(source)
             else:
@@ -557,16 +533,20 @@ query FindAuthor { authors_by_pk(id: [authorid])
             try:
                 http.client.HTTPConnection.debuglevel = 1 if lazylibrarian.REQUESTSLOG else 0
                 r = requests.post(self.graphql_url, json=query, headers=headers)
-                success = str(r.status_code).startswith('2')
+                success = r.status_code == 200
             except requests.exceptions.ConnectionError as e:
                 self.logger.error(str(e))
                 success = False
                 r = None
             if success:
                 res = r.json()
-                self.cachelogger.debug(f"CacheHandler: Storing json {myhash}")
-                with open(syspath(hashfilename), "w") as cachefile:
-                    cachefile.write(json.dumps(res))
+                if isinstance(res, dict) and res.get('errors'):
+                    # a rejected query comes back as 200, don't cache it as an empty answer
+                    self.logger.error(f"HardCover query error: {res['errors']}")
+                else:
+                    self.cachelogger.debug(f"CacheHandler: Storing json {myhash}")
+                    with open(syspath(hashfilename), "w") as cachefile:
+                        cachefile.write(json.dumps(res))
             else:
                 # expected failure codes...
                 # 401 expired or invalid api token
@@ -578,7 +558,12 @@ query FindAuthor { authors_by_pk(id: [authorid])
                 # RateLimit-Remaining 0 (none left)
                 # RateLimit-Reset 1735843440 (unix seconds count when reset)
                 delay = 0
-                if r.status_code == 429:
+                if r is None:
+                    delay = 60  # short backoff, then retry
+                    msg = "Connection error"
+                    res = {}
+                    self.logger.error("HardCover connection error")
+                elif r.status_code == 429:
                     limit = r.headers.get('RateLimit-Limit', 'Unknown')
                     remaining = r.headers.get('RateLimit-Remaining', 'Unknown')
                     reset = r.headers.get('RateLimit-Reset', 'Unknown')
@@ -594,7 +579,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
                             lazylibrarian.TIMERS['SLEEP_HC'] += sleep_time
                         else:  # longer waits block provider and continue
                             delay = int(sleep_time)
-                elif r.status_code in [401, 403]:
+                elif r.status_code in [400, 401, 403]:
                     # allow time for user to update
                     delay = 24 * 3600
                     if r.status_code == 401:
@@ -608,14 +593,17 @@ query FindAuthor { authors_by_pk(id: [authorid])
                 else:
                     # unexpected error code, short delay
                     delay = 60
-                    self.logger.error(f"Unexpected HardCover error: Status code {r.status_code}")
-                # noinspection PyBroadException
-                try:
-                    res = r.json()
-                    msg = str(r.status_code)
-                except Exception:
-                    res = {}
-                    msg = "Unknown reason"
+                    msg = "HardCover error"
+                    res = f"Unexpected HardCover Status code: {r.status_code}"
+                    self.logger.error(res)
+                if r is not None:
+                    # noinspection PyBroadException
+                    try:
+                        res = r.json()
+                        msg = str(r.status_code)
+                    except Exception:
+                        res = {}
+                        msg = "Unknown reason"
                 if 'error' in res:
                     msg = str(res['error'])
                     self.logger.error(msg)
@@ -644,7 +632,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
             series_name = results['data']['series_by_pk']['name']
             # primary_books_count = results['data']['series_by_pk']['primary_books_count']
             if series_name != series_title:
-                match = fuzz.partial_ratio(series_name, series_title)
+                match = fuzz.partial_ratio(series_name, series_title, processor=default_process)
                 if match < 95:
                     self.logger.debug(f"Series name mismatch for {series_id}, "
                                       f"{round(match, 2)}% {series_name}/{series_title}")
@@ -799,21 +787,21 @@ query FindAuthor { authors_by_pk(id: [authorid])
                     bookdict = self.build_bookdict(book_data)
 
                 if searchauthorname:
-                    author_fuzz = fuzz.token_sort_ratio(bookdict['authorname'], searchauthorname)
+                    author_fuzz = fuzz.token_sort_ratio(bookdict['authorname'], searchauthorname, processor=default_process)
                 else:
-                    author_fuzz = fuzz.token_sort_ratio(bookdict['authorname'], searchterm)
+                    author_fuzz = fuzz.token_sort_ratio(bookdict['authorname'], searchterm, processor=default_process)
                 book_title = bookdict['bookname']
                 if book_title:
                     if searchtitle:
                         if book_title.endswith(')'):
                             book_title = book_title.rsplit(' (', 1)[0]
-                        book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchtitle.lower())
+                        book_fuzz = fuzz.token_set_ratio(book_title, searchtitle, processor=default_process)
                         # lose a point for each extra word in the fuzzy matches, so we get the closest match
                         words = len(get_list(book_title))
                         words -= len(get_list(searchtitle))
                         book_fuzz -= abs(words)
                     else:
-                        book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchterm.lower())
+                        book_fuzz = fuzz.token_set_ratio(book_title, searchterm, processor=default_process)
                         words = len(get_list(book_title))
                         words -= len(get_list(searchterm))
                         book_fuzz -= abs(words)
@@ -878,7 +866,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
                         altnames = item['document']['alternate_names']
                         books_count = item['document']['books_count']
                         author_id = item['document']['id']
-                        if authorname == name or authorname in altnames:
+                        if fuzz.ratio(authorname, name, processor=default_process) >= CONFIG.get_int('NAME_RATIO') or authorname in altnames:
                             matches.append([books_count, author_id, name, altnames])
                     matches = sorted(matches, reverse=True)
                     authorid = matches[0][1]
@@ -938,15 +926,15 @@ query FindAuthor { authors_by_pk(id: [authorid])
                         author_name = contrib['author']['name']
                         authorid = str(contrib['author']['id'])
                         res = None
-                        match = fuzz.ratio(author_name.lower(), authorname.lower())
+                        match = fuzz.ratio(author_name, authorname, processor=default_process)
                         if match >= CONFIG.get_int('NAME_RATIO'):
                             res = self.get_author_info(authorid)
                         if not res:
-                            match = fuzz.token_sort_ratio(author_name.lower(), authorname.lower())
+                            match = fuzz.token_sort_ratio(author_name, authorname, processor=default_process)
                             if match >= CONFIG.get_int('NAME_RATIO'):
                                 res = self.get_author_info(authorid)
                         if not res:
-                            match = fuzz.partial_ratio(author_name.lower(), authorname.lower())
+                            match = fuzz.partial_ratio(author_name, authorname, processor=default_process)
                             if match >= CONFIG.get_int('NAME_PARTNAME'):
                                 res = self.get_author_info(authorid)
                         if res:
@@ -957,6 +945,10 @@ query FindAuthor { authors_by_pk(id: [authorid])
 
         self.logger.debug(f"No results. Used {api_hits} api hit")
         return {}
+
+    def get_author_image(self, authorid=None, authorname=None):
+        res = self.get_author_info(authorid=authorid, authorname=authorname)
+        return res.get('authorimg', '')
 
     def get_author_info(self, authorid=None, authorname=None, refresh=False):
         """Get detailed info for a HardCover author."""
@@ -1084,7 +1076,10 @@ query FindAuthor { authors_by_pk(id: [authorid])
         bookdict['bookdesc'] = book_data.get('description', '')
         bookdict['bookid'] = str(book_data.get('id', ''))
         bookdict['bookdate'] = book_data.get('release_date', '')
-        if not bookdict['bookdate']:
+        year_match = re.search(r'\d{4}', bookdict['bookdate']) if bookdict['bookdate'] else None
+        if not bookdict['bookdate'] or (year_match and not check_year(year_match.group(), past=1800, future=1)):
+            # empty, or an implausible year (eg a typo'd future date) - skip rather than
+            # warn-and-passthrough, matching NO_FUTURE handling elsewhere
             bookdict['bookdate'] = ''
         else:
             bookdict['bookdate'] = date_format(bookdict['bookdate'],
@@ -1174,7 +1169,10 @@ query FindAuthor { authors_by_pk(id: [authorid])
         bookdict['bookdesc'] = book_data.get('description', '')
         bookdict['bookid'] = str(book_data.get('id', ''))
         bookdict['bookdate'] = book_data.get('release_date', '')
-        if not bookdict['bookdate']:
+        year_match = re.search(r'\d{4}', bookdict['bookdate']) if bookdict['bookdate'] else None
+        if not bookdict['bookdate'] or (year_match and not check_year(year_match.group(), past=1800, future=1)):
+            # empty, or an implausible year (eg a typo'd future date) - skip rather than
+            # warn-and-passthrough, matching NO_FUTURE handling elsewhere
             bookdict['bookdate'] = ''
         else:
             bookdict['bookdate'] = date_format(bookdict['bookdate'],
@@ -1239,7 +1237,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
                     # not our author, might be a contributor to an anthology?
                     # Check all contributions (already filtered in build_bookdict) for name match
                     for contrib in book_data['contributions']:
-                        if (fuzz.token_set_ratio(contrib['author']['name'], authorname) >=
+                        if (fuzz.token_set_ratio(contrib['author']['name'], authorname, processor=default_process) >=
                                 CONFIG.get_int('NAME_RATIO')):
                             bookdict['authorname'] = " ".join(contrib['author']['name'].split())
                             bookdict['authorid'] = str(contrib['author']['id'])
@@ -1273,6 +1271,9 @@ query FindAuthor { authors_by_pk(id: [authorid])
         """Import a single book from HardCover by ID."""
         if not bookdict:
             bookdict, _ = self.get_bookdict_for_bookid(bookid)
+        if not bookdict:
+            self.logger.warning(f"No HardCover metadata for {bookid}, unable to add book")
+            return False
         if not bookstatus:
             bookstatus = CONFIG['NEWBOOK_STATUS']
             self.logger.debug(f"No bookstatus passed, using default {bookstatus}")
@@ -1807,6 +1808,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
                 msg = f"No hc_id for user {ll_userid_context}, first sync?"
                 self.logger.warning(msg)
 
+            self.logger.debug("Storing start time for HCSYNC")
             db.upsert("jobs", {"Start": time.time()}, {"Name": "HCSYNC"})
 
             # Get all the user's reading lists
@@ -2123,6 +2125,7 @@ query FindAuthor { authors_by_pk(id: [authorid])
             return f"User {ll_userid_context} HardCover sync failed: {str(e)}"
 
         finally:
+            self.logger.debug("Storing finish time for HCSYNC")
             db.upsert("jobs", {"Finish": time.time()}, {"Name": "HCSYNC"})
             db.close()
             self.logger.info(f"HCsync completed for {ll_userid_context}")

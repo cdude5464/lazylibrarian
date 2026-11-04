@@ -18,8 +18,9 @@ import shutil
 import traceback
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
-from lazylibrarian import database
+from lazylibrarian import database, i18n
 from lazylibrarian.common import multibook, only_punctuation
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import (
@@ -206,9 +207,11 @@ def audio_parts(folder, bookname, authorname):
     # there seem to be two common numbering systems x-y
     # for single-part audiobooks, x=part, y=total
     # for multi-part, x=chapter, y=part_in_chapter
+    # for multi-part books without chapters we try to use tags
+    # see #3107 "When Women Were Dragons_ A Novel--0004.mp3"
     for f in listdir(folder):
         if CONFIG.is_valid_booktype(f, booktype='audiobook'):
-            res = re.search(r'([0-9-]+\-[0-9]+)', f)
+            res = re.search(r'(\d+\-\d+)', f)
             if res and res.group():
                 entry = res.group().split('-')
                 chap = entry[0]
@@ -333,12 +336,12 @@ def audio_parts(folder, bookname, authorname):
             book = parts[0][1]
             author = parts[0][2]
             for part in parts:
-                match = fuzz.partial_ratio(part[1], book)
+                match = fuzz.partial_ratio(part[1], book, processor=default_process)
                 if match < 95:
                     logger.warning(f"{bookname}: Inconsistent title: [{part[1]}][{book}] ({round(match, 2)}%)")
                     failed = True
 
-                match = fuzz.partial_ratio(part[2], author)
+                match = fuzz.partial_ratio(part[2], author, processor=default_process)
                 if match < 95:
                     logger.warning(f"{bookname}: Inconsistent author: [{part[2]}][{author} ({round(match, 2)}%)]")
                     failed = True
@@ -474,7 +477,7 @@ def audio_rename(bookid, rename=False, playlist=False, overwrite=False):
 
     if rename and old_path != dest_path:
         try:
-            if len(old_path) > len(dest_path) and old_path.startswith(dest_path):
+            if len(old_path) > len(dest_path) and old_path.startswith(dest_path + os.sep):
                 # old_path is a subdir within new correct destination
                 logger.debug(f"move contents of folder {old_path} to {dest_path}")
                 failed, err = copy_tree(old_path, dest_path)
@@ -768,9 +771,12 @@ def name_vars(bookid, abridged=''):
             pubyear = '1955'
             seryear = '1954'
             lang = 'Eng'
-            seriesname = 'The Lord of the Rings'
+            # the sample book of the name pattern examples in the config page, in the language of the interface
+            # TRANSLATORS: series name of the sample book in the name pattern examples, as published in your language
+            seriesname = i18n.gettext('The Lord of the Rings')
             mydict['Author'] = 'J.R.R. Tolkien'
-            mydict['Title'] = 'The Fellowship of the Ring'
+            # TRANSLATORS: title of the sample book in the name pattern examples, as published in your language
+            mydict['Title'] = i18n.gettext('The Fellowship of the Ring')
             mydict['SortAuthor'] = surname_first(mydict['Author'], postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')))
             mydict['SortTitle'] = sort_definite(mydict['Title'], articles=get_list(CONFIG.get_csv('NAME_DEFINITE')))
             mydict['Part'] = '1'

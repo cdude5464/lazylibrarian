@@ -14,23 +14,23 @@
   <h1>${title}</h1>
   <form action="past_issues" method="get" class="form-inline">
     <div class="form-group">
-      <label for="whichStatus" class="control-label">Status: </label>
+      <label for="whichStatus" class="control-label">${_('Status:')} </label>
       <select name="whichStatus" id="whichStatus" class="form-control input-sm">
         %for item in ['Skipped', 'Have', 'Ignored', 'Wanted', 'Snatched']:
         <option value="${item}"
                     %if whichStatus == item:
                         selected = "selected"
                     %endif
-                >${item}</option>
+                >${status_label(item)}</option>
         %endfor
       </select>
     </div>
 
     %if CONFIG['TOGGLES']:
-    &nbsp;&nbsp;Toggle: <a class="toggle-vis" data-column="1"> Title</a>
-    <a class="toggle-vis" data-column="2"> Date</a>
-    <a class="toggle-vis" data-column="3"> Issue</a>
-    <a class="toggle-vis" data-column="4"> Provider</a>
+    &nbsp;&nbsp;${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Title')}</a>
+    <a class="toggle-vis" data-column="2"> ${_('Date')}</a>
+    <a class="toggle-vis" data-column="3"> ${_('Issue')}</a>
+    <a class="toggle-vis" data-column="4"> ${_('Provider')}</a>
     %endif
   </form>
   <br>
@@ -40,26 +40,26 @@
       <thead>
         <tr>
           <th class="select no-sort"><input type="checkbox" onClick="toggleAll(this)" /></th>
-          <th class="magtitle">Title</th>
-          <th class="lastacquired text-center">NZB&nbsp;Date</th>
-          <th class="issuedate text-center">Issue&nbsp;Date</th>
-          <th class="Provider">Provider</th>
+          <th class="magtitle">${_('Title')}</th>
+          <th class="lastacquired text-center">${_('NZB Date')}</th>
+          <th class="issuedate text-center">${_('Issue Date')}</th>
+          <th class="Provider">${_('Provider')}</th>
         </tr>
       </thead>
     </table>
       %if perm%lazylibrarian.perm_status:
       <p>
       <div class="form-group">
-        <label class="control-label">Change selected magazines to:</label>
+        <label class="control-label">${_('Change selected magazines to:')}</label>
         <select class="form-control input-sm" name="action">
           %for item in ['Skipped', 'Wanted', 'Ignored', 'Remove']:
           %if whichStatus != item:
-          <option value="${item}">${item}</option>
+          <option value="${item}">${status_label(item)}</option>
           %endif
           %endfor
         </select>
       </div>
-      <button type="submit" class="btn btn-sm btn-default" id="mark_past_issues" value="Go">Go</button>
+      <button type="submit" class="btn btn-sm btn-default" id="mark_past_issues" value="${_('Go') | h}">${_('Go')}</button>
     </p>
     %endif
   </form>
@@ -80,7 +80,10 @@
                 "responsive": true,
                 "order": [[ 1, 'asc']],
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "rowId": 0,
                 "columnDefs":
                     [ { targets: 'no-sort', orderable: false },
@@ -93,15 +96,10 @@
                       }
                     ]
                 ,
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No matching issues found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No matching issues found')}}),
                 "sPaginationType": "full_numbers",
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "aaSorting": [[1, 'asc']],
                 "bServerSide": true,
@@ -121,7 +119,7 @@
               $(this).toggleClass('selected');
           } );
 
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();
                 var column = table.column( $(this).attr('data-column') );

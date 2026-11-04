@@ -11,6 +11,7 @@
 #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
 
 
+import ast
 import base64
 import contextlib
 import datetime
@@ -24,6 +25,7 @@ import subprocess
 import threading
 import time
 import traceback
+import unicodedata
 import uuid
 from shutil import copyfile, rmtree
 from urllib.parse import quote, unquote, unquote_plus, urlencode, urlsplit, urlunsplit
@@ -34,15 +36,19 @@ from deluge_client import DelugeRPCClient
 from mako import exceptions
 from mako.lookup import TemplateLookup
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import (
     ROLE,
     comicscan,
     database,
+    dbk,
     deluge,
+    emailtemplates,
     grsync,
     hc,
+    i18n,
     magazinescan,
     notifiers,
     nzbget,
@@ -53,13 +59,37 @@ from lazylibrarian import (
     transmission,
     utorrent,
     versioncheck,
+    whatsnew,
 )
-from lazylibrarian.auth import AuthController, require_auth
+from lazylibrarian.auth import (
+    SESSION_KEY,
+    AuthController,
+    get_remote_ip,
+    is_whitelisted_ip,
+    require_auth,
+)
 from lazylibrarian.blockhandler import BLOCKHANDLER
-from lazylibrarian.bookdict import add_bookdict_to_db
+from lazylibrarian.booklanguages import (
+    anna_search_languages,
+    country_picker,
+    language_filter_options,
+    language_filter_sql,
+    language_picker,
+    magazine_language_picker,
+    search_language_picker,
+    zlib_search_languages,
+)
 from lazylibrarian.bookrename import name_vars
-from lazylibrarian.bookwork import add_series_members, delete_empty_series, google_book_dict, set_series
-from lazylibrarian.cache import ImageType, cache_img, json_request
+from lazylibrarian.bookwork import (
+    add_series_members,
+    delete_empty_series,
+    language_from_words,
+    set_series,
+)
+from lazylibrarian.cache import ImageType, cache_img, gr_xml_request
+from lazylibrarian.bookdict import add_bookdict_to_db
+from lazylibrarian.bookwork import google_book_dict
+from lazylibrarian.cache import json_request
 from lazylibrarian.calibre import calibre_test, calibredb, get_calibre_id, sync_calibre_list
 from lazylibrarian.calibre_integration import send_mag_issue_to_calibre
 from lazylibrarian.comicid import cv_identify, cx_identify, name_words, title_words
@@ -69,19 +99,21 @@ from lazylibrarian.common import (
     delete_empty_folders,
     get_readinglist,
     is_valid_email,
+    is_valid_language,
     log_header,
     mime_type,
     pwd_check,
     pwd_generator,
     run_script,
     set_readinglist,
+    validate_monthtable,
     zip_audio,
 )
 from lazylibrarian.config2 import CONFIG, wishlist_type
 from lazylibrarian.configtypes import ConfigBool
 from lazylibrarian.csvfile import dump_table, export_csv, import_csv, restore_table
 from lazylibrarian.dbupgrade import check_db
-from lazylibrarian.download_client import delete_task, get_download_progress
+from lazylibrarian.download_client import get_download_progress
 from lazylibrarian.downloadmethods import (
     direct_dl_method,
     irc_dl_method,
@@ -106,11 +138,14 @@ from lazylibrarian.filesystem import (
     syspath,
 )
 from lazylibrarian.formatter import (
+    DISPLAY_DATE_FORMATS,
+    ISSUE_DATE_FORMATS,
     check_float,
     check_int,
     check_year,
     clean_name,
     date_format,
+    date_format_picker,
     format_author_name,
     get_list,
     make_unicode,
@@ -158,7 +193,9 @@ from lazylibrarian.manual_import import (
 )
 from lazylibrarian.manualbook import search_item
 from lazylibrarian.metadata_opf import create_opf
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.monthlanguages import SEASON_NAMES, month_language_picker
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
+from lazylibrarian.oldump import update_openlibrary_dump
 from lazylibrarian.opds import OPDS
 from lazylibrarian.opfedit import opf_read, opf_write
 from lazylibrarian.postprocess import process_dir
@@ -178,6 +215,7 @@ from lazylibrarian.scheduling import (
 from lazylibrarian.searchbook import search_book
 from lazylibrarian.searchmag import download_maglist, search_magazines
 from lazylibrarian.searchrss import search_wishlist
+from lazylibrarian.startup import prioritized_infosources
 from lazylibrarian.telemetry import TELEMETRY
 
 lastauthor = ''
@@ -741,6 +779,11 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
     return None
 
 
+def fold(s):
+    s = unicodedata.normalize('NFKD', str(s))
+    return ''.join(c for c in s if not unicodedata.combining(c)).casefold()
+
+
 def clear_mako_cache(userid=0):
     logger = logging.getLogger(__name__)
     if userid:
@@ -758,16 +801,181 @@ def clear_mako_cache(userid=0):
 
 
 def clear_our_cookies():
-    cherrypy.response.cookie['ll_uid'] = ''
-    cherrypy.response.cookie['ll_uid']['expires'] = 0
-    cherrypy.response.cookie['ll_prefs'] = '0'
-    cherrypy.response.cookie['ll_prefs']['expires'] = 0
+    cookie = cherrypy.response.cookie
+    cookie['ll_uid'] = ''
+    cookie['ll_uid']['path'] = '/'
+    cookie['ll_uid']['expires'] = 0
+    cookie['ll_uid']['max-age'] = 0
+    cookie['ll_prefs'] = '0'
+    cookie['ll_prefs']['path'] = '/'
+    cookie['ll_prefs']['expires'] = 0
+    cookie['ll_prefs']['max-age'] = 0
+    cookie['ll_uilang'] = ''
+
+
+def refresh_book_languages():
+    """ Background job: re-evaluates language for books in the database.
+    Corrects short-title false positives (e.g. English titles misidentified as German/French/Spanish),
+    normalizes English dialects (e.g. en-CA), resolves 'Unknown' languages, and automatically
+    un-ignores books that were falsely marked Ignored due to invalid language. """
+    logger = logging.getLogger(__name__)
+    incoming_threadname = thread_name()
+    thread_name('LANGREFRESH')
+
+    def stop_requested():
+        return lazylibrarian.STOPTHREADS and thread_name() == 'LANGREFRESH'
+
+    db = database.DBConnection()
+    try:
+        db.upsert("jobs", {"Start": time.time()}, {"Name": "LANGREFRESH"})
+        rows = db.select(
+            "SELECT BookID, BookName, BookLang, BookDesc, Status, ScanResult, AuthorID FROM books "
+            "WHERE (Status = 'Ignored' AND ScanResult LIKE '%Invalid language%') "
+            "OR BookLang = 'Unknown' OR BookLang IS NULL OR BookLang = '' "
+            "OR BookLang NOT IN ('en', 'eng', 'en-US', 'en-GB')"
+        )
+        total = len(rows)
+        lazylibrarian.LANG_REFRESH_STATUS = {'checked': 0, 'updated': 0, 'unignored': 0, 'total': total}
+        logger.info(f"Language refresh: {total} candidate book{plural(total)} to check")
+
+        valid_langs = get_list(CONFIG['IMP_PREFLANG'])
+        checked = 0
+        updated = 0
+        unignored = 0
+        authors_to_update = set()
+
+        for row in rows:
+            if stop_requested():
+                logger.info(f"Language refresh: stopped after checking {checked}/{total}")
+                break
+
+            bookid = row['BookID']
+            name = row['BookName'] or ''
+            old_lang = row['BookLang'] or 'Unknown'
+            desc = row['BookDesc'] or ''
+            status = row['Status']
+            scan_res = row['ScanResult'] or ''
+            author_id = row['AuthorID']
+
+            new_lang, conf = language_from_words(name, desc=desc)
+            if new_lang and new_lang not in ['None', 'Disabled', 'Blocked'] and conf > 0.5:
+                lang_to_set = new_lang
+            else:
+                lang_to_set = old_lang
+
+            lang_changed = (lang_to_set != old_lang and lang_to_set != 'Unknown')
+            was_ignored_for_lang = (status == 'Ignored' and 'Invalid language' in scan_res)
+            is_valid_now = is_valid_language(lang_to_set, valid_langs)
+
+            if lang_changed or (was_ignored_for_lang and is_valid_now):
+                updates = {}
+                if lang_changed:
+                    updates['BookLang'] = lang_to_set
+                if was_ignored_for_lang and is_valid_now:
+                    new_status = CONFIG['NEWBOOK_STATUS'] if CONFIG['NEWBOOK_STATUS'] != 'Ignored' else 'Skipped'
+                    updates['Status'] = new_status
+                    updates['ScanResult'] = f"[LangRefresh] Restored: {old_lang} -> {lang_to_set}"
+                    unignored += 1
+                    if author_id:
+                        authors_to_update.add(author_id)
+                elif lang_changed and not was_ignored_for_lang:
+                    updates['ScanResult'] = f"[LangRefresh] Language: {old_lang} -> {lang_to_set}"
+
+                if updates:
+                    set_clause = ', '.join(f"{k}=?" for k in updates.keys())
+                    values = list(updates.values()) + [bookid]
+                    db.action(f"UPDATE books SET {set_clause} WHERE BookID=?", values)
+                    updated += 1
+
+            checked += 1
+            lazylibrarian.LANG_REFRESH_STATUS['checked'] = checked
+            lazylibrarian.LANG_REFRESH_STATUS['updated'] = updated
+            lazylibrarian.LANG_REFRESH_STATUS['unignored'] = unignored
+
+            if checked % 250 == 0:
+                db.commit()
+                logger.info(f"Language refresh: checked {checked}/{total}, updated {updated}, restored {unignored}")
+
+        db.commit()
+        for auth_id in authors_to_update:
+            with contextlib.suppress(Exception):
+                lazylibrarian.importer.update_totals(auth_id)
+
+        logger.info(f"Language refresh: complete, checked {checked}/{total}, updated {updated}, restored {unignored}")
+    finally:
+        db.upsert("jobs", {"Finish": time.time()}, {"Name": "LANGREFRESH"})
+        db.close()
+        thread_name(incoming_threadname)
+
+
+def valid_ui_lang(value: str) -> bool:
+    """ Empty (use the global setting), auto, or a language we have a translation for """
+    return value in ('', i18n.AUTO) or value in i18n.available_languages()
+
+
+def set_request_language():
+    """ Set the UI language for the current request: the user's own setting (cookie),
+        then UI_LANGUAGE from the config, which may be 'auto' to follow the browser """
+    uilang = ''
+    cookie = cherrypy.request.cookie
+    if cookie and 'll_uilang' in list(cookie.keys()):
+        uilang = cookie['ll_uilang'].value
+    if not uilang:
+        uilang = CONFIG.get_str('UI_LANGUAGE')
+    browserlang = ''
+    if cookie and i18n.BROWSER_COOKIE in list(cookie.keys()):
+        browserlang = unquote(cookie[i18n.BROWSER_COOKIE].value)
+    lang = i18n.resolve_language(uilang, cherrypy.request.headers.get('Accept-Language', ''), browserlang)
+    i18n.set_language(lang)
+    i18n.remember_ui_language(lang)
+    cherrypy.request.ui_lang_auto = uilang.strip().lower() in ('', i18n.AUTO)
+    return lang
+
+
+def browser_languages() -> list:
+    """ Languages the browser asks for, from navigator.languages (browser cookie) and Accept-Language """
+    browserlang = ''
+    cookie = cherrypy.request.cookie
+    if cookie and i18n.BROWSER_COOKIE in list(cookie.keys()):
+        browserlang = unquote(cookie[i18n.BROWSER_COOKIE].value)
+    return (i18n.parse_accept_language(browserlang)
+            + i18n.parse_accept_language(cherrypy.request.headers.get('Accept-Language', '')))
+
+
+# set the language before every request handler runs, so i18n.gettext() works in python code too
+cherrypy.tools.ui_language = cherrypy.Tool('before_handler', set_request_language)
+
+
+def template_i18n():
+    """ Set the UI language for this request and return the translation helpers for templates """
+    lang = set_request_language()
+    return {'_': i18n.gettext, '_js': i18n.gettext_js, '_jsn': i18n.ngettext_js, 'js': i18n.js_string,
+            'ngettext': i18n.ngettext, 'pgettext': i18n.pgettext, 'js_plural': i18n.plural_expression,
+            'status_label': i18n.status_label, 'status_labels': i18n.status_labels, 'ui_lang': lang,
+            'ui_lang_auto': getattr(cherrypy.request, 'ui_lang_auto', False),
+            'ui_langs': i18n.available_languages(), 'ui_lang_cookie': i18n.BROWSER_COOKIE}
+
+
+def mark_summary(headline, passed, failed):
+    """ Translated result summary for the mark_*_ajax handlers, headline is already translated """
+    total = passed + failed
+    if not total:
+        return f"{headline} {i18n.gettext('No items were processed.')}"
+    if failed:
+        detail = i18n.ngettext('%(passed)s successful, %(failed)s failed out of %(total)s total item.',
+                               '%(passed)s successful, %(failed)s failed out of %(total)s total items.', total)
+    else:
+        detail = i18n.ngettext('%(passed)s successful out of %(total)s total item.',
+                               '%(passed)s successful out of %(total)s total items.', total)
+    return f"{headline} {detail % {'passed': passed, 'failed': failed, 'total': total}}"
 
 
 def serve_template(templatename, **kwargs):
     thread_name("WEBSERVER")
     logger = logging.getLogger(__name__)
     adminlogger = logging.getLogger('special.admin')
+    i18n_vars = template_i18n()
+    kwargs.update(i18n_vars)
     interface_dir = os.path.join(str(DIRS.PROG_DIR), 'data', 'interfaces')
     template_dir = os.path.join(str(interface_dir), CONFIG['HTTP_LOOK'])
     if not path_isdir(template_dir):
@@ -780,8 +988,12 @@ def serve_template(templatename, **kwargs):
         module_directory = None
     else:
         module_directory = os.path.join(DIRS.CACHEDIR, 'mako')
-    _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                               module_directory=module_directory)
+    # an interface only needs the pages it changes, anything missing comes from bookstrap.
+    # The interfaces folder is a root too, so a page can use another interface's page by its
+    # path, eg modern's config.html renders the form of /bookstrap/config.html
+    bookstrap_dir = os.path.join(str(interface_dir), 'bookstrap')
+    _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir, str(interface_dir)])),
+                               input_encoding='utf-8', module_directory=module_directory)
     # noinspection PyBroadException
     try:
         style = CONFIG['BOOKSTRAP_THEME']
@@ -789,11 +1001,13 @@ def serve_template(templatename, **kwargs):
         usertheme = ''
         if lazylibrarian.UPDATE_MSG:
             template = _hplookup.get_template("dbupdate.html")
-            return template.render(perm=0, message="Database upgrade in progress, please wait...",
-                                   title="Database Upgrade", timer=5, style=style)
+            return template.render(perm=0, message=i18n.gettext("Database upgrade in progress, please wait..."),
+                                   title=i18n.gettext("Database Upgrade"), timer=5, style=style, **i18n_vars)
 
-        adminlogger.debug(str(cherrypy.request.headers))
+        adminlogger.debug(f"Request headers: {str(cherrypy.request.headers)}")
+        adminlogger.debug(f"Request cookie: {str(cherrypy.request.cookie)}")
         if not CONFIG.get_bool('USER_ACCOUNTS'):
+            adminlogger.debug("User accounts are NOT active")
             perm = lazylibrarian.perm_admin
             try:
                 template = _hplookup.get_template(templatename)
@@ -801,6 +1015,7 @@ def serve_template(templatename, **kwargs):
                 clear_mako_cache()
                 template = _hplookup.get_template(templatename)
         else:
+            adminlogger.debug(f"User accounts are active, Login user is {lazylibrarian.LOGINUSER}")
             username = ''  # anyone logged in yet?
             userid = 0
             perm = 0
@@ -813,8 +1028,10 @@ def serve_template(templatename, **kwargs):
                 lazylibrarian.LOGINUSER = lazylibrarian.LOGINUSER.strip('!')
                 res = db.match('SELECT * from users where UserID=?', (lazylibrarian.LOGINUSER,))
                 if res:
-                    cherrypy.response.cookie['ll_uid'] = lazylibrarian.LOGINUSER
-                    userid = lazylibrarian.LOGINUSER
+                    cherrypy.response.cookie['ll_uid'] = res['UserID']
+                    cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                    cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
+                    userid = res['UserID']
                     if formauth:
                         logger.debug(f"Auth-login for {res['UserName']}")
                     else:
@@ -828,32 +1045,50 @@ def serve_template(templatename, **kwargs):
                 lazylibrarian.LOGINUSER = None
 
             else:
-                cookie = cherrypy.request.cookie
                 authorization = cherrypy.request.headers.get('Authorization')
+                if authorization:
+                    adminlogger.debug(f"Authorization header: {authorization}")
+                cookie = cherrypy.request.cookie
                 if cookie and 'll_uid' in list(cookie.keys()):
+                    adminlogger.debug(f"Cookie UserID: {cookie['ll_uid'].value}")
                     res = db.match('SELECT * from users where UserID=?', (cookie['ll_uid'].value,))
-                    if not res:
+                    if res:
+                        cherrypy.response.cookie['ll_uid'] = res['UserID']
+                        cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                        cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
+                    else:
+                        adminlogger.debug(f"No user for uid {cookie['ll_uid'].value}")
                         clear_our_cookies()
                 elif authorization and authorization.startswith('Basic '):
                     auth_bytes = authorization.split('Basic ')[1].encode('ascii')
                     value_bytes = base64.b64decode(auth_bytes)
                     values = value_bytes.decode('ascii')
                     res = {}
+                    user = ''
                     if ':' in values:
                         user, pwd = values.split(':', 1)
                         res = db.match('SELECT * from users where UserName=? and Password=?', (user, md5_utf8(pwd)))
+                    if res:
+                        cherrypy.response.cookie['ll_uid'] = res['UserID']
+                        cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                        cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
+                    else:
+                        adminlogger.debug(f"No user for basic auth {user} or invalid password")
                 if not res and CONFIG.get_bool('PROXY_AUTH'):
-                    logger.debug('Proxy Auth enabled')
+                    adminlogger.debug('Proxy Auth enabled')
                     user = cherrypy.request.headers.get(CONFIG.get_str('PROXY_AUTH_USER'))
                     if user:
-                        logger.debug(f"{CONFIG.get_str('PROXY_AUTH_USER')}: {user}")
+                        adminlogger.debug(f"{CONFIG.get_str('PROXY_AUTH_USER')}: {user}")
                         res = db.match('SELECT * from users where UserName=?', (user,))
                         if res:
                             logger.debug(f"{user} is a registered user")
                             cherrypy.response.cookie['ll_uid'] = res['UserID']
                             cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                            cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
                             db.action("UPDATE users SET Last_Login=?,Login_Count=? WHERE UserID=?",
                                       (str(int(time.time())), int(res['Login_Count']) + 1, res['UserID']))
+                        else:
+                            adminlogger.debug(f"{user} is NOT a registered user")
                         if not res and CONFIG.get_bool('PROXY_REGISTER'):
                             logger.debug(f"User {user} not registered, trying to add...")
                             fullname = cherrypy.request.headers.get(CONFIG.get_str('PROXY_AUTH_NAME'))
@@ -862,29 +1097,27 @@ def serve_template(templatename, **kwargs):
                             logger.debug(f"{CONFIG.get_str('PROXY_AUTH_NAME')}: {email}")
                             if fullname and email:
                                 new_pwd = pwd_generator()
-                                msg = lazylibrarian.NEWUSER_MSG.replace('{username}', user).replace(
-                                    '{password}', new_pwd).replace('{permission}', 'Friend')
+                                subject, msg = emailtemplates.login_message(user, new_pwd, lazylibrarian.perm_friend)
 
-                                result = notifiers.email_notifier.notify_message('LazyLibrarian New Account',
-                                                                                 msg, email)
+                                result = notifiers.email_notifier.notify_message(subject, msg, email)
                                 if result:
                                     cmd = ('INSERT into users (UserID, UserName, Name, Password, Email, '
                                            'SendTo, Perms) VALUES (?, ?, ?, ?, ?, ?, ?)')
                                     db.action(cmd, (pwd_generator(), user, fullname, md5_utf8(new_pwd),
                                                     email, '', lazylibrarian.perm_friend))
-                                    msg = f"New user added from proxy auth: {user}: Friend"
-                                    msg += f"<br>Email sent to {email}"
+                                    msg = (f"New user added from proxy auth: {user}: Friend"
+                                            f"<br>Email sent to {email}")
                                     cnt = db.match("select count(*) as counter from users")
                                     if cnt['counter'] > 1:
                                         lazylibrarian.SHOWLOGOUT = 1
                                     res = db.match('SELECT * from users where UserName=?', (user,))
                                     cherrypy.response.cookie['ll_uid'] = res['UserID']
                                     cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                                    cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
                                     db.action("UPDATE users SET Last_Login=?,Login_Count=? WHERE UserID=?",
                                               (str(int(time.time())), int(res['Login_Count']) + 1, res['UserID']))
                                 else:
-                                    msg = "New user NOT added"
-                                    msg += f"<br>Failed to send email to {email}"
+                                    msg = f"New user NOT added<br>Failed to send email to {email}"
                                 logger.debug(msg)
 
                 if not res:
@@ -898,7 +1131,8 @@ def serve_template(templatename, **kwargs):
                         res = db.match('SELECT * from users')
                         cherrypy.response.cookie['ll_uid'] = res['UserID']
                         cherrypy.response.cookie['ll_prefs'] = res['Prefs']
-                        logger.debug(f"Auto-login for {res['UserName']}")
+                        cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
+                        logger.debug(f"Single user login for {res['UserName']}")
                         db.action("UPDATE users SET Last_Login=?,Login_Count=? WHERE UserID=?",
                                   (str(int(time.time())), int(res['Login_Count']) + 1, res['UserID']))
                         lazylibrarian.SHOWLOGOUT = 0
@@ -906,26 +1140,10 @@ def serve_template(templatename, **kwargs):
                         lazylibrarian.SHOWLOGOUT = 1
 
                 if not res:
-                    remote_ip = cherrypy.request.headers.get('X-Forwarded-For')  # apache2
-                    if not remote_ip:
-                        remote_ip = cherrypy.request.headers.get('X-Host')  # lighthttpd
-                    if not remote_ip:
-                        remote_ip = cherrypy.request.headers.get('Remote-Addr')
-                    if not remote_ip:
-                        remote_ip = cherrypy.request.remote.ip
-                    whitelist = get_list(CONFIG.get_csv('WHITELIST'))
-                    to_whitelist = False
-                    if remote_ip in whitelist:
-                        # exact match
-                        to_whitelist = True
-                    for white in whitelist:
-                        # allow ranges in the format 192.168.1.1/24
-                        white_parts = white.split('.')
-                        if (len(white_parts) == 4 and white_parts[3] == '1/24' and
-                                remote_ip.startswith('.'.join(white_parts[:3]))):
-                            to_whitelist = True
-                            break
+                    remote_ip = get_remote_ip()
+                    to_whitelist = is_whitelisted_ip(remote_ip)
                     if to_whitelist:
+                        adminlogger.debug(f"Whitelisted login from {remote_ip}")
                         columns = db.select('PRAGMA table_info(users)')
                         if not columns:  # no such table
                             cnt = 0
@@ -935,6 +1153,7 @@ def serve_template(templatename, **kwargs):
                             res = db.match('SELECT * from users where Perms=65535')
                             cherrypy.response.cookie['ll_uid'] = res['UserID']
                             cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+                            cherrypy.response.cookie['ll_uilang'] = res['UI_Lang'] or ''
                             logger.debug(f"Auto-login for {res['UserName']} at {remote_ip}")
                             db.action("UPDATE users SET Last_Login=?,Login_Count=? WHERE UserID=?",
                                       (str(int(time.time())), int(res['Login_Count']) + 1, res['UserID']))
@@ -986,7 +1205,7 @@ def serve_template(templatename, **kwargs):
                 else:
                     templatename = "login.html"
 
-            adminlogger.debug(f"User {username}: {perm} {userprefs} {usertheme} {templatename}")
+            adminlogger.debug(f"User: {username} Perm: {perm} Prefs: {userprefs} Theme: {usertheme} Template: {templatename}")
 
             theme = usertheme.split('_', 1)[0]
             if theme and theme != CONFIG['HTTP_LOOK']:
@@ -997,8 +1216,9 @@ def serve_template(templatename, **kwargs):
                     template_dir = os.path.join(str(interface_dir), CONFIG['HTTP_LOOK'])
 
                 module_directory = os.path.join(DIRS.CACHEDIR, 'mako', str(userid))
-                _hplookup = TemplateLookup(directories=[template_dir], input_encoding='utf-8',
-                                           module_directory=module_directory)
+                _hplookup = TemplateLookup(directories=list(dict.fromkeys([template_dir, bookstrap_dir,
+                                                                           str(interface_dir)])),
+                                           input_encoding='utf-8', module_directory=module_directory)
             try:
                 template = _hplookup.get_template(templatename)
             except (AttributeError, KeyError):
@@ -1015,19 +1235,48 @@ def serve_template(templatename, **kwargs):
             if CONFIG['HTTP_ROOT']:
                 img = f'{CONFIG["HTTP_ROOT"]}/{img}'
             if templatename == "login.html":
-                return template.render(perm=0, title="Redirected", img=img, style=style)
-            return template.render(perm=0, title='Login', img=img, from_page='/home')
+                return template.render(perm=0, title=i18n.gettext("Redirected"), img=img, style=style, **i18n_vars)
+            return template.render(perm=0, title=i18n.gettext('Login'), img=img, from_page='/home', **i18n_vars)
 
         # keep template name for help context
         cherrypy.response.cookie['ll_template'] = templatename
-        return template.render(perm=perm, pref=userprefs, style=style, **kwargs)
+        # the interface this user sees, pages modern doesn't have yet are still rendered by bookstrap
+        ui_look = usertheme.split('_', 1)[0] or CONFIG['HTTP_LOOK']
+        return template.render(perm=perm, pref=userprefs, style=style, ui_look=ui_look, **kwargs)
 
     except Exception:
         return exceptions.html_error_template().render()
 
 
+# Per-format variants of Have/Skipped/Ignored, mapped to (status, libraries)
+FORMAT_STATUS_ACTIONS = {
+    'HaveEbook': ('Have', 'eBook'),
+    'HaveAudio': ('Have', 'AudioBook'),
+    'HaveBoth': ('Have', 'eBook+AudioBook'),
+    'SkipEbook': ('Skipped', 'eBook'),
+    'SkipAudio': ('Skipped', 'AudioBook'),
+    'SkipBoth': ('Skipped', 'eBook+AudioBook'),
+    'IgnoreEbook': ('Ignored', 'eBook'),
+    'IgnoreAudio': ('Ignored', 'AudioBook'),
+    'IgnoreBoth': ('Ignored', 'eBook+AudioBook'),
+}
+
+
+def status_mark_targets(action: str, library: str) -> tuple[str, str] | None:
+    """Return (status, libraries) for a Have/Skipped/Ignored mark, or None for any other action.
+
+    The plain actions follow the page's library; the per-format ones name their own.
+    """
+    if action in FORMAT_STATUS_ACTIONS:
+        return FORMAT_STATUS_ACTIONS[action]
+    if action in ('Have', 'Skipped', 'Ignored'):
+        return action, library or ''
+    return None
+
+
 # noinspection PyProtectedMember,PyGlobalUndefined,PyGlobalUndefined
 class WebInterface:
+    _cp_config = {'tools.ui_language.on': True}
 
     auth = AuthController()
     issues_data = ''
@@ -1048,27 +1297,40 @@ class WebInterface:
         return True
 
     @staticmethod
-    def check_permitted(required_perm):
+    def check_permitted(required_perm, redirect_unauth=False):
         adminlogger = logging.getLogger('special.admin')
         userid = ''
-        cookie = cherrypy.request.cookie
-        if cookie and 'll_uid' in list(cookie.keys()):
-            cookie_userid = cookie['ll_uid'].value
-            perm = 0
-            db = database.DBConnection()
-            res = db.match('SELECT * from users where UserID=?', (cookie_userid,))
-            if res:
-                perm = check_int(res['Perms'], 0)
-                userid = res['UserID']
-            else:
-                adminlogger.debug(f"No match for userid [{cookie_userid}]")
-                clear_our_cookies()
-            db.close()
-        else:
+        if not CONFIG.get_bool('USER_ACCOUNTS'):
             perm = lazylibrarian.perm_admin
+        else:
+            perm = 0
+            cookie = cherrypy.request.cookie
+            if cookie and 'll_uid' in list(cookie.keys()):
+                cookie_userid = cookie['ll_uid'].value
+                db = database.DBConnection()
+                res = db.match('SELECT * from users where UserID=?', (cookie_userid,))
+                if res:
+                    perm = check_int(res['Perms'], 0)
+                    userid = res['UserID']
+                else:
+                    adminlogger.debug(f"No match for userid [{cookie_userid}]")
+                    clear_our_cookies()
+                db.close()
 
         if perm & required_perm:
             return
+
+        if redirect_unauth and not userid and CONFIG.get_bool('USER_ACCOUNTS') and not CONFIG.get_bool('PROXY_AUTH'):
+            # Only used by the small set of top-level page handlers that are reachable
+            # as a HOMEPAGE target and call check_permitted() before serve_template() ever
+            # gets a chance to render its own login.html fallback (books/audio/magazines/
+            # series/comics) - NOT a general check_permitted() behavior change, so the many
+            # AJAX/action endpoints that also call check_permitted() are unaffected and keep
+            # returning a plain 403 rather than a redirect a JS fetch() would otherwise
+            # transparently follow and try to parse as JSON.
+            root = CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else ''
+            get_params = quote(cherrypy.request.request_line.split()[1])
+            raise cherrypy.HTTPRedirect(f"{root}/auth/login?from_page={get_params}")
 
         _, method, _ = get_info_on_caller(depth=1)
         TELEMETRY.record_usage_data()
@@ -1091,13 +1353,18 @@ class WebInterface:
 
     @cherrypy.expose
     @require_auth()
+    def login(self):
+        raise cherrypy.HTTPRedirect("home")
+
+    @cherrypy.expose
+    @require_auth()
     def authors(self):
-        title = 'Authors'
+        title = i18n.gettext('Authors')
         if lazylibrarian.IGNORED_AUTHORS:
             if CONFIG.get_bool('IGNORE_PAUSED'):
-                title = 'Inactive Authors'
+                title = i18n.gettext('Inactive Authors')
             else:
-                title = 'Ignored Authors'
+                title = i18n.gettext('Ignored Authors')
         return serve_template(templatename="index.html", title=title, redirect=title.lower())
 
     @cherrypy.expose
@@ -1121,7 +1388,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def profile(self):
-        title = 'User Profile'
+        title = i18n.gettext('User Profile')
         cookie = cherrypy.request.cookie
         if cookie and 'll_uid' in list(cookie.keys()):
             db = database.DBConnection()
@@ -1163,7 +1430,7 @@ class WebInterface:
                                           typelist=get_list(CONFIG['EBOOK_TYPE']), themelist=themelist)
             finally:
                 db.close()
-        return serve_template(templatename="index.html", title='Authors', redirect='authors')
+        return serve_template(templatename="index.html", title=i18n.gettext('Authors'), redirect='authors')
 
     # noinspection PyUnusedLocal
     @cherrypy.expose
@@ -1193,11 +1460,19 @@ class WebInterface:
             displaylength = int(iDisplayLength)
             CONFIG.set_int('DISPLAYLENGTH', displaylength)
 
+            # Sources that expose a per-author ID (unlike GoogleBooks/DNB/BN, which are
+            # book-search-only - their author_key is the plain 'authorid' placeholder,
+            # not a real per-source column). Derived from INFOSOURCES so a new such
+            # source needs no change here or in the badge fallback below.
+            author_link_sources = [(name, src['author_key']) for name, src in lazylibrarian.INFOSOURCES.items()
+                                    if src['author_key'] != 'authorid']
             cmd = ("SELECT AuthorImg,AuthorName,LastBook,LastDate,Status,AuthorLink,LastLink,HaveBooks,"
-                   "UnignoredBooks,AuthorID,LastBookID,DateAdded,Reason from authors ")
+                   "UnignoredBooks,AuthorID,LastBookID,DateAdded,Reason,PrimarySource," +
+                   ",".join(col for _, col in author_link_sources) +
+                   " from authors ")
             if lazylibrarian.IGNORED_AUTHORS:
                 if CONFIG.get_bool('IGNORE_PAUSED'):
-                    cmd = "where Status IN ('Ignored', 'Paused') "
+                    cmd += "where Status IN ('Ignored', 'Paused') "
                 else:
                     cmd += "where Status == 'Ignored' "
             else:
@@ -1224,7 +1499,6 @@ class WebInterface:
 
             cmd += " order by AuthorName COLLATE NOCASE"
             serversidelogger.debug(f"get_index {cmd}")
-            print(1, cmd)
 
             rowlist = db.select(cmd)
             # At his point we want to sort and filter _before_ adding the html as it's much quicker
@@ -1301,14 +1575,39 @@ class WebInterface:
 
                     arow[12] = strip_quotes(reasonstring)
                     nrow.append(percent)
-                    nrow.extend(arow[4:-2])
+                    nrow.extend(arow[4:11])
                     bar = ''
                     nrow.append(bar)
-                    nrow.extend(arow[11:])
+                    nrow.extend(arow[11:13])
+
+                    # Same source-badge convention as author.html/editauthor.html: prefer
+                    # the explicitly-confirmed PrimarySource (linked, so AuthorLink is
+                    # guaranteed to match); otherwise fall back to priority order among
+                    # whatever's linked (the user's configured CONFIG['BOOK_API'] first,
+                    # via prioritized_infosources()), shown as plain text since there's no
+                    # verified matching URL for an inferred guess.
+                    primarysource = arow[13]
+                    link_values = arow[14:14 + len(author_link_sources)]
+                    fallback_map = dict(zip((name for name, _ in author_link_sources), link_values, strict=False))
+                    badge_source = primarysource
+                    if not badge_source:
+                        for fb_name, _ in prioritized_infosources():
+                            if fallback_map.get(fb_name):
+                                badge_source = fb_name
+                                break
+                    if primarysource:
+                        badge_html = (f'<a href="{arow[5]}" target="_blank" rel="noreferrer">'
+                                      f'<small><i>{badge_source}</i></small></a>')
+                    elif badge_source:
+                        badge_html = f'<small><i>{badge_source}</i></small>'
+                    else:
+                        badge_html = ''
+                    nrow.append(badge_html)
                     rows.append(nrow)  # add each rowlist to the masterlist
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in rows if q in fold(x)]
                 else:
                     filtered = rows
 
@@ -1325,6 +1624,10 @@ class WebInterface:
                     rows = filtered
                 else:
                     rows = filtered[displaystart:(displaystart + displaylength)]
+                # format DateAdded only after sorting, as the display format may not sort as text
+                for row in rows:
+                    row[13] = date_format(row[13], CONFIG['DATE_FORMAT'], context=row[1],
+                                          datelang=CONFIG['DATE_LANG'])
             serversidelogger.debug(f"get_index returning {displaystart} to {displaystart + displaylength}")
             serversidelogger.debug(f"get_index filtered {len(filtered)} from {len(rowlist)}:{len(rows)}")
         except Exception:
@@ -1397,36 +1700,96 @@ class WebInterface:
             db.close()
         clear_our_cookies()
         lazylibrarian.LOGINUSER = None
-        raise cherrypy.HTTPRedirect("home")
+        if cherrypy.request.config.get('tools.sessions.on', False):
+            # Only active when USER_ACCOUNTS is off (form/basic auth mode) - webStart.py never
+            # enables the sessions tool when USER_ACCOUNTS is on, so cherrypy.session doesn't
+            # exist as an attribute in that mode and touching it unconditionally raises
+            # AttributeError, crashing every logout.
+            cherrypy.session[SESSION_KEY] = None
+        if cherrypy.request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+            return "OK"
+        root = CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else ''
+        raise cherrypy.HTTPRedirect(f"{root}/login")
 
     @cherrypy.expose
     @require_auth()
     def user_register(self):
         self.label_thread("REGISTER")
-        return serve_template(templatename="register.html", title="User Registration / Contact form")
+        return serve_template(templatename="register.html", title=i18n.gettext("User Registration / Contact form"))
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @require_auth()
+    def switch_interface(self, look='', lang=None):
+        """ Switch the interface (bookstrap or modern) and/or the UI language, for the language menu
+            and the new interface notice of both interfaces.
+            With user accounts this is the user's own setting (Theme, UI_Lang). Without them the interface
+            is the global HTTP_LOOK, which needs config permission, and the language is kept in the browser """
+        logger = logging.getLogger(__name__)
+        if look and look not in ('bookstrap', 'modern'):
+            raise cherrypy.HTTPError(400, 'Invalid interface')
+        if lang is not None and not valid_ui_lang(lang):
+            raise cherrypy.HTTPError(400, 'Invalid language')
+        cookie = cherrypy.request.cookie
+        userid = cookie['ll_uid'].value if cookie and 'll_uid' in list(cookie.keys()) else ''
+        accounts = CONFIG.get_bool('USER_ACCOUNTS') and userid
+        if accounts:
+            db = database.DBConnection()
+            try:
+                user = db.match('SELECT Theme from users where UserID=?', (userid,))
+                if not user:
+                    raise cherrypy.HTTPError(403, 'Unknown user')
+                if look:
+                    if look == CONFIG['HTTP_LOOK']:
+                        theme = ''  # the global interface
+                    elif look == 'modern':
+                        theme = 'modern'
+                    else:
+                        # back to bookstrap with the user's own bootswatch style, if they had one
+                        parts = (user['Theme'] or '').split('_', 1)
+                        style = parts[1] if len(parts) == 2 and parts[0] == 'bookstrap' else CONFIG['BOOKSTRAP_THEME']
+                        theme = f'bookstrap_{style}' if style else 'bookstrap'
+                    db.action('UPDATE users SET Theme=? WHERE UserID=?', (theme, userid))
+                    clear_mako_cache(userid)
+                if lang is not None:
+                    db.action('UPDATE users SET UI_Lang=? WHERE UserID=?', (lang, userid))
+            finally:
+                db.close()
+        elif look and look != CONFIG['HTTP_LOOK']:
+            self.check_permitted(lazylibrarian.perm_config)
+            CONFIG.set_str('HTTP_LOOK', look)
+            CONFIG.save_config_and_backup_old()
+            clear_mako_cache()
+        if lang is not None:
+            # set it for the next page too, which reads the language before it looks at the user
+            cherrypy.response.cookie['ll_uilang'] = lang
+            if not accounts:
+                cherrypy.response.cookie['ll_uilang']['max-age'] = 365 * 24 * 3600
+        logger.debug(f"Switched interface [{look}] language [{lang}] for [{userid}]")
+        return 'OK'
 
     @cherrypy.expose
     @require_auth()
     def user_update(self, **kwargs):
         if ('password' in kwargs and 'password2' in kwargs and kwargs['password'] and
                 kwargs['password'] != kwargs['password2']):
-            return "Passwords do not match"
+            return i18n.gettext("Passwords do not match")
         if kwargs['password'] and not pwd_check(kwargs['password']):
-            return "Password must be at least 8 characters long\nand not contain spaces"
+            return i18n.gettext("Password must be at least 8 characters long\nand not contain spaces")
         logger = logging.getLogger(__name__)
         changes = ''
         cookie = cherrypy.request.cookie
         if cookie and 'll_uid' in list(cookie.keys()):
             userid = cookie['ll_uid'].value
             db = database.DBConnection()
-            user = db.match('SELECT UserName,Name,Email,Password,BookType,SendTo,Theme,hc_token '
+            user = db.match('SELECT UserName,Name,Email,Password,BookType,SendTo,Theme,hc_token,ui_lang '
                             'from users where UserID=?', (userid,))
             if user:
                 if kwargs['username'] and user['UserName'] != kwargs['username']:
                     # if username changed, must not have same username as another user
                     match = db.match('SELECT UserName from users where UserName=?', (kwargs['username'],))
                     if match:
-                        return "Unable to change username: already exists"
+                        return i18n.gettext("Unable to change username: already exists")
                     if self.validate_param("username", kwargs['username'], ['<', '>', '='], None):
                         changes += ' username'
                         db.action('UPDATE users SET UserName=? WHERE UserID=?', (kwargs['username'], userid))
@@ -1454,7 +1817,7 @@ class WebInterface:
                         theme = ''
                     if not theme:
                         valid = True
-                    if theme == 'legacy':
+                    if theme in ('legacy', 'modern'):
                         valid = True
                     else:
                         parts = theme.split('_', 1)
@@ -1466,6 +1829,14 @@ class WebInterface:
                         db.action('UPDATE users SET Theme=? WHERE UserID=?', (theme, userid))
                     else:
                         logger.warning(f"Invalid user theme [{theme}]")
+
+                # profile.html doesn't send ui_lang, only the admin users page does
+                if 'ui_lang' in kwargs and (user['UI_Lang'] or '') != kwargs['ui_lang']:
+                    if valid_ui_lang(kwargs['ui_lang']):
+                        changes += ' UI_Lang'
+                        db.action('UPDATE users SET UI_Lang=? WHERE UserID=?', (kwargs['ui_lang'], userid))
+                    else:
+                        logger.warning(f"Invalid UI Language [{kwargs['ui_lang']}]")
 
                 if user['SendTo'] != kwargs['sendto']:
                     if not is_valid_email(kwargs['sendto']):
@@ -1502,8 +1873,8 @@ class WebInterface:
             db.close()
 
             if changes:
-                return f'Updated user details:{changes}'
-        return "No changes made"
+                return i18n.gettext('Updated user details: %(fields)s') % {'fields': changes.strip()}
+        return i18n.gettext("No changes made")
 
     @cherrypy.expose
     @require_auth()
@@ -1521,9 +1892,8 @@ class WebInterface:
             if itm[0] == remote_ip:
                 cnt += 1
         if cnt >= 3:
-            msg = f"IP address [{remote_ip}] is blocked"
-            logger.warning(msg)
-            return msg
+            logger.warning(f"IP address [{remote_ip}] is blocked")
+            return i18n.gettext("IP address [%(ip)s] is blocked") % {'ip': remote_ip}
 
         username = ''
         password = ''
@@ -1543,6 +1913,8 @@ class WebInterface:
         if res and pwd == res['Password']:
             cherrypy.response.cookie['ll_uid'] = res['UserID']
             cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+            if res['UI_Lang']:
+                cherrypy.response.cookie['ll_uilang'] = res['UI_Lang']
             if 'remember' in kwargs:
                 cherrypy.response.cookie['ll_uid']['Max-Age'] = '86400'
 
@@ -1564,16 +1936,18 @@ class WebInterface:
                 if itm[0] == username:
                     cnt += 1
             if cnt >= 2:
-                msg = "Too many failed attempts. Reset password or retry after 1 hour"
-                logger.warning(f"Blocked user: {username}: [{remote_ip}] {msg}")
+                logger.warning(f"Blocked user: {username}: [{remote_ip}] Too many failed attempts")
+                msg = i18n.gettext("Too many failed attempts. Reset password or retry after 1 hour")
             else:
                 lazylibrarian.USER_BLOCKLIST.append((username, int(time.time())))
-                msg = f"Wrong password entered. You have {2 - cnt} {plural(2 - cnt, 'attempt')} left"
+                msg = i18n.ngettext('Wrong password entered. You have %(count)s attempt left',
+                                    'Wrong password entered. You have %(count)s attempts left',
+                                    2 - cnt) % {'count': 2 - cnt}
             logger.warning(f"Failed login attempt: {username}: [{remote_ip}] {lazylibrarian.LOGIN_MSG}")
         else:
             # invalid or missing username, or valid user but missing password
-            msg = "Invalid user or password."
-            logger.warning(f"Blocked IP: {username}: [{remote_ip}] {msg}")
+            logger.warning(f"Blocked IP: {username}: [{remote_ip}] Invalid user or password.")
+            msg = i18n.gettext("Invalid user or password.")
             lazylibrarian.USER_BLOCKLIST.append((remote_ip, int(time.time())))
         return msg
 
@@ -1594,10 +1968,10 @@ class WebInterface:
             result = notifiers.email_notifier.notify_message('Message from LazyLibrarian User',
                                                              msg, CONFIG['ADMIN_EMAIL'])
             if result:
-                return "Message sent to admin, you will receive a reply by email"
+                return i18n.gettext("Message sent to admin, you will receive a reply by email")
             logger.error(f"Unable to send message to admin: {msg}")
-            return "Message not sent, please try again later"
-        return "No message sent, no return email address"
+            return i18n.gettext("Message not sent, please try again later")
+        return i18n.gettext("No message sent, no return email address")
 
     @cherrypy.expose
     @require_auth()
@@ -1608,7 +1982,13 @@ class WebInterface:
             users = db.select('SELECT UserName from users')
         finally:
             db.close()
-        return serve_template(templatename="users.html", title="Manage User Accounts", users=users)
+        uilang = ''
+        cookie = cherrypy.request.cookie
+        if cookie and 'll_uilang' in list(cookie.keys()):
+            uilang = cookie['ll_uilang'].value
+        if not uilang:
+            uilang = CONFIG.get_str('UI_LANGUAGE')
+        return serve_template(templatename="users.html", title=i18n.gettext("Manage User Accounts"), users=users)
 
     @cherrypy.expose
     @require_auth()
@@ -1616,7 +1996,7 @@ class WebInterface:
         logger = logging.getLogger(__name__)
         if 'value' in kwargs and kwargs['value'] == '':
             # cancel or [x] pressed
-            return 'No changes made'
+            return i18n.gettext('No changes made')
         user = kwargs.pop('user', '')
         value = get_list(kwargs.pop('value[]', ''))
         cnt = 0
@@ -1645,7 +2025,7 @@ class WebInterface:
                         else:
                             logger.debug(f"{feedname} {user} was already unsubscribed")
         db.close()
-        return f"Changed {cnt} {plural(cnt, 'feed')}"
+        return i18n.ngettext('Changed %(count)s feed', 'Changed %(count)s feeds', cnt) % {'count': cnt}
 
     @cherrypy.expose
     @require_auth()
@@ -1697,11 +2077,11 @@ class WebInterface:
                             if val & lazylibrarian.perm_config:
                                 count += 1
                         if count < 2:
-                            return "Unable to delete last administrator"
+                            return i18n.gettext("Unable to delete last administrator")
                     db.action('DELETE from users WHERE UserName=?', (user,))
-                    return f"User {user} deleted"
-                return "User not found"
-            return "No user!"
+                    return i18n.gettext("User %(user)s deleted") % {'user': user}
+                return i18n.gettext("User not found")
+            return i18n.gettext("No user!")
         finally:
             db.close()
 
@@ -1727,11 +2107,12 @@ class WebInterface:
                               'lastlogin': datetime.datetime.fromtimestamp(last_login).ctime()
                               if last_login else '',
                               'logins': match['Login_Count'], 'downloads': cnt['counter'], 'subs': subscriptions,
-                              'theme': match['Theme'], 'hc_id': match['hc_id'], 'hc_token': match['hc_token']})
+                              'theme': match['Theme'], 'hc_id': match['hc_id'], 'hc_token': match['hc_token'],
+                              'ui_lang': match['UI_Lang']})
         else:
             res = json.dumps({'email': '', 'name': '', 'perms': '0', 'calread': '', 'caltoread': '', 'sendto': '',
                               'booktype': '', 'userid': '', 'lastlogin': '', 'logins': '0', 'subs': '',
-                              'theme': '', 'hc_id': '', 'hc_token': ''})
+                              'theme': '', 'hc_id': '', 'hc_token': '', 'ui_lang': ''})
         db.close()
         return res
 
@@ -1747,52 +2128,41 @@ class WebInterface:
         changes = ''
 
         if new_user:
-            msg = "New user NOT added: "
+            msg = i18n.gettext("New user NOT added: %(reason)s")
             if not kwargs['username']:
                 db.close()
-                return msg + "No username given"
+                return msg % {'reason': i18n.gettext("No username given")}
             # new user must not have same username as an existing one
             match = db.match('SELECT UserName from users where UserName=?', (kwargs['username'],))
             if match:
                 db.close()
-                return msg + "Username already exists"
+                return msg % {'reason': i18n.gettext("Username already exists")}
 
             if not kwargs['fullname']:
                 db.close()
-                return msg + "No fullname given"
+                return msg % {'reason': i18n.gettext("No fullname given")}
 
             if not kwargs['email']:
                 db.close()
-                return msg + "No email given"
+                return msg % {'reason': i18n.gettext("No email given")}
 
             if not is_valid_email(kwargs['email']):
                 db.close()
-                return msg + "Invalid email given"
+                return msg % {'reason': i18n.gettext("Invalid email given")}
 
             perms = check_int(kwargs['perms'], 0)
             if not perms:
                 db.close()
-                return msg + "No permissions or invalid permissions given"
+                return msg % {'reason': i18n.gettext("No permissions or invalid permissions given")}
             if not kwargs['password']:
                 db.close()
-                return msg + "No password given"
-
-            if perms == lazylibrarian.perm_admin:
-                perm_msg = 'ADMIN'
-            elif perms == lazylibrarian.perm_friend:
-                perm_msg = 'Friend'
-            elif perms == lazylibrarian.perm_guest:
-                perm_msg = 'Guest'
-            else:
-                perm_msg = f'Custom {perms}'
+                return msg % {'reason': i18n.gettext("No password given")}
 
             self.validate_param("username", kwargs['username'], ['<', '>', '='], 404)
             self.validate_param("fullname", kwargs['fullname'], ['<', '>', '='], 404)
-            msg = lazylibrarian.NEWUSER_MSG.replace('{username}', kwargs['username']).replace(
-                '{password}', kwargs['password']).replace(
-                '{permission}', perm_msg)
+            subject, msg = emailtemplates.login_message(kwargs['username'], kwargs['password'], perms)
 
-            result = notifiers.email_notifier.notify_message('LazyLibrarian New Account', msg, kwargs['email'])
+            result = notifiers.email_notifier.notify_message(subject, msg, kwargs['email'])
 
             if result:
                 cmd = ("INSERT into users (UserID, UserName, Name, Password, Email, SendTo, Perms, hc_token) "
@@ -1800,14 +2170,15 @@ class WebInterface:
                 db.action(cmd, (pwd_generator(), kwargs['username'], kwargs['fullname'],
                                 md5_utf8(kwargs['password']), kwargs['email'], kwargs['sendto'], perms,
                                 kwargs.get('hc_token', '')))
-                msg = f"New user added: {kwargs['username']}: {perm_msg}"
-                msg += f"<br>Email sent to {kwargs['email']}"
+                msg = i18n.gettext("New user added: %(user)s: %(perm)s") % {
+                    'user': kwargs['username'], 'perm': emailtemplates.permission_name(perms)}
+                msg += '<br>' + i18n.gettext("Email sent to %(email)s") % {'email': kwargs['email']}
                 cnt = db.match("select count(*) as counter from users")
                 if cnt['counter'] > 1:
                     lazylibrarian.SHOWLOGOUT = 1
             else:
-                msg = "New user NOT added"
-                msg += f"<br>Failed to send email to {kwargs['email']}"
+                msg = i18n.gettext("New user NOT added") + '<br>' + i18n.gettext("Failed to send email to %(email)s") % {
+                    'email': kwargs['email']}
             db.close()
             return msg
 
@@ -1816,10 +2187,10 @@ class WebInterface:
             match = db.match('SELECT UserName from users where UserName=?', (kwargs['username'],))
             if match:
                 db.close()
-                return "Username already exists"
+                return i18n.gettext("Username already exists")
 
         cmd = ("SELECT UserID,Name,Email,SendTo,Password,Perms,CalibreRead,CalibreToRead,BookType,Theme,"
-               "hc_token from users where UserName=?")
+               "hc_token,ui_lang from users where UserName=?")
         details = db.match(cmd, (user,))
 
         if details:
@@ -1834,13 +2205,13 @@ class WebInterface:
 
             if details['Email'] != kwargs['email']:
                 if kwargs['email'] and not is_valid_email(kwargs['email']):
-                    return "Invalid email given"
+                    return i18n.gettext("Invalid email given")
                 changes += ' email'
                 db.action('UPDATE users SET email=? WHERE UserID=?', (kwargs['email'], userid))
 
             if details['SendTo'] != kwargs['sendto']:
                 if kwargs['sendto'] and not is_valid_email(kwargs['sendto']):
-                    return "Invalid sendto email given"
+                    return i18n.gettext("Invalid sendto email given")
                 changes += ' sendto'
                 db.action('UPDATE users SET sendto=? WHERE UserID=?', (kwargs['sendto'], userid))
 
@@ -1850,6 +2221,14 @@ class WebInterface:
                     changes += ' password'
                     db.action('UPDATE users SET password=? WHERE UserID=?', (pwd, userid))
 
+            # empty means use the global UI_LANGUAGE setting
+            if 'ui_lang' in kwargs and (details['UI_Lang'] or '') != kwargs['ui_lang']:
+                if valid_ui_lang(kwargs['ui_lang']):
+                    changes += ' UI_Language'
+                    db.action('UPDATE users SET UI_Lang=? WHERE UserID=?', (kwargs['ui_lang'], userid))
+                else:
+                    logger.warning(f"Invalid UI Language [{kwargs['ui_lang']}]")
+
             if details['Theme'] != kwargs['theme']:
                 valid = False
                 if kwargs['theme'] == 'legacy':
@@ -1858,6 +2237,8 @@ class WebInterface:
                     parts = kwargs['theme'].split('_', 1)
                     if parts[0] == 'bookstrap' and len(parts) == 2 and parts[1] in lazylibrarian.BOOKSTRAP_THEMELIST:
                         valid = True
+                else:
+                    valid = True
                 if valid:
                     changes += ' Theme'
                     db.action('UPDATE users SET Theme=? WHERE UserID=?', (kwargs['theme'], userid))
@@ -1892,15 +2273,15 @@ class WebInterface:
                             count += 1
                     if count < 2:
                         db.close()
-                        return "Unable to remove last administrator"
+                        return i18n.gettext("Unable to remove last administrator")
                 if oldperm != newperm:
                     changes += ' Perms'
                     db.action('UPDATE users SET Perms=? WHERE UserID=?', (kwargs['perms'], userid))
 
         if changes:
-            msg = f'Updated user details:{changes}'
+            msg = i18n.gettext('Updated user details: %(fields)s') % {'fields': changes.strip()}
         else:
-            msg = "No changes made"
+            msg = i18n.gettext("No changes made")
         db.close()
         return msg
 
@@ -1921,15 +2302,15 @@ class WebInterface:
                         if kwargs['email'] == res['Email']:
                             msg = ''
                         else:
-                            msg = 'Email does not match our records'
+                            msg = i18n.N_('Email does not match our records')
                     else:
-                        msg = 'No email address registered'
+                        msg = i18n.N_('No email address registered')
                 else:
-                    msg = 'No email address supplied'
+                    msg = i18n.N_('No email address supplied')
             else:
-                msg = "Unknown username"
+                msg = i18n.N_("Unknown username")
         else:
-            msg = "Who are you?"
+            msg = i18n.N_("Who are you?")
 
         if res and not msg:
             new_pwd = pwd_generator()
@@ -1938,13 +2319,15 @@ class WebInterface:
             if result:
                 pwd = md5_utf8(new_pwd)
                 db.action("UPDATE users SET Password=? WHERE UserID=?", (pwd, res['UserID']))
-                return "Password reset, check your email"
+                return i18n.gettext("Password reset, check your email")
             msg = f"Failed to send email to [{res['Email']}]"
             logger.debug(msg)
+            reason = i18n.gettext("Failed to send email to %(email)s") % {'email': res['Email']}
+        else:
+            reason = i18n.gettext(msg)
         db.close()
-        msg = f"Password not reset: {msg}"
-        logger.error(f"{msg} IP:{remote_ip}")
-        return msg
+        logger.error(f"Password not reset: {msg} IP:{remote_ip}")
+        return i18n.gettext("Password not reset: %(reason)s") % {'reason': reason}
 
     @cherrypy.expose
     @require_auth()
@@ -1991,7 +2374,7 @@ class WebInterface:
                 members.append(dict(itm))
             self.natural_sort(members, key=lambda y: y['SeriesNum'] if y['SeriesNum'] is not None else '')
             db.close()
-            return serve_template(templatename="editseries.html", title="Edit Series", config=seriesdata,
+            return serve_template(templatename="editseries.html", title=i18n.gettext("Edit Series"), config=seriesdata,
                                   members=members)
         logger.info(f'Missing series {seriesid}')
         db.close()
@@ -2113,8 +2496,9 @@ class WebInterface:
                 serversidelogger.debug(f"User subscribes to {len(res)} series")
                 for series in res:
                     myseries.append(series['WantID'])
-                cmd += " and series.seriesID in (" + ", ".join(f"'{w}'" for w in myseries) + ")"
-
+                if myseries:
+                    cmd += " and series.seriesID in (?)"
+                    args.append(", ".join(f"'{w}'" for w in myseries))
             cmd += " GROUP BY series.seriesID order by AuthorName,SeriesName"
 
             serversidelogger.debug(f"get_series {cmd}: {str(args)}")
@@ -2129,11 +2513,14 @@ class WebInterface:
             if len(rowlist):
                 for row in rowlist:  # iterate through the sqlite3.Row objects
                     entry = list(row)  # turn sqlite objects into lists
+
                     rows.append(entry)  # add the rowlist to the masterlist
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in rows if q in fold(x)]
+                    # filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = rows
 
@@ -2175,6 +2562,20 @@ class WebInterface:
                 else:
                     rows = filtered[displaystart:(displaystart + displaylength)]
 
+            if kwargs.get('covers') and rows:
+                # the modern interface shows the first covers of each series as a small stack
+                db = database.DBConnection()
+                try:
+                    for row in rows:
+                        res = db.select("SELECT BookImg FROM member,books WHERE member.BookID=books.BookID "
+                                        "AND member.SeriesID=? AND BookImg IS NOT NULL AND BookImg != '' "
+                                        "AND BookImg NOT LIKE '%nocover%' "
+                                        "ORDER BY SeriesNum IS NULL OR SeriesNum = '', CAST(SeriesNum AS REAL) LIMIT 3",
+                                        (row[0],))
+                        row.append([r['BookImg'] for r in res])
+                finally:
+                    db.close()
+
             serversidelogger.debug(f"get_series returning {displaystart} to {displaystart + displaylength}")
             serversidelogger.debug(f"get_series filtered {len(filtered)} from {len(rowlist)}:{len(rows)}")
             mydict = {'iTotalDisplayRecords': len(filtered),
@@ -2199,8 +2600,8 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def series(self, authorid=None, which_status=None, active=False):
-        self.check_permitted(lazylibrarian.perm_series)
-        title = "Series"
+        self.check_permitted(lazylibrarian.perm_series, redirect_unauth=True)
+        title = i18n.gettext('Series')
         if authorid:
             db = database.DBConnection()
             try:
@@ -2208,7 +2609,7 @@ class WebInterface:
             finally:
                 db.close()
             if match:
-                title = f"{match['AuthorName']} Series"
+                title = i18n.gettext('%(author)s Series') % {'author': match['AuthorName']}
             if '&' in title and '&amp;' not in title:
                 title = title.replace('&', '&amp;')
 
@@ -2218,7 +2619,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def series_members(self, seriesid, ignored=False):
-        self.check_permitted(lazylibrarian.perm_series)
+        self.check_permitted(lazylibrarian.perm_series, redirect_unauth=True)
         db = database.DBConnection()
         cmd = ("SELECT SeriesName,series.SeriesID,AuthorName,seriesauthors.AuthorID from "
                "series,authors,seriesauthors where authors.AuthorID=seriesauthors.AuthorID and "
@@ -2298,14 +2699,22 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     @cherrypy.tools.json_out()
-    def mark_series_ajax(self, action=None, **args):
+    def mark_series_ajax(self, action=None, redirect=None, **args):
+        # redirect is an explicit param (not left in **args) for the same reason
+        # mark_books_ajax already declares it: series.html's #mark_series form has a
+        # hidden `redirect` field (the authorid to bounce back to) that FormData sends
+        # alongside the checked series - left in args it's iterated as if it were a
+        # SeriesID, fails to match any series, and is counted as a failed item
+        # (Issue #2850).
         self.check_permitted(lazylibrarian.perm_status)
         logger = logging.getLogger(__name__)
         db = database.DBConnection()
-        args.pop('book_table_length', None)
+        for arg in ['book_table_length', 'series_table_length', 'author_table_length', 'ignored', '_', 'action', 'which_status']:
+            args.pop(arg, None)
         passed = 0
         failed = 0
-        redirect = ''
+        if redirect is None:
+            redirect = ''
         if action:
             for seriesid in args:
                 if action in ["Wanted", "Active", "Skipped", "Ignored", "Paused"]:
@@ -2378,19 +2787,28 @@ class WebInterface:
                             set_readinglist('Abandoned', userid, abandoned)
 
                 elif action == 'Subscribe':
-                    cookie = cherrypy.request.cookie
-                    if cookie and 'll_uid' in list(cookie.keys()):
-                        userid = cookie['ll_uid'].value
-                        res = db.match("SELECT * from subscribers WHERE UserID=? and Type=? and WantID=?",
-                                       (userid, 'series', seriesid))
-                        if res:
-                            logger.debug(f"User {userid} is already subscribed to {seriesid}")
-                            failed += 1
+                    match = db.match('SELECT SeriesID from series WHERE SeriesID=?', (seriesid,))
+                    if not match:
+                        logger.debug(f"Subscribe failed, series {seriesid} not found")
+                        failed += 1
+                    else:
+                        cookie = cherrypy.request.cookie
+                        if cookie and 'll_uid' in list(cookie.keys()):
+                            userid = cookie['ll_uid'].value
+                            res = db.match("SELECT * from subscribers WHERE UserID=? and Type=? and WantID=?",
+                                           (userid, 'series', seriesid))
+                            if res:
+                                logger.debug(f"User {userid} is already subscribed to {seriesid}")
+                                failed += 1
+                            else:
+                                db.action('INSERT into subscribers (UserID, Type, WantID) VALUES (?, ?, ?)',
+                                          (userid, 'series', seriesid))
+                                logger.debug(f"Subscribe {userid} to series {seriesid}")
+                                passed += 1
                         else:
-                            db.action('INSERT into subscribers (UserID, Type, WantID) VALUES (?, ?, ?)',
-                                      (userid, 'series', seriesid))
-                            logger.debug(f"Subscribe {userid} to series {seriesid}")
-                            passed += 1
+                            logger.debug(f"No userid, cannot subscribe to {seriesid}")
+                            failed += 1
+
                 elif action == 'Unsubscribe':
                     cookie = cherrypy.request.cookie
                     if cookie and 'll_uid' in list(cookie.keys()):
@@ -2404,22 +2822,16 @@ class WebInterface:
                                       (userid, 'series', iss['bookid']))
                         logger.debug(f"Unsubscribe {userid} to series {seriesid}")
 
-            if "redirect" in args:
-                redirect = f"series?authorid={args['redirect']}"
+            if redirect:
+                redirect = f"series?authorid={redirect}"
             else:
                 redirect = "series"
         db.close()
 
         # Return JSON response instead of redirect
         total = passed + failed
-        summary = f"Mark Series '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Mark Series '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
         return {
             'success': True,
             'action': action,
@@ -2539,7 +2951,8 @@ class WebInterface:
         months = {}
         try:
             for cnt, itm in enumerate(lazylibrarian.MONTHNAMES[0]):
-                months[cnt] = ', '.join(itm)
+                # each language is in the table twice, for its long and short names, show it once
+                months[cnt] = ', '.join(itm[::2] if cnt == 0 else itm)
         except Exception as e:
             logger.error(f"Unable to load monthnames: {e}")
             logger.error(f"{lazylibrarian.MONTHNAMES}")
@@ -2555,6 +2968,10 @@ class WebInterface:
         except Exception as e:
             logger.error(f"Unable to load seasons: {e}")
             logger.error(f"{lazylibrarian.SEASONS}")
+        # the month name languages add their season names to these months, so they always get a field
+        for month in {month for names in SEASON_NAMES.values() for month in names.values()}:
+            seasons.setdefault(month, '')
+        seasons = dict(sorted(seasons.items()))
 
         namevars = name_vars('test')
         testvars = {}
@@ -2569,19 +2986,34 @@ class WebInterface:
             "namevars": testvars,
             "seasons": seasons,
             "months": months,
+            "month_languages": month_language_picker(lazylibrarian.MONTHNAMES[0] if lazylibrarian.MONTHNAMES else [],
+                                                     browser_languages()),
+            "book_languages": language_picker(CONFIG['IMP_PREFLANG'], browser_languages()),
+            "gb_countries": country_picker(CONFIG['GB_COUNTRY']),
+            "mag_languages": magazine_language_picker(CONFIG['PREF_MAGLANG']),
+            "author_date_formats": date_format_picker(CONFIG['AUTHOR_DATE_FORMAT'], DISPLAY_DATE_FORMATS,
+                                                      CONFIG['DATE_LANG']),
+            "date_formats": date_format_picker(CONFIG['DATE_FORMAT'], DISPLAY_DATE_FORMATS, CONFIG['DATE_LANG']),
+            "iss_formats": date_format_picker(CONFIG['ISS_FORMAT'], ISSUE_DATE_FORMATS, CONFIG['DATE_LANG']),
+            "anna_auto": anna_search_languages('', CONFIG['IMP_PREFLANG']),
+            "zlib_auto": zlib_search_languages('', CONFIG['IMP_PREFLANG']),
+            "anna_languages": search_language_picker(CONFIG['ANNA_SEARCH_LANG'], 'anna', CONFIG['IMP_PREFLANG'],
+                                                     browser_languages()),
+            "zlib_languages": search_language_picker(CONFIG['BOK_SEARCH_LANG'], 'zlib', CONFIG['IMP_PREFLANG'],
+                                                     browser_languages()),
             "updated": time.ctime(CONFIG.get_int('GIT_UPDATED'))
         }
         for itm in CONFIG.config.values():
             if isinstance(itm, ConfigBool):
                 itm.reset_read_count()  # Reset read counts as we use this to determine which settings have changed
-        return serve_template(templatename="config.html", title="Settings", config=config)
+        return serve_template(templatename="config.html", title=i18n.gettext("Settings"), config=config)
 
     @cherrypy.expose
     @require_auth()
     def config_update(self, **kwargs):
         """ Update config based on settings in the UI """
         logger = logging.getLogger(__name__)
-        self.check_permitted(lazylibrarian.perm_config)
+        self.check_permitted(lazylibrarian.perm_config, redirect_unauth=True)
         db = database.DBConnection()
         adminmsg = ''
         if 'user_accounts' in kwargs and kwargs['user_accounts']:
@@ -2590,15 +3022,15 @@ class WebInterface:
             if 'admin_email' in kwargs and kwargs['admin_email']:
                 email = kwargs['admin_email']
             else:
-                adminmsg += 'Please set a contact email so users can make requests<br>'
+                adminmsg += i18n.gettext('Please set a contact email so users can make requests') + '<br>'
 
             if email and not is_valid_email(email):
-                adminmsg += 'Contact email looks invalid, please check<br>'
+                adminmsg += i18n.gettext('Contact email looks invalid, please check') + '<br>'
 
             admin = db.match("SELECT password from users where name='admin'")
             if admin and admin['password'] == md5_utf8('admin'):
-                adminmsg += "The default admin user is \"admin\" and password is \"admin\"<br>"
-                adminmsg += "This is insecure, please change it on Config -> User Admin<br>"
+                adminmsg += i18n.gettext('The default admin user is "admin" and password is "admin"') + '<br>'
+                adminmsg += i18n.gettext("This is insecure, please change it on Config -> User Admin") + '<br>'
 
         # store any genre changes
         genre_changes = ''
@@ -2667,22 +3099,15 @@ class WebInterface:
         x = range(13)
         for month_num in x:
             key = f"month_{month_num}"
-            month_names = kwargs[key]
-            new_months.append(get_list(month_names))
+            month_names = kwargs.get(key, '')
+            if month_names:
+                new_months.append(get_list(month_names, ','))
+        # the Languages row has each language once, the table has it for the long and the short names
+        if len(new_months) > 1 and len(new_months[0]) * 2 == len(new_months[1]):
+            new_months[0] = [lang for lang in new_months[0] for _ in range(2)]
         if new_months != lazylibrarian.MONTHNAMES[0]:
             logger.debug("MONTHNAMES has changed")
-            # validate the table looks correct, same number of entries per row
-            valid = True
-            length = len(new_months[0])  # number of language entries
-            if length % 2:  # must be even, short and long for each language
-                valid = False
-            if valid:
-                for itm in new_months:
-                    if len(itm) != length:
-                        valid = False
-                        break
-
-            if not valid:
+            if not validate_monthtable(new_months):
                 logger.debug("New MONTHNAMES is not valid, ignoring")
             else:
                 json_file = os.path.join(DIRS.DATADIR, 'monthnames.json')
@@ -2706,7 +3131,8 @@ class WebInterface:
                 season_names = kwargs[key]
                 season_value = check_int(key.split('_')[1], 0)
                 for itm in get_list(season_names):
-                    new_seasons[itm] = season_value
+                    # month2num matches season names without accents and lowercase
+                    new_seasons[unaccented(itm).lower()] = season_value
         if new_seasons != lazylibrarian.SEASONS:
             logger.debug("SEASONS has changed")
             lazylibrarian.SEASONS = new_seasons.copy()
@@ -2720,7 +3146,7 @@ class WebInterface:
                 value = kwargs[key.lower()]
                 # validate entries here...
                 if value:
-                    if key.lower() in ['bok_host']:
+                    if key.lower() in ['bok_host', 'fallback_proxy', 'proxy_host']:
                         tokens = ['<', '>', '"', "'", '+', '(', ')']
                     elif (key.lower() in ['user_agent', 'fmt_series'] or key.lower().endswith('_folder')
                           or key.lower().endswith('_file')):
@@ -2782,6 +3208,14 @@ class WebInterface:
                 new_datetype = kwargs.get(f'datetype[{title}]')
                 if new_datetype != datetype:
                     new_value_dict['DateType'] = new_datetype
+                    # if changed from issuenum to date or vice-versa,
+                    # check was a date (contains '-') and now expect IssueNum
+                    # check was issuenum (all digit) and now expect date
+                    # reset latest-issue to force scanning for new style issue names
+                    if (('I' in new_datetype and '-' in mag['IssueDate']) or
+                        (new_datetype and 'I' not in new_datetype and mag['IssueDate'] and mag['IssueDate'].isdigit())):
+                            new_value_dict['IssueDate'] = ''
+                            logger.debug(f"Reset IssueDate for {mag['Title']} as datestyle changed to {new_datetype}")
                 new_coverpage = check_int(kwargs.get(f"coverpage[{title}]"), 1)
                 if new_coverpage != coverpage:
                     new_value_dict['CoverPage'] = new_coverpage
@@ -2827,7 +3261,7 @@ class WebInterface:
 
         if adminmsg:
             return serve_template(templatename="response.html", prefix="",
-                                  title="User Accounts", message=adminmsg, timer=0)
+                                  title=i18n.gettext("User Accounts"), message=adminmsg, timer=0)
 
         raise cherrypy.HTTPRedirect("config")
 
@@ -2836,7 +3270,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def search(self, searchfor, btnsearch=None):
-        self.check_permitted(lazylibrarian.perm_search)
+        self.check_permitted(lazylibrarian.perm_search, redirect_unauth=True)
         logger = logging.getLogger('special.searching')
         logger.debug(f"Search {btnsearch}: {searchfor}")
         searchresults = None
@@ -2856,7 +3290,14 @@ class WebInterface:
             return None
         authid_key = 'AuthorID'
         bookid_key = 'BookID'
-        for itm in api_sources:
+
+        apisources = []
+        for i in lazylibrarian.INFOSOURCES.keys():
+            # source, authorid, bookid
+            infosource = lazylibrarian.INFOSOURCES[i]
+            apisources.append([infosource, infosource['author_key'], infosource['book_key']])
+
+        for itm in apisources:
             if CONFIG['BOOK_API'] == itm[0]:
                 authid_key = itm[1]
                 bookid_key = itm[2]
@@ -2904,7 +3345,7 @@ class WebInterface:
         sortedlist = sorted(searchresults, key=lambda x: (x['highest_fuzz'], x['bookrate_count']),
                             reverse=True)
         lazylibrarian.SEARCHING = 0
-        return serve_template(templatename="searchresults.html", title='Search Results: "' + searchfor + '"',
+        return serve_template(templatename="searchresults.html", title=i18n.gettext('Search Results: "%(query)s"') % {'query': searchfor},
                               searchresults=sortedlist, authorlist=authorlist, loadlist=loadlist,
                               booklist=booklist, booksearch=booksearch)
 
@@ -2916,7 +3357,7 @@ class WebInterface:
     def mark_authors_ajax(self, action=None, **args):
         self.check_permitted(lazylibrarian.perm_status)
         logger = logging.getLogger(__name__)
-        for arg in ['author_table_length', 'ignored']:
+        for arg in ['author_table_length', 'series_table_length', 'book_table_length', 'ignored', '_', 'action', 'which_status']:
             args.pop(arg, None)
         passed = 0
         failed = 0
@@ -2932,26 +3373,46 @@ class WebInterface:
                         db.upsert("authors", {'Status': action}, {'AuthorID': authorid})
                         logger.info(f'Status set to "{action}" for "{check["AuthorName"]}"')
                         passed += 1
-                    elif action == "Delete":
-                        logger.info(f"Deleting author and media files: {check['AuthorName']}")
-                        books = db.select("SELECT BookFile,AudioFile from books WHERE AuthorID=?", (authorid,))
-                        for book in books:
-                            for location in [book['BookFile'], book['AudioFile']]:
-                                if location and path_exists(location):
-                                    try:
-                                        foldername = os.path.dirname(location)
-                                        logger.debug(f"Deleting folder: {foldername}")
-                                        rmtree(foldername, ignore_errors=True)
-                                    except Exception as e:
-                                        logger.warning(f'rmtree failed on {location}, {type(e).__name__} {str(e)}')
-                        try:
-                            delete_empty_folders(CONFIG['EBOOK_DIR'])
-                            delete_empty_folders(CONFIG['AUDIO_DIR'])
-                        except Exception as e:
-                            logger.error(f"Error deleting: {e}")
-
-                        db.action('DELETE from authors WHERE AuthorID=?', (authorid,))
-                        passed += 1
+                    elif action in ("Delete", "Delete+Ignore"):
+                        failure_list = []
+                        logger.info(f"{action} author and media files for {check['AuthorName']}")
+                        cmd = "SELECT BookFile,AudioFile,BookID from books WHERE AuthorID=? and "
+                        cmd += "((BookFile IS NOT NULL AND BookFile != '') or (AudioFile IS NOT NULL AND AudioFile != ''))"
+                        books = db.select(cmd, (authorid,))
+                        logger.debug(f"Located {len(books)} books for author {authorid}")
+                        if books:
+                            for book in books:
+                                for location in [book['BookFile'], book['AudioFile']]:
+                                    if location and path_exists(location):
+                                        try:
+                                            foldername = os.path.dirname(location)
+                                            logger.debug(f"Deleting folder: {foldername}")
+                                            rmtree(foldername)
+                                        except Exception as e:
+                                            failure_list.append(f'rmtree failed on {location}, {type(e).__name__} {str(e)}')
+                                for table in ['wanted', 'readinglists']:
+                                    db.action(f"DELETE from {table} WHERE BookID=?", (book['BookID'],))
+                            try:
+                                logger.debug("Deleting empty folders")
+                                delete_empty_folders(CONFIG['EBOOK_DIR'])
+                                delete_empty_folders(CONFIG['AUDIO_DIR'])
+                            except Exception as e:
+                                failure_list.append(f"Error deleting: {e}")
+                        if action == "Delete+Ignore":
+                            db.action("UPDATE books SET BookFile='', AudioFile='', Status='Ignored', \
+                                      AudioStatus='Ignored', Scanresult='User Delete+Ignore' WHERE AuthorID=?",
+                                      (authorid,))
+                            update_totals(authorid)
+                            db.upsert("authors", {'Status': 'Ignored'}, {'AuthorID': authorid})
+                            logger.info(f"Author {check['AuthorName']} set to Ignored")
+                        else:
+                            db.action('DELETE from authors WHERE AuthorID=?', (authorid,))
+                            logger.info(f"Author {check['AuthorName']} deleted")
+                        if failure_list:
+                            logger.warning(f"Failures while {action} {check['AuthorName']}: {failure_list}")
+                            failed += 1
+                        else:
+                            passed += 1
                     elif action == "Remove":
                         logger.info(f"Removing author: {check['AuthorName']}")
                         db.action('DELETE from authors WHERE AuthorID=?', (authorid,))
@@ -2983,18 +3444,13 @@ class WebInterface:
                             logger.debug(f"Unsubscribe {userid} author {authorid}")
                             passed += 1
             finally:
+                logger.debug(f"Completed {action} for {len(args)}")
                 db.close()
 
         # Return JSON response instead of redirect
         total = passed + failed
-        summary = f"Mark Authors '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Mark Authors '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
         return {
             'success': True,
             'action': action,
@@ -3008,7 +3464,7 @@ class WebInterface:
     @require_auth()
     def author_page(self, authorid, book_lang=None, library='eBook', ignored=False, **args):
         global lastauthor
-        self.check_permitted(lazylibrarian.perm_ebook + lazylibrarian.perm_audio)
+        self.check_permitted(lazylibrarian.perm_ebook + lazylibrarian.perm_audio, redirect_unauth=True)
         db = database.DBConnection()
         user = 0
         email = ''
@@ -3032,6 +3488,7 @@ class WebInterface:
                 "SELECT DISTINCT BookLang from books WHERE AuthorID=? AND Status !='Ignored'",
                 (authorid,))
         db.close()
+        languages = language_filter_options(languages)
 
         types = []
         if CONFIG.get_bool('EBOOK_TAB'):
@@ -3065,7 +3522,155 @@ class WebInterface:
             templatename="author.html", title=authorname, author=author,
             languages=languages, booklang=book_lang, types=types, library=library, ignored=ignored,
             showseries=CONFIG.get_int('SERIES_TAB'), firstpage=firstpage, user=user, email=email,
-            book_filter=args.get('book_filter', ''))
+            book_filter=args.get('book_filter', ''), gb_search_link=self.gb_search_link(authorname),
+            amazon_search_link=self.amazon_search_link(authorname))
+
+    # GoodReads prefixes its 'about' field with an editorial note like:
+    # "<i>Librarian Note: There is more than one author in the Goodreads
+    # database with this name.</i><br /><br />actual bio..." when applicable
+    # (duplicate-author disambiguation, merged records, etc.) - GR's own
+    # convention, not a separate structured API field. get_all_author_details()
+    # stores 'about' verbatim, so this is detectable straight from what's
+    # already in the authors table, no extra fetch or schema change needed.
+    LIBRARIAN_NOTE_RE = re.compile(
+        r'^\s*<i>\s*Librarian Note:\s*(?P<note>.*?)\s*</i>\s*(?:<br\s*/?>\s*)*', re.IGNORECASE | re.DOTALL)
+
+    @staticmethod
+    def gb_search_link(authorname):
+        """ GoogleBooks has no author-entity/ID of its own (see INFOSOURCES's author_link) -
+        volumes only, not authors - so unlike gr_link/ol_link/hc_link/ran_link this can't
+        be a verified per-author page link, just a name-based search results link using
+        Google Books' inauthor: search operator. Not stored - built fresh each render so
+        it always reflects the current AuthorName. """
+        if not CONFIG['GB_API'] or not authorname:
+            return ''
+        return f'https://books.google.com/books?q=inauthor:%22{quote(authorname)}%22'
+
+    @staticmethod
+    def amazon_search_link(authorname):
+        """ Amazon has no free author-lookup API (PA-API needs an Associates account with
+        real sales volume) and scraping product pages for the byline's own p_27 author-facet
+        value would carry the same ban risk already ruled out elsewhere. This is the
+        unauthenticated version of that same p_27 facet search Amazon's own byline links
+        use - built from the plain author name, no fetch/scrape involved, same
+        unverified-search-link status as gb_search_link. Useful for self-published authors
+        (see ASIN work) who often have nothing else to search by. """
+        if not authorname:
+            return ''
+        # The whole "p_27:Name" refinement value needs encoding as one unit (colon -> %3A)
+        # to match what Amazon's own byline search links actually send - a bare colon
+        # after p_27 with only the name percent-encoded silently fails to filter by author.
+        return f'https://www.amazon.com/s?i=stripbooks&rh={quote(f"p_27:{authorname}")}'
+
+    @cherrypy.expose
+    @require_auth()
+    def author_detail(self, authorid):
+        """ Read-only "master" detail view for an author, linked from the author
+        name on author_page. Surfaces fields that exist in the authors table but
+        have never had anywhere to display on the read-only side (AKA, About,
+        DateAdded, Updated, ...) - see author_page for the book-listing view. """
+        self.check_permitted(lazylibrarian.perm_ebook + lazylibrarian.perm_audio, redirect_unauth=True)
+        db = database.DBConnection()
+        user = 0
+        email = ''
+        cookie = cherrypy.request.cookie
+        if cookie and 'll_uid' in list(cookie.keys()):
+            user = cookie['ll_uid'].value
+            res = db.match('SELECT SendTo from users where UserID=?', (user,))
+            if res and res['SendTo']:
+                email = res['SendTo']
+        author = dict(db.match("SELECT * from authors WHERE AuthorID=?", (authorid,)))
+        if not author:
+            db.close()
+            raise cherrypy.HTTPRedirect("authors")
+        authorname = author['AuthorName']
+        if not authorname:  # still loading?
+            db.close()
+            raise cherrypy.HTTPRedirect("authors")
+
+        # Per-source book counts + cross-source overlap for the Sources table below.
+        # Uses every source's book_key column for overlap (a book can carry a gb_id/
+        # dnb_id even though those aren't author-linkable sources), counted in Python
+        # rather than one SQL query per source since per-author book counts are small.
+        # Column list is derived from INFOSOURCES (single source of truth, see !1850
+        # review) instead of a hand-duplicated tuple. DNB/BN are excluded from the *count*
+        # loop below (but stay in book_source_cols for overlap) because they have no
+        # dedicated row in author_detail.html - unlike GoogleBooks, which also has no
+        # author entity of its own but does get a row, so it stays in both.
+        book_source_cols = tuple(src['book_key'] for src in lazylibrarian.INFOSOURCES.values()
+                                 if src.get('book_key')) + ('ASIN',)
+        book_rows = db.select(
+            f"SELECT {','.join(book_source_cols)} from books WHERE AuthorID=?", (authorid,))
+        source_book_counts = {}
+        for col in (c for c in book_source_cols if c not in ('dnb_id', 'bn_id')):
+            count = 0
+            overlap = 0
+            for row in book_rows:
+                if row[col]:
+                    count += 1
+                    if any(row[other] for other in book_source_cols if other != col):
+                        overlap += 1
+            source_book_counts[col] = (count, overlap)
+
+        ebook_status_counts = {row['Status'] or 'None': row['cnt'] for row in db.select(
+            "SELECT Status, COUNT(*) as cnt FROM books WHERE AuthorID=? GROUP BY Status", (authorid,))}
+        audio_status_counts = {row['AudioStatus'] or 'None': row['cnt'] for row in db.select(
+            "SELECT AudioStatus, COUNT(*) as cnt FROM books WHERE AuthorID=? GROUP BY AudioStatus", (authorid,))}
+        db.close()
+
+        def parse_author_date(datestr):
+            if not datestr:
+                return None
+            parts = datestr.split('-')
+            try:
+                year = int(parts[0])
+                month = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 1
+                day = int(parts[2]) if len(parts) > 2 and parts[2].isdigit() else 1
+                return datetime.date(year, month, day)
+            except (ValueError, IndexError):
+                return None
+
+        born_date = parse_author_date(author.get('AuthorBorn'))
+        death_date = parse_author_date(author.get('AuthorDeath'))
+        author_age = None
+        if born_date:
+            end_date = death_date or datetime.date.today()
+            author_age = end_date.year - born_date.year - ((end_date.month, end_date.day)
+                                                            < (born_date.month, born_date.day))
+
+        author['AuthorBorn'] = date_format(author['AuthorBorn'], CONFIG['AUTHOR_DATE_FORMAT'],
+                                           context=authorname, datelang=CONFIG['DATE_LANG'])
+        author['AuthorDeath'] = date_format(author['AuthorDeath'], CONFIG['AUTHOR_DATE_FORMAT'],
+                                            context=authorname, datelang=CONFIG['DATE_LANG'])
+        if author.get('Updated'):
+            author['Updated'] = datetime.datetime.fromtimestamp(int(author['Updated'])).strftime('%Y-%m-%d %H:%M')
+
+        librarian_note = ''
+        if author.get('About'):
+            match = self.LIBRARIAN_NOTE_RE.match(author['About'])
+            if match:
+                librarian_note = match.group('note')
+                author['About'] = author['About'][match.end():]
+
+        # Per-source About text - a linear list of what each linked source itself
+        # says, not just the single merged/preferred version above.
+        about_by_source = []
+        for name, col in (('GoodReads', 'gr_about'), ('OpenLibrary', 'ol_about'),
+                          ('HardCover', 'hc_about'), ('RanobeDB', 'ran_about'), ('DBK', 'dbk_about')):
+            text = author.get(col)
+            if text:
+                note_match = self.LIBRARIAN_NOTE_RE.match(text)
+                if note_match:
+                    text = text[note_match.end():]
+                about_by_source.append((name, text))
+
+        return serve_template(templatename="author_detail.html", title=authorname, author=author,
+                              showseries=CONFIG.get_int('SERIES_TAB'), user=user, email=email,
+                              librarian_note=librarian_note, gb_search_link=self.gb_search_link(authorname),
+                              author_age=author_age, ebook_status_counts=ebook_status_counts,
+                              audio_status_counts=audio_status_counts, about_by_source=about_by_source,
+                              source_book_counts=source_book_counts,
+                              amazon_search_link=self.amazon_search_link(authorname))
 
     @cherrypy.expose
     @require_auth()
@@ -3144,6 +3749,56 @@ class WebInterface:
             raise cherrypy.HTTPRedirect(f"author_page?authorid={authorid}")
         logger.debug(f'refresh_author Invalid authorid [{authorid}]')
         raise cherrypy.HTTPError(404, f"AuthorID {authorid} not found")
+
+    @staticmethod
+    def book_refresh_source_priority():
+        """ Priority order for picking which single source to refresh a book from -
+        author-linkable sources (INFOSOURCES's author_key, richer/more curated data)
+        before book-search-only ones (GoogleBooks/DNB/BN), each group in INFOSOURCES'
+        own order. Every source implements the same add_bookid_to_db(bookid,
+        bookstatus, audiostatus, reason) interface (see bookdict.py's docstring), so
+        this can dispatch generically rather than needing per-source logic.
+        Derived from lazylibrarian.INFOSOURCES at call time, not class-definition
+        time - webServe is imported before startup.init_build_lists() populates
+        INFOSOURCES. """
+        author_linkable = [(name, src['book_key']) for name, src in lazylibrarian.INFOSOURCES.items()
+                           if src['author_key'] != 'authorid']
+        book_only = [(name, src['book_key']) for name, src in lazylibrarian.INFOSOURCES.items()
+                    if src['author_key'] == 'authorid']
+        return author_linkable + book_only
+
+    @cherrypy.expose
+    @require_auth()
+    def refresh_book(self, bookid):
+        self.check_permitted(lazylibrarian.perm_force)
+        logger = logging.getLogger(__name__)
+        db = database.DBConnection()
+        book = db.match("SELECT BookName,Manual,gr_id,ol_id,hc_id,ran_id,dnb_id,bn_id,dbk_id,gb_id FROM books WHERE BookID=?",
+                        (bookid,))
+        db.close()
+        if not book:
+            raise cherrypy.HTTPError(404, f"BookID {bookid} not found")
+        locked = book['Manual']
+        if locked and str(locked).isdigit():
+            locked = bool(int(locked))
+        if locked:
+            logger.debug(f"Not refreshing {bookid} ({book['BookName']}) - manually locked")
+            raise cherrypy.HTTPRedirect(f"book_detail?bookid={bookid}")
+        # Deliberately only ever calls ONE source, not all of a book's linked sources -
+        # unlike get_all_author_details(), there's no merge-multiple-sources logic at
+        # the book level yet, so calling a second source after the first would just
+        # overwrite the first source's fields wholesale rather than filling gaps.
+        for source_name, id_col in self.book_refresh_source_priority():
+            source_id = book[id_col]
+            if source_id:
+                api = lazylibrarian.INFOSOURCES[source_name]['api']()
+                threading.Thread(target=api.add_bookid_to_db, name=f"REFRESHBOOK_{bookid}",
+                                 kwargs={'bookid': source_id,
+                                         'reason': f"WebServer refresh_book {bookid} via {source_name}"}).start()
+                break
+        else:
+            logger.debug(f"Not refreshing {bookid} ({book['BookName']}) - no linked source id")
+        raise cherrypy.HTTPRedirect(f"book_detail?bookid={bookid}")
 
     @cherrypy.expose
     @require_auth()
@@ -3239,7 +3894,9 @@ class WebInterface:
                 matchname = unaccented(matchname).lower()
                 for itm in listdir(libdir):
                     match = fuzz.ratio(format_author_name(unaccented(itm),
-                                                          get_list(CONFIG.get_csv('NAME_POSTFIX'))).lower(), matchname)
+                                                            get_list(CONFIG.get_csv('NAME_POSTFIX'))),
+                                                            matchname,
+                                                            processor=default_process)
                     if match >= CONFIG.get_int('NAME_RATIO'):
                         authordir = os.path.join(libdir, itm)
                         fuzzlogger.debug(f"Fuzzy match folder {round(match, 2)}% {itm} for {author_name}")
@@ -3391,7 +4048,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def booksearch(self, author=None, title=None, bookid=None, action=''):
-        self.check_permitted(lazylibrarian.perm_search)
+        self.check_permitted(lazylibrarian.perm_search, redirect_unauth=True)
         self.label_thread('BOOKSEARCH')
         if '_title' in action:
             searchterm = title
@@ -3401,9 +4058,9 @@ class WebInterface:
             searchterm = f'{author} {title}'
             searchterm = searchterm.strip()
 
-        if action == 'e_full':
+        if action.startswith('e_'):
             cat = 'book'
-        elif action == 'a_full':
+        elif action.startswith('a_'):
             cat = 'audio'
         elif action:
             cat = 'general'
@@ -3414,8 +4071,8 @@ class WebInterface:
         library = 'eBook'
         if action.startswith('a_'):
             library = 'AudioBook'
-        return serve_template(templatename="manualsearch.html", title=library + ' Search Results: "' +
-                              searchterm + '"', bookid=bookid, results=results, library=library)
+        return serve_template(templatename="manualsearch.html", title=i18n.gettext('%(library)s Search Results: "%(query)s"') % {
+                                  'library': i18n.status_label(library), 'query': searchterm}, bookid=bookid, results=results, library=library)
 
     @cherrypy.expose
     @require_auth()
@@ -3449,7 +4106,7 @@ class WebInterface:
             db.upsert("wanted", new_value_dict, control_value_dict)
             author_id = bookdata["AuthorID"]
             dl_title = bookdata["BookName"]
-            if provider in ['soulseek', 'annas']:
+            if provider in ['soulseek', 'annas', 'webshare']:
                 dl_title = title
             if mode == 'direct':
                 snatch, res = direct_dl_method(bookid, dl_title, url, library, provider)
@@ -3469,9 +4126,8 @@ class WebInterface:
             if snatch:
                 logger.info(f'Requested {library} {bookdata["BookName"]} from {provider}')
                 custom_notify_snatch(f"{bookid} {library}")
-                notify_snatch(
-                    f"{unaccented(bookdata['BookName'], only_ascii=False)} from "
-                    f"{CONFIG.disp_name(provider)} at {now()}")
+                notify_snatch(notify_text(unaccented(bookdata['BookName'], only_ascii=False),
+                                          CONFIG.disp_name(provider), library))
                 schedule_job(action=SchedulerCommand.START, target='PostProcessor')
             else:
                 db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?", (res, url))
@@ -3484,7 +4140,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def audio(self, booklang=None, book_filter=''):
-        self.check_permitted(lazylibrarian.perm_audio)
+        self.check_permitted(lazylibrarian.perm_audio, redirect_unauth=True)
         user = 0
         email = ''
         db = database.DBConnection()
@@ -3497,17 +4153,17 @@ class WebInterface:
                     email = res['SendTo']
             if not booklang or booklang == 'None':
                 booklang = None
-            languages = db.select(
-                "SELECT DISTINCT BookLang from books WHERE AUDIOSTATUS !='Skipped' AND AUDIOSTATUS !='Ignored'")
+            languages = language_filter_options(db.select(
+                "SELECT DISTINCT BookLang from books WHERE AUDIOSTATUS !='Skipped' AND AUDIOSTATUS !='Ignored'"))
         finally:
             db.close()
-        return serve_template(templatename="audio.html", title='AudioBooks', books=[],
+        return serve_template(templatename="audio.html", title=i18n.gettext('AudioBooks'), books=[],
                               languages=languages, booklang=booklang, user=user, email=email, book_filter=book_filter)
 
     @cherrypy.expose
     @require_auth()
     def books(self, booklang=None, book_filter=''):
-        self.check_permitted(lazylibrarian.perm_ebook)
+        self.check_permitted(lazylibrarian.perm_ebook, redirect_unauth=True)
         user = 0
         email = ''
         db = database.DBConnection()
@@ -3520,10 +4176,11 @@ class WebInterface:
                     email = res['SendTo']
             if not booklang or booklang == 'None':
                 booklang = None
-            languages = db.select("SELECT DISTINCT BookLang from books WHERE STATUS !='Skipped' AND STATUS !='Ignored'")
+            languages = language_filter_options(
+                db.select("SELECT DISTINCT BookLang from books WHERE STATUS !='Skipped' AND STATUS !='Ignored'"))
         finally:
             db.close()
-        return serve_template(templatename="books.html", title='eBooks', books=[],
+        return serve_template(templatename="books.html", title=i18n.gettext('eBooks'), books=[],
                               languages=languages, booklang=booklang, user=user, email=email, book_filter=book_filter)
 
     @cherrypy.expose
@@ -3608,7 +4265,8 @@ class WebInterface:
                 elif kwargs['whichStatus'] == 'Abandoned':
                     cmd += " and books.bookID in (" + ", ".join(f"'{w}'" for w in abandoned) + ")"
                 elif kwargs['whichStatus'] != 'All':
-                    cmd += " and " + status_type + "='" + kwargs['whichStatus'] + "'"
+                    cmd += f" and {status_type}=?"
+                    args.append(kwargs['whichStatus'])
 
             elif kwargs['source'] == "Books":
                 cmd += " and books.STATUS !='Skipped' AND books.STATUS !='Ignored'"
@@ -3624,9 +4282,10 @@ class WebInterface:
 
             if (kwargs['source'] in ["Books", "Author", "Audio"] and 'booklang' in kwargs and
                     kwargs['booklang'] != '' and kwargs['booklang'] != 'None'):
-                # for these we need to check and filter on BookLang if set
-                cmd += " and BOOKLANG=?"
-                args.append(kwargs['booklang'])
+                # for these we need to check and filter on BookLang if set, any code of the language
+                condition, lang_args = language_filter_sql(kwargs['booklang'], 'books.BookLang')
+                cmd += f" and {condition}"
+                args.extend(lang_args)
 
             if kwargs['source'] in ["Books", "Audio"] and userid and (userprefs & lazylibrarian.pref_myfeeds or
                                                                       userprefs & lazylibrarian.pref_myafeeds):
@@ -3661,14 +4320,18 @@ class WebInterface:
                 serversidelogger.debug(f"User booklist length {len(mybooks)}")
                 cmd += " and books.bookID in (" + ", ".join(f"'{w}'" for w in mybooks) + ")"
 
-            if kwargs['source'] in ["Author", "Books", "Audio"] and lazylibrarian.PRIMARY_AUTHORS:
+            if kwargs['source'] == "Author" and lazylibrarian.PRIMARY_AUTHORS:
                 # only show book for primary author
                 cmd += " and books.bookid in (SELECT bookid FROM bookauthors where bookauthors.authorid=authors.authorid "
                 cmd += f"and books.bookid=bookauthors.bookid and role={ROLE['PRIMARY']})"
+            elif kwargs['source'] in ["Books", "Audio", "Manage"] and lazylibrarian.PRIMARY_AUTHORS:
+                # one row per book, co-writers share the primary role so prefer the book's own author
+                primary = f"FROM bookauthors ba WHERE ba.bookid=books.bookid and ba.role={ROLE['PRIMARY']}"
+                cmd += (f" and bookauthors.authorid = COALESCE((SELECT ba.authorid {primary} "
+                        f"and ba.authorid=books.authorid), (SELECT ba.authorid {primary} ORDER BY ba.rowid LIMIT 1))")
 
-            cmd += (" GROUP BY bookimg, authorname, bookname, bookrate, bookdate, books.status, books.bookid, "
-                    "booklang, booksub, booklink, workpage, bookauthors.authorid, booklibrary, audiostatus, "
-                    "audiolibrary, bookgenre, bookadded, scanresult, lt_workid")
+            # authorid as well, so the series join is not repeated once per author
+            cmd += " GROUP BY books.bookid, bookauthors.authorid"
 
             serversidelogger.debug(f"get_books {cmd}: {str(args)}")
             rowlist = db.select(cmd, tuple(args))
@@ -3699,6 +4362,12 @@ class WebInterface:
                                          'ScanResult']
                         if library == 'AudioBook':
                             search_fields[3] = 'AudioStatus'
+                        # the modern interface can search just the title, author or series
+                        field_sets = {'title': ['BookName', 'BookSub'], 'author': ['AuthorName'],
+                                      'series': ['series', 'SeriesDisplay']}
+                        field_sets['all'] = field_sets['title'] + field_sets['author'] + field_sets['series']
+                        if kwargs.get('searchfield') in field_sets:
+                            search_fields = field_sets[kwargs['searchfield']]
 
                         filtered = []
                         for row in rowlist:
@@ -3708,7 +4377,9 @@ class WebInterface:
                                     filtered.append(list(row))
                                     break
                     else:
-                        filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
+                        q = fold(sSearch)
+                        filtered = [x for x in rows if q in fold(x)]
+                        # filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = rows
 
@@ -3742,6 +4413,9 @@ class WebInterface:
                                       reverse=sSortDir_0 == "desc")
                 elif sortcolumn in [2]:  # title
                     filtered.sort(key=lambda y: y[sortcolumn].lower() if y[sortcolumn] is not None else '',
+                                  reverse=sSortDir_0 == "desc")
+                elif sortcolumn in [3]:  # stars
+                    filtered.sort(key=lambda y: float(y[sortcolumn]) if y[sortcolumn] is not None else 0.0,
                                   reverse=sSortDir_0 == "desc")
                 else:
                     filtered.sort(key=lambda y: y[sortcolumn] if y[sortcolumn] is not None else '',
@@ -3777,7 +4451,7 @@ class WebInterface:
                         row[20] = ''
 
                     editpage = '<a href="edit_book?bookid=' + row[6] + '&library=' + library + \
-                        '"><small><i>Manual</i></a>'
+                        '"><small><i>' + i18n.gettext('Manual') + '</i></a>'
 
                     if not row[9]:
                         row[9] = ''
@@ -3789,6 +4463,8 @@ class WebInterface:
                         sitelink = f'<a href="{row[9]}"><small><i>GoodReads</i></small></a>'
                     elif 'hardcover' in row[9]:
                         sitelink = f'<a href="{row[9]}"><small><i>HardCover</i></small></a>'
+                    elif 'databazeknih' in row[9]:
+                        sitelink = f'<a href="{row[9]}"><small><i>Databáze knih</i></small></a>'
                     elif 'books.google.com' in row[9] or 'market.android.com' in row[9]:
                         sitelink = f'<a href="{row[9]}"><small><i>GoogleBooks</i></small></a>'
 
@@ -3834,7 +4510,7 @@ class WebInterface:
                     else:
                         flag = ''
 
-                    if status_type == 'audiostatus' and kwargs['source'] == 'Audio':
+                    if status_type == 'audiostatus' and kwargs['source'] in ('Audio', 'Manage'):
                         row[5] = row[14]
                         row[13] = row[15]
 
@@ -4082,7 +4758,8 @@ class WebInterface:
         self.label_thread('REQUEST_BOOK')
         logger = logging.getLogger(__name__)
         prefix = ''
-        title = 'Request Error'
+        sent = False
+        title = i18n.gettext('Request Error')
         cookie = cherrypy.request.cookie
         if cookie and 'll_uid' in list(cookie.keys()):
             db = database.DBConnection()
@@ -4114,28 +4791,29 @@ class WebInterface:
                 if types and 'library' in kwargs and kwargs['library'] in types:
                     booktype = kwargs['library']
 
-                title = f"{booktype}: {bookdata['BookName']}"
+                title = f"{i18n.status_label(booktype)}: {bookdata['BookName']}"
 
                 if 'Email' in kwargs and kwargs['Email']:
                     result = notifiers.email_notifier.notify_message('Request from LazyLibrarian User',
                                                                      msg, CONFIG['ADMIN_EMAIL'])
                     if result:
-                        prefix = "Message sent"
-                        msg = "You will receive a reply by email"
+                        sent = True
+                        prefix = i18n.gettext("Message sent")
+                        msg = i18n.gettext("You will receive a reply by email")
                     else:
                         logger.error(f"Unable to send message to: {msg}")
-                        prefix = "Message not sent"
-                        msg = "Please try again later"
+                        prefix = i18n.gettext("Message not sent")
+                        msg = i18n.gettext("Please try again later")
                 else:
-                    prefix = "Unable to send message"
-                    msg = "No email address supplied"
+                    prefix = i18n.gettext("Unable to send message")
+                    msg = i18n.gettext("No email address supplied")
             else:
-                msg = "Unknown user"
+                msg = i18n.gettext("Unknown user")
             db.close()
         else:
-            msg = "Nobody logged in?"
+            msg = i18n.gettext("Nobody logged in?")
 
-        if prefix == "Message sent":
+        if sent:
             timer = 5
         else:
             timer = 0
@@ -4215,12 +4893,23 @@ class WebInterface:
                 res = db.match('SELECT BookName,BookImg from books WHERE BookID=?', (itemid,))
                 if res:
                     logger.debug(f"Itemid {itemid} matches ebook")
+                    bookimg = res['BookImg']
+                    if bookimg and bookimg.startswith('http'):
+                        # external URL (set by e.g. googlebooks import) - cache it,
+                        # point the row at the cached file and serve that, instead
+                        # of silently falling through to the app logo
+                        link, ok, _ = cache_img(ImageType.BOOK, itemid, bookimg)
+                        if ok:
+                            db.action("UPDATE books SET BookImg=? WHERE BookID=?",
+                                      (link, itemid))
+                            logger.info(f"Cached external cover for {itemid} from {bookimg}")
+                            bookimg = link
                     if size:
-                        target = createthumb(os.path.join(DIRS.DATADIR, res['BookImg']), size, False)
+                        target = createthumb(os.path.join(DIRS.DATADIR, bookimg), size, False)
                     if not target:
-                        target = os.path.join(DIRS.DATADIR, res['BookImg'])
+                        target = os.path.join(DIRS.DATADIR, bookimg)
                     if path_isfile(target):
-                        return self.send_file(target, name=res['BookName'] + splitext(res['BookImg'])[1])
+                        return self.send_file(target, name=res['BookName'] + splitext(bookimg)[1], perm_check=False)
                 else:
                     res = db.match('SELECT Title,Cover from issues WHERE IssueID=?', (itemid,))
                     if res:
@@ -4230,7 +4919,7 @@ class WebInterface:
                         if not target:
                             target = os.path.join(DIRS.DATADIR, res['Cover'])
                         if path_isfile(target):
-                            return self.send_file(target, name=res['Title'] + splitext(res['Cover'])[1])
+                            return self.send_file(target, name=res['Title'] + splitext(res['Cover'])[1], perm_check=False)
                     else:
                         try:
                             comicid, issueid = itemid.split('_')
@@ -4246,12 +4935,12 @@ class WebInterface:
                             if not target:
                                 target = os.path.join(DIRS.DATADIR, res['Cover'])
                             if path_isfile(target):
-                                return self.send_file(target, name=res['Title'] + splitext(res['Cover'])[1])
+                                return self.send_file(target, name=res['Title'] + splitext(res['Cover'])[1], perm_check=False)
 
             logger.debug(f"Itemid {itemid} no match")
             target = os.path.join(DIRS.PROG_DIR, 'data', 'images', 'll192.png')
             if path_isfile(target):
-                return self.send_file(target, name='lazylibrarian.png')
+                return self.send_file(target, name='lazylibrarian.png', perm_check=False)
 
         elif ftype == 'comic':
             try:
@@ -4267,7 +4956,7 @@ class WebInterface:
                 target = res['IssueFile']
                 if target and path_isfile(target):
                     logger.debug(f'Opening {ftype} {target}')
-                    return self.send_file(target, name=f"{res['Title']} {issueid}{splitext(target)[1]}")
+                    return self.send_file(target, name=f"{res['Title']} {issueid}{splitext(target)[1]}", perm_check=False)
 
         elif ftype == 'audio':
             res = db.match('SELECT AudioFile,BookName from books WHERE BookID=?', (itemid,))
@@ -4286,11 +4975,11 @@ class WebInterface:
                     target = zip_audio(os.path.dirname(myfile), res['BookName'], itemid)
                     if target and path_isfile(target):
                         logger.debug(f'Opening {ftype} {target}')
-                        return self.send_file(target, name=res['BookName'] + '.zip')
+                        return self.send_file(target, name=res['BookName'] + '.zip', perm_check=False)
 
                 if myfile and path_isfile(myfile):
                     logger.debug(f'Opening {ftype} {myfile}')
-                    return self.send_file(myfile)
+                    return self.send_file(myfile, perm_check=False)
 
         elif ftype == 'book':
             res = db.match('SELECT BookFile,BookName from books WHERE BookID=?', (itemid,))
@@ -4311,7 +5000,7 @@ class WebInterface:
                 myfile = fname + '.' + extn
                 if path_isfile(myfile):
                     logger.debug(f'Opening {ftype} {myfile}')
-                    return self.send_file(myfile)
+                    return self.send_file(myfile, perm_check=False)
 
         elif ftype == 'issue':
             res = db.match('SELECT Title,IssueFile from issues WHERE IssueID=?', (itemid,))
@@ -4319,7 +5008,7 @@ class WebInterface:
                 myfile = res['IssueFile']
                 if myfile and path_isfile(myfile):
                     logger.debug(f'Opening {ftype} {myfile}')
-                    return self.send_file(myfile, name=f"{res['Title']} {itemid}{splitext(myfile)[1]}")
+                    return self.send_file(myfile, name=f"{res['Title']} {itemid}{splitext(myfile)[1]}", perm_check=False)
         db.close()
         logger.warning(f"No file found for {ftype} {itemid}")
         return None
@@ -4355,8 +5044,14 @@ class WebInterface:
         if booktype is not None:
             preftype = booktype
 
+        apisources = []
+        for i in lazylibrarian.INFOSOURCES.keys():
+            # source, authorid, bookid
+            infosource = lazylibrarian.INFOSOURCES[i]
+            apisources.append([infosource, infosource['author_key'], infosource['book_key']])
+
         bookid_key = 'BookID'
-        for itm in api_sources:
+        for itm in apisources:
             if CONFIG['BOOK_API'] == itm[0]:
                 bookid_key = itm[2]
                 break
@@ -4432,11 +5127,10 @@ class WebInterface:
                                 else:
                                     logger.debug(f'Opening {library} {bookfile}')
                                 return self.send_file(bookfile, email=email)
-                            msg = "Please select which part to "
                             if email:
-                                msg += "email"
+                                msg = i18n.gettext("Please select which part to email")
                             else:
-                                msg += "download"
+                                msg = i18n.gettext("Please select which part to download")
                             itm = 1
                             partlist = ''
                             while itm <= cnt:
@@ -4474,31 +5168,31 @@ class WebInterface:
                         if preftype in types:
                             bookfile = fname + '.' + preftype
                         else:
-                            msg = f"{book_name}<br> Not available as {preftype}, only "
+                            msg = f"{book_name}<br> "
                             typestr = ''
                             for itm in types:
                                 if typestr:
                                     typestr += ' '
                                 typestr += itm
-                            msg += typestr
+                            msg += i18n.gettext("Not available as %(type)s, only %(types)s") % {
+                                'type': preftype, 'types': typestr}
                             return serve_template(templatename="choosetype.html",
-                                                  title="Not Available", pop_message=msg,
+                                                  title=i18n.gettext("Not Available"), pop_message=msg,
                                                   pop_types=typestr, bookid=bookid,
                                                   valid=get_list(CONFIG['EBOOK_TYPE']),
                                                   email=email)
                     elif len(types) > 1:
-                        msg = "Please select format to "
                         if email:
-                            msg += "email"
+                            msg = i18n.gettext("Please select format to email")
                         else:
-                            msg += "download"
+                            msg = i18n.gettext("Please select format to download")
                         typestr = ''
                         for itm in types:
                             if typestr:
                                 typestr += ' '
                             typestr += itm
                         return serve_template(templatename="choosetype.html",
-                                              title="Choose Type", pop_message=msg,
+                                              title=i18n.gettext("Choose Type"), pop_message=msg,
                                               pop_types=typestr, bookid=bookid,
                                               valid=get_list(CONFIG['EBOOK_TYPE']),
                                               email=email)
@@ -4526,6 +5220,14 @@ class WebInterface:
         self.label_thread('EDIT_AUTHOR')
         logger = logging.getLogger(__name__)
         db = database.DBConnection()
+        user = 0
+        email = ''
+        cookie = cherrypy.request.cookie
+        if cookie and 'll_uid' in list(cookie.keys()):
+            user = cookie['ll_uid'].value
+            res = db.match('SELECT SendTo from users where UserID=?', (user,))
+            if res and res['SendTo']:
+                email = res['SendTo']
         try:
             data = db.match('SELECT * from authors WHERE AuthorID=?', (authorid,))
         finally:
@@ -4538,7 +5240,8 @@ class WebInterface:
                     basedir = res.replace(DIRS.DATADIR, '').lstrip('/')
                     for itm in listdir(res):
                         photos.append([itm, os.path.join(basedir, itm)])
-            return serve_template(templatename="editauthor.html", title="Edit Author", config=data,
+            return serve_template(templatename="editauthor.html", title=i18n.gettext("Edit Author"), config=data,
+                                  showseries=CONFIG.get_int('SERIES_TAB'), user=user, email=email,
                                   images=photos)
         logger.info(f'Missing author {authorid}')
         return None
@@ -4548,7 +5251,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def author_update(self, authorid='', authorname='', authorborn='', authordeath='', authorimg='',
-                      editordata='', manual='0', aka='', **kwargs):
+                      editordata='', manual='0', aka='', amazonauthorurl='', **kwargs):
         self.check_permitted(lazylibrarian.perm_edit)
         logger = logging.getLogger(__name__)
         db = database.DBConnection()
@@ -4567,6 +5270,8 @@ class WebInterface:
                 edited += "Born "
             if authdata["AKA"] != aka:
                 edited += "AKA "
+            if (authdata["AmazonAuthorURL"] or '') != amazonauthorurl:
+                edited += "AmazonURL "
             if authdata["AuthorDeath"] != authordeath:
                 edited += "Died "
             if 'cover' in kwargs:
@@ -4659,6 +5364,7 @@ class WebInterface:
                     'AuthorImg': authorimg,
                     'About': editordata,
                     'AKA': aka,
+                    'AmazonAuthorURL': amazonauthorurl,
                     'Manual': bool(manual)
                 }
                 db.upsert("authors", new_value_dict, control_value_dict)
@@ -4671,6 +5377,283 @@ class WebInterface:
         icrawlerdir = os.path.join(DIRS.CACHEDIR, 'icrawler', authorid)
         rmtree(icrawlerdir, ignore_errors=True)
         raise cherrypy.HTTPRedirect(f"author_page?authorid={authorid}")
+
+    @staticmethod
+    def author_linkable_sources():
+        """ Sources that expose a per-author ID and a uniform find_author_id()/
+        get_author_info() pair (unlike GoogleBooks/DNB, which are book-search-only -
+        see gb.py/dnb.py, neither has find_author_id). These are the only sources that
+        can be linked to an author record or chosen as an author's PrimarySource.
+        Derived from lazylibrarian.INFOSOURCES at call time, not class-definition time -
+        webServe is imported before startup.init_build_lists() populates INFOSOURCES. """
+        return {name: src['author_key'] for name, src in lazylibrarian.INFOSOURCES.items()
+                if src['author_key'] != 'authorid'}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def search_author_source(self, authorid, source):
+        """ AJAX: search a single source for this author by name, return the best
+        candidate (if any) for the edit-author screen to show for confirmation.
+        Does not write anything - see link_author_source for that. """
+        self.check_permitted(lazylibrarian.perm_edit)
+        logger = logging.getLogger(__name__)
+        if source not in self.author_linkable_sources():
+            return {'error': f'{source} does not support author search'}
+        db = database.DBConnection()
+        author = db.match('SELECT AuthorName from authors WHERE AuthorID=?', (authorid,))
+        db.close()
+        if not author:
+            return {'error': f'Author {authorid} not found'}
+        if source not in lazylibrarian.INFOSOURCES:
+            return {'error': f'{source} is not a configured source'}
+        inf_source = lazylibrarian.INFOSOURCES[source]
+        if not CONFIG[inf_source['enabled']]:
+            return {'error': f'{source} is not enabled in Config -> Importing'}
+        api = inf_source['api']()
+        try:
+            result = api.find_author_id(authorname=author['AuthorName'])
+        except Exception as e:
+            logger.error(f"search_author_source {source} error for author {authorid}: {e}")
+            return {'error': f'{source} search failed, check the logs'}
+        if not result or not result.get('authorid'):
+            return {'found': False}
+        return {'found': True, 'authorid': result.get('authorid'), 'authorname': result.get('authorname'),
+                'authorlink': result.get('authorlink')}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def link_author_source(self, authorid, source, sourceid):
+        """ AJAX: persist a user-confirmed source ID against this author. Does not
+        change PrimarySource - see set_primary_source for that. Also fetches and
+        stores that source's own author-page link immediately (into its INFOSOURCES
+        author_link column) rather than waiting for the next scheduled refresh to
+        backfill it via get_all_author_details(). """
+        self.check_permitted(lazylibrarian.perm_edit)
+        logger = logging.getLogger(__name__)
+        if source not in self.author_linkable_sources():
+            return {'error': f'{source} cannot be linked to an author'}
+        if not sourceid:
+            return {'error': 'No source id supplied'}
+        column = self.author_linkable_sources()[source]
+        if source == 'DBK':
+            # accept the bare number or the author page link, stored as DBK<number>
+            sourceid = dbk.DBK.author_id_from_text(sourceid)
+            if not sourceid:
+                return {'error': 'Not a Databazeknih author id or link'}
+        db = database.DBConnection()
+        author = db.match('SELECT AuthorID,AuthorName from authors WHERE AuthorID=?', (authorid,))
+        if not author:
+            db.close()
+            return {'error': f'Author {authorid} not found'}
+        updates = {column: sourceid}
+        link_column = lazylibrarian.INFOSOURCES[source].get('author_link')
+        if link_column:
+            inf_source = lazylibrarian.INFOSOURCES[source]
+            api = inf_source['api']()
+            try:
+                info = api.get_author_info(authorid=sourceid, authorname=author['AuthorName'])
+            except Exception as e:
+                logger.error(f"link_author_source {source} lookup error for author {authorid}: {e}")
+                info = None
+            if info and info.get('authorlink'):
+                updates[link_column] = info['authorlink']
+        db.upsert('authors', updates, {'AuthorID': authorid})
+        db.close()
+        logger.info(f"Linked author {authorid} to {source} id {sourceid}")
+        return {'success': True, 'column': column, 'value': sourceid}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def set_primary_source(self, authorid, source):
+        """ Mark one of an author's already-linked sources as their primary - drives the
+        author-page name link and source badge. Re-fetches the canonical link for the
+        stored id rather than guessing a URL template, so AuthorLink always matches
+        whatever that source's own get_author_info() would build. """
+        self.check_permitted(lazylibrarian.perm_edit)
+        logger = logging.getLogger(__name__)
+        if source not in self.author_linkable_sources():
+            return {'error': f'{source} cannot be a primary source'}
+        column = self.author_linkable_sources()[source]
+        db = database.DBConnection()
+        author = db.match('SELECT * from authors WHERE AuthorID=?', (authorid,))
+        if not author:
+            db.close()
+            return {'error': f'Author {authorid} not found'}
+        sourceid = author[column]
+        if not sourceid:
+            db.close()
+            return {'error': f'Author is not linked to {source} yet'}
+        inf_source = lazylibrarian.INFOSOURCES[source]
+        api = inf_source['api']()
+        try:
+            info = api.get_author_info(authorid=sourceid, authorname=author['AuthorName'])
+        except Exception as e:
+            logger.error(f"set_primary_source {source} lookup error for author {authorid}: {e}")
+            info = None
+        authorlink = info.get('authorlink') if info else ''
+        updates = {'PrimarySource': source}
+        if authorlink:
+            updates['AuthorLink'] = authorlink
+            link_column = lazylibrarian.INFOSOURCES[source].get('author_link')
+            if link_column:
+                updates[link_column] = authorlink
+        db.upsert('authors', updates, {'AuthorID': authorid})
+        db.close()
+        logger.info(f"Set primary source for author {authorid} to {source}")
+        return {'success': True, 'authorlink': authorlink}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def unlink_author_source(self, authorid, source):
+        """ AJAX: clear a linked source id so it can be searched (and linked to a
+        different match) again. Also clears that source's own INFOSOURCES author_link
+        entry - a stale link to a source that's no longer linked would show as a
+        dead/misleading clickable entry in the author page's source list. If this
+        was the author's PrimarySource, clears that too AND clears AuthorLink -
+        leaving AuthorLink pointing at a source that's no longer linked would be
+        stale/misleading (it's what the author-page name link itself uses), not
+        just cosmetically wrong on the badge. Falls back to the priority order
+        (same as an author nobody's set a primary for) until the user picks a new
+        one. """
+        self.check_permitted(lazylibrarian.perm_edit)
+        logger = logging.getLogger(__name__)
+        if source not in self.author_linkable_sources():
+            return {'error': f'{source} cannot be unlinked'}
+        column = self.author_linkable_sources()[source]
+        db = database.DBConnection()
+        author = db.match('SELECT AuthorID, PrimarySource from authors WHERE AuthorID=?', (authorid,))
+        if not author:
+            db.close()
+            return {'error': f'Author {authorid} not found'}
+        updates = {column: ''}
+        link_column = lazylibrarian.INFOSOURCES[source].get('author_link')
+        if link_column:
+            updates[link_column] = ''
+        if author['PrimarySource'] == source:
+            updates['PrimarySource'] = ''
+            updates['AuthorLink'] = ''
+        db.upsert('authors', updates, {'AuthorID': authorid})
+        db.close()
+        logger.info(f"Unlinked {source} from author {authorid}")
+        return {'success': True}
+
+    @cherrypy.expose
+    @require_auth()
+    def book_detail(self, bookid=None, library=None):
+        """ Read-only "master" detail view for a book, replacing the old bookinfo()
+        popup (which only ever showed image/title/description via bookdesc) for plain
+        book ids - see base.html's bookinfo() for the author/comic cases, unchanged. """
+        self.check_permitted(lazylibrarian.perm_ebook + lazylibrarian.perm_audio, redirect_unauth=True)
+        db = database.DBConnection()
+        book = db.match("SELECT books.*, AuthorName from books,authors WHERE "
+                        "books.AuthorID=authors.AuthorID AND BookID=?", (bookid,))
+        book_series = []
+        if book:
+            book_series = [dict(s) for s in db.select(
+                "SELECT series.SeriesID, SeriesName, SeriesNum FROM member, series "
+                "WHERE member.SeriesID=series.SeriesID AND member.BookID=?", (bookid,))]
+        db.close()
+        if not book:
+            raise cherrypy.HTTPRedirect("books")
+        book = dict(book)
+
+        book['BookDate'] = date_format(book['BookDate'], CONFIG['AUTHOR_DATE_FORMAT'],
+                                       context=book['BookName'], datelang=CONFIG['DATE_LANG'])
+        book['OriginalPubDate'] = date_format(book['OriginalPubDate'], CONFIG['AUTHOR_DATE_FORMAT'],
+                                              context=book['BookName'], datelang=CONFIG['DATE_LANG'])
+
+        # Book-level source ids resolve to working pages via simple templates (unlike
+        # author ids, which need a live API call) - stored as INFOSOURCES['link_template'],
+        # only present for sources verified live against real ids from this library:
+        # GoodReads bare id (no title slug) 200s, OpenLibrary work id 301s, Google Books
+        # volume id 302s, DNB id 302s. HardCover/RanobeDB have no verified template and
+        # ~0 usage in this library's book records, so shown as plain ids (no link_template
+        # key) rather than guessed (possibly wrong) links.
+        book_links = []
+        for src in lazylibrarian.INFOSOURCES.values():
+            col = src['book_key']
+            if book.get(col):
+                template = src.get('link_template')
+                link = template.format(book[col]) if template else ''
+                book_links.append((col, book[col], link))
+
+        amazon_link = f'https://www.amazon.com/dp/{book["ASIN"]}' if book.get('ASIN') else ''
+
+        return serve_template(templatename="book_detail.html", title=book['BookName'], book=book,
+                              book_links=book_links, amazon_link=amazon_link, book_series=book_series,
+                              library='AudioBook' if library == 'AudioBook' else 'eBook')
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def lookup_book_asin(self, bookid=None):
+        """ AJAX: on-demand fetch of a book's ASIN from GoodReads' single-book endpoint
+        (book/show/{id}.xml - has asin/kindle_asin; the bulk author-book-list endpoint
+        used during normal refresh doesn't, so this can't be backfilled for free the way
+        author source links were - see gr.py's add_bookid_to_db). Not run automatically
+        for every book, only when the detail page is actually viewed and asks for it. """
+        self.check_permitted(lazylibrarian.perm_ebook)
+        logger = logging.getLogger(__name__)
+        db = database.DBConnection()
+        book = db.match("SELECT gr_id from books WHERE BookID=?", (bookid,))
+        if not book or not book['gr_id']:
+            db.close()
+            return {'error': 'No GoodReads id linked to this book'}
+        api = lazylibrarian.INFOSOURCES['GoodReads']['api']()
+        try:
+            url = '/'.join([CONFIG['GR_URL'], f"book/show/{book['gr_id']}.xml?{urlencode(api.params)}"])
+            rootxml, _ = gr_xml_request(url)
+        except Exception as e:
+            logger.error(f"lookup_book_asin error for book {bookid}: {e}")
+            db.close()
+            return {'error': 'Lookup failed, check the logs'}
+        asin = ''
+        if rootxml is not None:
+            book_el = rootxml.find('book')
+            if book_el is not None:
+                asin_el = book_el.find('asin')
+                asin = asin_el.text if asin_el is not None and asin_el.text else ''
+                if not asin:
+                    kasin_el = book_el.find('kindle_asin')
+                    asin = kasin_el.text if kasin_el is not None and kasin_el.text else ''
+        if not asin:
+            db.close()
+            return {'found': False}
+        db.action('UPDATE books SET ASIN=? WHERE BookID=?', (asin, bookid))
+        db.close()
+        return {'found': True, 'asin': asin, 'link': f'https://www.amazon.com/dp/{asin}'}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def force_language_refresh(self):
+        """ AJAX: kick off refresh_book_languages() in the background to re-evaluate
+        languages across candidate books in the database. """
+        self.check_permitted(lazylibrarian.perm_force)
+        logger = logging.getLogger(__name__)
+        if 'LANGREFRESH' in [n.name for n in list(threading.enumerate())]:
+            return {'error': 'Language refresh is already running'}
+        threading.Thread(target=refresh_book_languages, name='LANGREFRESH', args=[]).start()
+        logger.info("Manually triggered book language refresh")
+        return {'success': True}
+
+    @cherrypy.expose
+    @require_auth()
+    @cherrypy.tools.json_out()
+    def language_refresh_status(self):
+        """ AJAX: is a language refresh currently running, and progress counters. """
+        running = 'LANGREFRESH' in [n.name for n in list(threading.enumerate())]
+        return {
+            'running': running,
+            'checked': lazylibrarian.LANG_REFRESH_STATUS.get('checked', 0),
+            'updated': lazylibrarian.LANG_REFRESH_STATUS.get('updated', 0),
+            'unignored': lazylibrarian.LANG_REFRESH_STATUS.get('unignored', 0),
+            'total': lazylibrarian.LANG_REFRESH_STATUS.get('total', 0),
+        }
 
     @cherrypy.expose
     @require_auth()
@@ -4704,8 +5687,6 @@ class WebInterface:
                 bookdata.pop('Narrator', None)
             covers = []
             if images:
-                # flickr needs an apikey and doesn't seem to have authors or book covers
-                # baidu doesn't like bots, message: "Forbid spider access"
                 sources = ['current', 'cover', 'goodreads', 'librarything', 'openlibrary',
                            'googleisbn', 'bing', 'googleimage']
                 if CONFIG['HC_API']:
@@ -4732,7 +5713,7 @@ class WebInterface:
                 # can't modify replaces list while iterating so make a new list
                 if itm[0] not in ['title', 'creator', 'ISBN', 'date', 'description']:
                     subs.append(itm)
-            return serve_template(templatename="editbook.html", title="Edit Book", config=bookdata,
+            return serve_template(templatename="editbook.html", title=i18n.gettext("Edit Book"), config=bookdata,
                                   seriesdict=seriesdict, authors=authors, covers=covers, replaces=subs, series=series)
         logger.info(f'Missing book {bookid}')
         return None
@@ -4813,9 +5794,9 @@ class WebInterface:
                         if bookdate == '0000':
                             edited += "Date "
                         else:
-                            # googlebooks sometimes gives yyyy, sometimes yyyy-mm, sometimes yyyy-mm-dd
-                            if len(bookdate) == 4:
-                                y = check_year(bookdate)
+                            # sometimes get yyyy, sometimes yyyy-mm, sometimes yyyy-mm-dd
+                            if len(bookdate) <= 4:  # eg 412 BC = -412 or 400 AD = 400
+                                y = check_int(bookdate, default=0, positive=False)
                             elif len(bookdate) in [7, 10]:
                                 y = check_year(bookdate[:4])
                                 if y and len(bookdate) == 7:
@@ -4852,6 +5833,8 @@ class WebInterface:
                         covertype = '_go'
                     elif cover == 'bing':
                         covertype = '_bi'
+                    elif cover == 'ranobedb':
+                        covertype = '_ra'
                     elif cover == 'cover':
                         covertype = '_cover'
                     if covertype:
@@ -5003,14 +5986,14 @@ class WebInterface:
                         if data['BookFile'] and path_isfile(data['BookFile']):
                             dest_path = os.path.dirname(data['BookFile'])
                             global_name = splitext(os.path.basename(data['BookFile']))[0]
-                            if opf_template:  # we already have a valid (new) opffile
+                            if opf_template and CONFIG.get_bool('IMP_EBOOKOPF'):  # we already have a valid (new) opffile
                                 dest_opf = os.path.join(dest_path, global_name + '.opf')
                                 if opffile != dest_opf:
                                     try:
                                         safe_copy(opffile, dest_opf)
                                     except Exception as e:
                                         logger.warning(f"Failed to copy opf file: {str(e)}")
-                            else:
+                            elif CONFIG.get_bool('IMP_EBOOKOPF'):
                                 create_opf(dest_path, data, global_name, overwrite=True)
 
                     raise cherrypy.HTTPRedirect(f"edit_book?bookid={bookid}")
@@ -5130,14 +6113,8 @@ class WebInterface:
                     failed += 1
 
         total = passed + failed
-        summary = f"Mark Results '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Mark Results '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
 
         return {
             'success': True,
@@ -5219,8 +6196,8 @@ class WebInterface:
                     logger.debug(f'Status set to {action} for {bookid}')
                     passed += 1
 
-                elif action in ["Skipped", "Have", "Ignored", "IgnoreBoth",
-                                "Wanted", "WantEbook", "WantAudio", "WantBoth"]:
+                elif action in ["Wanted", "WantEbook", "WantAudio", "WantBoth"] or \
+                        status_mark_targets(action, library):
                     bookdata = db.match('SELECT AuthorID,BookName,Status,AudioStatus from books WHERE BookID=?',
                                         (bookid,))
                     if bookdata:
@@ -5228,50 +6205,51 @@ class WebInterface:
                         bookname = bookdata['BookName']
                         if authorid not in check_totals:
                             check_totals.append(authorid)
-                        if (action == "Wanted" and library == "eBook") or action in ["WantEbook", "WantBoth"]:
+                        if (action == "Wanted" and "eBook" in library) or action in ["WantEbook", "WantBoth"]:
                             if bookdata['Status'] in ["Open", "Have"]:
                                 logger.debug(f'eBook "{bookname}" is already marked Open')
                                 failed += 1
                             else:
-                                db.upsert("books", {'Status': 'Wanted'}, {'BookID': bookid})
+                                # ScanResult set here too, matching the Ignored/Skipped/Have
+                                # actions below - otherwise re-wanting a previously-deleted
+                                # book leaves its stale "User deleted" ScanResult in place
+                                # with no indication the book is active again.
+                                db.upsert("books", {'Status': 'Wanted', 'ScanResult': 'User Wanted'},
+                                          {'BookID': bookid})
                                 logger.debug(f'Status set to "Wanted" for "{bookname}"')
                                 wantedbooks.append({"bookid": bookid})
                                 passed += 1
-                        if (action == "Wanted" and library == "AudioBook") or action in ["WantAudio", "WantBoth"]:
+                        if (action == "Wanted" and "AudioBook" in library) or action in ["WantAudio", "WantBoth"]:
                             if bookdata['AudioStatus'] in ["Open", "Have"]:
                                 logger.debug(f'AudioBook "{bookname}" is already marked Open')
                                 failed += 1
                             else:
-                                db.upsert("books", {'AudioStatus': 'Wanted'}, {'BookID': bookid})
+                                db.upsert("books", {'AudioStatus': 'Wanted', 'ScanResult': 'User Wanted'},
+                                          {'BookID': bookid})
                                 logger.debug(f'AudioStatus set to "Wanted" for "{bookname}"')
                                 wantedaudio.append({"bookid": bookid})
                                 passed += 1
-                        if (action == "Ignored" and library == 'eBook') or action == "IgnoreBoth":
-                            db.upsert("books", {'Status': "Ignored", 'ScanResult': f'User {action}'},
-                                      {'BookID': bookid})
-                            logger.debug(f'Status set to "Ignored" for "{bookname}"')
-                            passed += 1
-                        if (action == "Ignored" and library == 'AudioBook') or action == "IgnoreBoth":
-                            db.upsert("books", {'AudioStatus': "Ignored", 'ScanResult': f'User {action}'},
-                                      {'BookID': bookid})
-                            logger.debug(f'AudioStatus set to "Ignored" for "{bookname}"')
-                            passed += 1
-                        if action in ["Skipped", "Have"]:
-                            if library == 'eBook':
-                                db.upsert("books", {'Status': action, 'ScanResult': f'User {action}'},
+                        targets = status_mark_targets(action, library)
+                        if targets:
+                            status, mark_library = targets
+                            if 'eBook' in mark_library:
+                                db.upsert("books", {'Status': status, 'ScanResult': f'User {status}'},
                                           {'BookID': bookid})
-                                logger.debug(f'Status set to "{action}" for "{bookname}"')
+                                logger.debug(f'Status set to "{status}" for "{bookname}"')
                                 passed += 1
-                            if library == 'AudioBook':
-                                db.upsert("books", {'AudioStatus': action, 'ScanResult': f'User {action}'},
+                            if 'AudioBook' in mark_library:
+                                db.upsert("books", {'AudioStatus': status, 'ScanResult': f'User {status}'},
                                           {'BookID': bookid})
-                                logger.debug(f'AudioStatus set to "{action}" for "{bookname}"')
+                                logger.debug(f'AudioStatus set to "{status}" for "{bookname}"')
                                 passed += 1
                     else:
                         logger.warning(f"Unable to set status {action} for {bookid}")
                         failed += 1
                 elif action == "NoDelay":
-                    db.action("delete from failedsearch WHERE BookID=? AND Library=?", (bookid, library))
+                    if 'eBook' in library:
+                        db.action("delete from failedsearch WHERE BookID=? AND Library='eBook'", (bookid,))
+                    if 'AudioBook' in library:
+                        db.action("delete from failedsearch WHERE BookID=? AND Library='AudioBook'", (bookid,))
                     logger.debug(f'{library} delay set to zero for {bookid}')
                     passed += 1
                 elif action in ["Remove", "Delete"]:
@@ -5284,13 +6262,13 @@ class WebInterface:
                         if authorid not in check_totals:
                             check_totals.append(authorid)
                         if action == "Delete":
-                            if 'Audio' in library:
+                            if 'AudioBook' in library:
                                 bookfile = bookdata['AudioFile']
                                 if bookfile and path_isfile(bookfile):
                                     try:
-                                        rmtree(os.path.dirname(bookfile), ignore_errors=True)
+                                        rmtree(os.path.dirname(bookfile))
                                         logger.info(f'AudioBook {os.path.dirname(bookfile)} deleted from disc')
-                                        passed += 1
+                                        db.action("UPDATE books SET AudioFile='' WHERE BookID=?", (bookid,))
                                     except Exception as e:
                                         logger.warning(f'rmtree failed on {bookfile}, {type(e).__name__} {str(e)}')
                                         failed += 1
@@ -5298,43 +6276,32 @@ class WebInterface:
                                 bookfile = bookdata['BookFile']
                                 if bookfile and path_isfile(bookfile):
                                     try:
-                                        rmtree(os.path.dirname(bookfile), ignore_errors=True)
+                                        rmtree(os.path.dirname(bookfile))
                                         logger.info(f'eBook {os.path.dirname(bookfile)} deleted from disc')
-                                        deleted = True
-                                        passed += 1
+                                        db.action("UPDATE books SET BookFile='' WHERE BookID=?", (bookid,))
+                                        if CONFIG['IMP_CALIBREDB'] and \
+                                            CONFIG.get_bool('IMP_CALIBRE_EBOOK'):
+                                            self.delete_from_calibre(bookdata)
                                     except Exception as e:
                                         logger.warning(f'rmtree failed on {bookfile}, {type(e).__name__} {str(e)}')
-                                        deleted = False
                                         failed += 1
 
-                                    if deleted:
-                                        logger.info(f'eBook {bookname} deleted from disc')
-                                        if CONFIG['IMP_CALIBREDB'] and \
-                                                CONFIG.get_bool('IMP_CALIBRE_EBOOK'):
-                                            self.delete_from_calibre(bookdata)
+                        if 'eBook' in library:
+                            db.upsert("books", {"Status": "Ignored", "ScanResult": f"User {action}d ebook"}, {"BookID": bookid})
+                            logger.debug(f'Status set to Ignored for "{bookname}"')
+                            passed += 1
+                        if 'AudioBook' in library:
+                            db.upsert("books", {"AudioStatus": "Ignored", "ScanResult": f"User {action}d audiobook"}, {"BookID": bookid})
+                            logger.debug(f'AudioStatus set to Ignored for "{bookname}"')
+                            passed += 1
 
-                        authorcheck = db.match('SELECT Status from authors WHERE AuthorID=?', (authorid,))
-                        if authorcheck:
-                            if authorcheck['Status'] not in ['Active', 'Wanted']:
+                        if action == 'Delete':
+                            bookcheck = db.match('SELECT Status,AudioStatus from books WHERE BookID=?', (bookid,))
+                            if bookcheck['Status'] == bookcheck['AudioStatus'] == 'Ignored':
                                 for table in ['books', 'wanted', 'readinglists']:
                                     db.action(f"DELETE from {table} WHERE BookID=?", (bookid,))
-                                logger.info(f'Removed "{bookname}" from database')
-                                passed += 1
-                            elif 'eBook' in library:
-                                db.upsert("books", {"Status": "Ignored", "ScanResult": "User deleted"},
-                                          {"BookID": bookid})
-                                logger.debug(f'Status set to Ignored for "{bookname}"')
-                                passed += 1
-                            elif 'Audio' in library:
-                                db.upsert("books", {"AudioStatus": "Ignored", "ScanResult": "User deleted"},
-                                          {"BookID": bookid})
-                                logger.debug(f'AudioStatus set to Ignored for "{bookname}"')
-                                passed += 1
-                        else:
-                            for table in ['books', 'wanted', 'readinglists']:
-                                db.action(f"DELETE from {table} WHERE BookID=?", (bookid,))
-                            logger.info(f'Removed "{bookname}" from database')
-                            passed += 1
+
+                        update_totals(authorid)
 
             if action in reading_lists and userid:
                 set_readinglist("ToRead", userid, to_read)
@@ -5361,13 +6328,13 @@ class WebInterface:
         if redirect == "author":
             if 'eBook' in library:
                 redirect = f"author_page?authorid={authorid}&library=eBook"
-            if 'Audio' in library:
+            if 'AudioBook' in library:
                 redirect = f"author_page?authorid={authorid}&library=AudioBook"
         elif redirect in ["books", "audio"]:
             redirect = redirect
         elif redirect == "members":
             redirect = f"series_members?seriesid={seriesid}&ignored=False"
-        elif 'Audio' in library:
+        elif 'AudioBook' in library:
             redirect = "manage?library=AudioBook"
         else:
             redirect = "manage?library=eBook"
@@ -5375,14 +6342,8 @@ class WebInterface:
             redirect = f"{redirect}&book_filter={book_filter}"
         # Return JSON response instead of redirect
         total = passed + failed
-        summary = f"Mark Books '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Mark Books '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
         return {
             'success': True,
             'action': action,
@@ -5432,7 +6393,7 @@ class WebInterface:
             this_issue['Title'] = issue['Title'].replace('&amp;', '&')
             mod_issues.append(this_issue)
             if maxcount and count >= maxcount:
-                title = f"{title} (Top {count})"
+                title = i18n.gettext('%(title)s (Top %(count)s)') % {'title': title, 'count': count}
                 break
 
         return serve_template(
@@ -5476,7 +6437,7 @@ class WebInterface:
                         this_issue['Cover'] = f"cache/{imgthumb[len(DIRS.CACHEDIR):].lstrip(os.sep)}"
             mod_issues.append(this_issue)
             if maxcount and count >= maxcount:
-                title = f"{title} (Top {count})"
+                title = i18n.gettext('%(title)s (Top %(count)s)') % {'title': title, 'count': count}
                 break
 
         return serve_template(
@@ -5489,10 +6450,10 @@ class WebInterface:
         self.label_thread('BOOKWALL')
         if have == '1':
             cmd = "SELECT BookLink,BookImg,BookID,BookName from books where Status='Open' order by BookLibrary DESC"
-            title = 'Recently Downloaded Books'
+            title = i18n.gettext('Recently Downloaded Books')
         else:
             cmd = "SELECT BookLink,BookImg,BookID,BookName from books where Status != 'Ignored' order by BookAdded DESC"
-            title = 'Recently Added Books'
+            title = i18n.gettext('Recently Added Books')
         db = database.DBConnection()
         try:
             results = db.select(cmd)
@@ -5503,7 +6464,7 @@ class WebInterface:
         maxcount = CONFIG.get_int('MAX_WALL')
         if maxcount and len(results) > maxcount:
             results = results[:maxcount]
-            title = f"{title} (Top {len(results)})"
+            title = i18n.gettext('%(title)s (Top %(count)s)') % {'title': title, 'count': len(results)}
         ret = []
         for result in results:
             itm = dict(result)
@@ -5536,10 +6497,10 @@ class WebInterface:
         cmd = "SELECT Status,AuthorImg,AuthorID,AuthorName,HaveBooks,TotalBooks from authors "
         if have == '1':
             cmd += "where Status='Active' or Status='Wanted' order by AuthorName ASC"
-            title = 'Active/Wanted Authors'
+            title = i18n.gettext('Active/Wanted Authors')
         else:
             cmd += "where Status !='Active' and Status != 'Wanted' order by AuthorName ASC"
-            title = 'Inactive Authors'
+            title = i18n.gettext('Inactive Authors')
         db = database.DBConnection()
         try:
             results = db.select(cmd)
@@ -5581,11 +6542,11 @@ class WebInterface:
             db.close()
         if not len(results):
             raise cherrypy.HTTPRedirect("audio")
-        title = "Recent AudioBooks"
+        title = i18n.gettext('Recent AudioBooks')
         maxcount = CONFIG.get_int('MAX_WALL')
         if maxcount and len(results) > maxcount:
             results = results[:maxcount]
-            title = f"{title} (Top {len(results)})"
+            title = i18n.gettext('%(title)s (Top %(count)s)') % {'title': title, 'count': len(results)}
         ret = []
         for result in results:
             itm = dict(result)
@@ -5647,7 +6608,7 @@ class WebInterface:
         finally:
             db.close()
         if data:
-            return serve_template(templatename="editcomic.html", title="Edit Comic", config=data)
+            return serve_template(templatename="editcomic.html", title=i18n.gettext("Edit Comic"), config=data)
         logger.info(f'Missing comic {comicid}:')
         raise cherrypy.HTTPError(404, f"Comic ID {comicid} not found")
 
@@ -5730,7 +6691,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def comics(self, comic_filter=''):
-        self.check_permitted(lazylibrarian.perm_comics)
+        self.check_permitted(lazylibrarian.perm_comics, redirect_unauth=True)
         cookie = cherrypy.request.cookie
         if cookie and 'll_uid' in list(cookie.keys()):
             user = cookie['ll_uid'].value
@@ -5740,7 +6701,7 @@ class WebInterface:
         covers = 1
         if not CONFIG['TOGGLES']:
             covers = 0
-        return serve_template(templatename="comics.html", title="Comics", comics=[],
+        return serve_template(templatename="comics.html", title=i18n.gettext("Comics"), comics=[],
                               covercount=covers, user=user, comic_filter=comic_filter)
 
     # noinspection PyUnusedLocal
@@ -5771,14 +6732,19 @@ class WebInterface:
                        "comics.comicid = comicissues.comicid) as Iss_Cnt from comics")
 
                 mycomics = []
+                args = ''
                 if userid and userprefs & lazylibrarian.pref_mycomics:
                     res = db.select("SELECT WantID from subscribers WHERE Type='comic' and UserID=?", (userid,))
                     serversidelogger.debug(f"User subscribes to {len(res)} comics")
                     for mag in res:
                         mycomics.append(mag['WantID'])
-                    cmd += " WHERE comics.comicid in (" + ", ".join(f"'{w}'" for w in mycomics) + ")"
+                    cmd += " WHERE comics.comicid in (?)"
+                    args = ", ".join(f"'{w}'" for w in mycomics)
                 cmd += " order by Title"
-                rowlist = db.select(cmd)
+                if args:
+                    rowlist = db.select(cmd, (args, ))
+                else:
+                    rowlist = db.select(cmd)
             finally:
                 db.close()
 
@@ -5793,7 +6759,9 @@ class WebInterface:
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in newrowlist if q in fold(x)]
+                    #filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = newrowlist
 
@@ -5886,7 +6854,7 @@ class WebInterface:
     def comicissue_page(self, comicid):
         global lastcomic
         logger = logging.getLogger(__name__)
-        self.check_permitted(lazylibrarian.perm_comics)
+        self.check_permitted(lazylibrarian.perm_comics, redirect_unauth=True)
         db = database.DBConnection()
         try:
             mag_data = db.match('SELECT * from comics WHERE ComicID=?', (comicid,))
@@ -6003,7 +6971,9 @@ class WebInterface:
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in newrowlist if q in fold(x)]
+                    #filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = newrowlist
 
@@ -6061,7 +7031,7 @@ class WebInterface:
         # noinspection PyGlobalUndefined
         global comicresults
         logger = logging.getLogger(__name__)
-        self.check_permitted(lazylibrarian.perm_search)
+        self.check_permitted(lazylibrarian.perm_search, redirect_unauth=True)
         TELEMETRY.record_usage_data()
         comicresults = []
         if not title or title == 'None':
@@ -6075,24 +7045,24 @@ class WebInterface:
             cvres = cv_identify(title, best=False)
             if title.startswith('CV'):
                 for itm in cvres:
-                    itm['fuzz'] = fuzz.token_sort_ratio(title, itm['seriesid'])
+                    itm['fuzz'] = fuzz.token_sort_ratio(title, itm['seriesid'], processor=default_process)
                     comicresults.append(itm)
             else:
                 cxres = cx_identify(title, best=False)
                 words = name_words(title)
                 titlewords = ' '.join(title_words(words))
                 for itm in cvres:
-                    itm['fuzz'] = fuzz.token_sort_ratio(titlewords, itm['title'])
+                    itm['fuzz'] = fuzz.token_sort_ratio(titlewords, itm['title'], processor=default_process)
                     comicresults.append(itm)
                 for itm in cxres:
-                    itm['fuzz'] = fuzz.token_sort_ratio(titlewords, itm['title'])
+                    itm['fuzz'] = fuzz.token_sort_ratio(titlewords, itm['title'], processor=default_process)
                     comicresults.append(itm)
                 comicresults = sorted(comicresults, key=lambda x: -(check_int(x["fuzz"], 0)))
             comicids = db.select("SELECT ComicID from comics")
             comiclist = []
             for itm in comicids:
                 comiclist.append(itm['ComicID'])
-            return serve_template(templatename="comicresults.html", title="Comics",
+            return serve_template(templatename="comicresults.html", title=i18n.gettext("Comics"),
                                   results=comicresults, comicids=comiclist)
         db.close()
 
@@ -6321,19 +7291,22 @@ class WebInterface:
                 cmd = ("select magazines.*,(select count(*) as counter from issues where "
                        "magazines.title = issues.title) as Iss_Cnt from magazines")
 
+                maglist = ''
                 if userid and userprefs & lazylibrarian.pref_mymags:
                     res = db.select("SELECT WantID from subscribers WHERE Type='magazine' and UserID=?", (userid,))
                     serversidelogger.debug(f"User subscribes to {len(res)} magazines")
-                    maglist = ''
                     for mag in res:
                         if maglist:
                             maglist += ', '
                         maglist += f'"{mag["WantID"]}"'
-                    cmd += " WHERE Title in (" + maglist + ")"
+                    cmd += " WHERE Title in (?)"
                 cmd += " order by Title"
-
-                serversidelogger.debug(cmd)
-                rowlist = db.select(cmd)
+                if maglist:
+                    serversidelogger.debug(cmd + str(maglist))
+                    rowlist = db.select(cmd, (maglist, ))
+                else:
+                    serversidelogger.debug(cmd)
+                    rowlist = db.select(cmd)
             finally:
                 db.close()
 
@@ -6348,7 +7321,9 @@ class WebInterface:
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in newrowlist if q in fold(x)]
+                    #filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = newrowlist
 
@@ -6385,6 +7360,7 @@ class WebInterface:
 
                     if not row[1] or not row[1].startswith('cache/'):
                         row[1] = 'images/nocover.jpg'
+                        row.append('images/nocover.jpg')
                     else:
                         fname, extn = splitext(row[1])
                         imgfile = os.path.join(DIRS.CACHEDIR, f'{fname[6:]}_w200{extn}')
@@ -6417,7 +7393,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def magazines(self, mag_filter=''):
-        self.check_permitted(lazylibrarian.perm_magazines)
+        self.check_permitted(lazylibrarian.perm_magazines, redirect_unauth=True)
         db = database.DBConnection()
         cookie = cherrypy.request.cookie
         if cookie and 'll_uid' in list(cookie.keys()):
@@ -6435,7 +7411,7 @@ class WebInterface:
         covers = 1
         if not CONFIG['TOGGLES']:
             covers = 0
-        return serve_template(templatename="magazines.html", title="Magazines", magazines=[],
+        return serve_template(templatename="magazines.html", title=i18n.gettext("Magazines"), magazines=[],
                               covercount=covers, user=user, email=email, mag_filter=mag_filter)
 
     @cherrypy.expose
@@ -6452,7 +7428,7 @@ class WebInterface:
             db.close()
 
         if magdata:
-            return serve_template(templatename="editmag.html", title=f"Rename Magazine {magdata['Title']}",
+            return serve_template(templatename="editmag.html", title=i18n.gettext('Rename Magazine %(title)s') % {'title': magdata['Title']},
                                   config=magdata)
         logger.error(f'Missing magazine {mag}')
         raise cherrypy.HTTPRedirect("magazines")
@@ -6471,18 +7447,18 @@ class WebInterface:
         new_title = kwargs.get('new_title')
         old_title = kwargs.get('old_title')
         if not old_title and not new_title:
-            summary = 'Insufficient information, need Old and New Title'
+            summary = i18n.gettext('Insufficient information, need Old and New Title')
         if not summary and old_title == new_title:
-            summary = f'Title for {old_title} unchanged'
+            summary = i18n.gettext('Title for %(title)s unchanged') % {'title': old_title}
         if not summary:
             valid = self.validate_param("magazine title", new_title, ['<', '>', '='], None)
             if not valid:
-                summary = 'Invalid new title, unable to rename'
+                summary = i18n.gettext('Invalid new title, unable to rename')
         if not summary:
             db = database.DBConnection()
             res = db.match("SELECT Title from magazines WHERE Title=? COLLATE NOCASE", (new_title,))
             if res:
-                summary = f'Title {new_title} already exists, unable to rename'
+                summary = i18n.gettext('Title %(title)s already exists, unable to rename') % {'title': new_title}
             db.close()
         if not summary:
             logger.debug(f"Changing title [{old_title}] to [{new_title}]")
@@ -6494,7 +7470,7 @@ class WebInterface:
                 db.action('PRAGMA foreign_keys = ON')
                 db.commit()
 
-                summary = f'Renamed {old_title} to {new_title}'
+                summary = i18n.gettext('Renamed %(old)s to %(new)s') % {'old': old_title, 'new': new_title}
 
                 # rename files/folders to match, and issuefile to match new location
                 issues = db.select("SELECT IssueDate,IssueFile,IssueID from issues WHERE Title=?", (new_title,))
@@ -6539,7 +7515,7 @@ class WebInterface:
         # Return JSON response instead of redirect
         total = passed + failed
         if not summary:
-            summary = "Rename completed. "
+            summary = i18n.gettext("Rename completed.")
         return {
             'success': True,
             'passed': passed,
@@ -6589,7 +7565,9 @@ class WebInterface:
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in newrowlist if q in fold(x)]
+                    #filtered = [x for x in newrowlist if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = newrowlist
 
@@ -6669,7 +7647,7 @@ class WebInterface:
 
         if issuedata:
             tagdict = read_pdf_tags(issuedata['IssueFile'])
-            return serve_template(templatename="editissue.html", title="Edit Issue", config=issuedata, tags=tagdict)
+            return serve_template(templatename="editissue.html", title=i18n.gettext("Edit Issue"), config=issuedata, tags=tagdict)
         logger.error(f"Missing issue {issueid}")
         return None
 
@@ -6739,7 +7717,7 @@ class WebInterface:
             if itm.startswith('tags_/'):
                 new_tags[itm[5:]] = kwargs[itm]
         try:
-            old_tags = eval(kwargs['tagdata'])
+            old_tags = ast.literal_eval(kwargs['tagdata'])
         except SyntaxError:
             old_tags = None
         if not isinstance(old_tags, dict):
@@ -6825,7 +7803,7 @@ class WebInterface:
     @require_auth()
     def issue_page(self, title, response=''):
         global lastmagazine
-        self.check_permitted(lazylibrarian.perm_magazines)
+        self.check_permitted(lazylibrarian.perm_magazines, redirect_unauth=True)
         logger = logging.getLogger(__name__)
         db = database.DBConnection()
         res = db.match('SELECT Title from magazines where Title=? COLLATE NOCASE', (title,))
@@ -6928,9 +7906,9 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def past_issues(self, mag=None, **kwargs):
-        self.check_permitted(lazylibrarian.perm_magazines)
+        self.check_permitted(lazylibrarian.perm_magazines, redirect_unauth=True)
         if not mag or mag == 'None':
-            title = "Past Issues"
+            title = i18n.gettext('Past Issues')
         else:
             title = mag
         which_status = kwargs.get('whichStatus', '')
@@ -6967,11 +7945,21 @@ class WebInterface:
             if len(rowlist):
                 for row in rowlist:  # iterate through the sqlite3.Row objects
                     entry = list(row)  # turn sqlite objects into lists
-                    rows.append(entry)  # add the rowlist to the masterlist
+                    if entry[1]:
+                        entry[1] = entry[1].replace('.', ' ')
+                    provider = entry[4] or ''
+                    if len(provider) > 20:
+                        while len(provider) > 20 and '/' in provider:
+                            provider = provider.split('/', 1)[1]
+                        provider = provider.replace('/', ' ')
+                        entry[4] = provider
+                    rows.append(entry)
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in rows if q in fold(x)]
+                    #filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = rows
 
@@ -6985,19 +7973,6 @@ class WebInterface:
                     rows = filtered
                 else:
                     rows = filtered[displaystart:(displaystart + displaylength)]
-
-                for row in rows:  # iterate through the sqlite3.Row objects
-                    # title needs spaces for column resizing
-                    title = row[1]
-                    title = title.replace('.', ' ')
-                    row[1] = title
-                    # make this shorter and with spaces for column resizing
-                    provider = row[4]
-                    if len(provider) > 20:
-                        while len(provider) > 20 and '/' in provider:
-                            provider = provider.split('/', 1)[1]
-                        provider = provider.replace('/', ' ')
-                        row[4] = provider
 
             serversidelogger.debug(f"get_past_issues returning {displaystart} to {displaystart + displaylength}")
             serversidelogger.debug(f"get_past_issues filtered {len(filtered)} from {len(rowlist)}:{len(rows)}")
@@ -7203,8 +8178,8 @@ class WebInterface:
                         genres = entry[1]
                         tags = {}
                         cnt = 1
-                        for itm in get_list(genres):
-                            tags[f'/Genre_{cnt}'] = itm
+                        for i in get_list(genres):
+                            tags[f'/Genre_{cnt}'] = i
                             cnt += 1
                         try:
                             res = write_pdf_tags(issuefile, title, issue['IssueDate'], tags)
@@ -7282,14 +8257,8 @@ class WebInterface:
 
         # Return JSON response instead of redirect
         total = passed + failed
-        summary = f"Operation '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Operation '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
 
         self.issues_data = ''
         return {
@@ -7448,8 +8417,8 @@ class WebInterface:
                         genres = mag[1]
                         tags = {}
                         cnt = 1
-                        for itm in get_list(genres):
-                            tags[f'/Genre_{cnt}'] = itm
+                        for i in get_list(genres):
+                            tags[f'/Genre_{cnt}'] = i
                             cnt += 1
                         try:
                             res = write_pdf_tags(issue['IssueFile'], title, issue["IssueDate"], tags)
@@ -7533,14 +8502,8 @@ class WebInterface:
 
         # Return JSON response instead of redirect
         total = passed + failed
-        summary = f"Operation '{action}' completed."
-        if total > 0:
-            summary += f" {passed} successful"
-            if failed > 0:
-                summary += f", {failed} failed"
-            summary += f" out of {total} total items."
-        else:
-            summary += " No items were processed."
+        summary = mark_summary(i18n.gettext("Operation '%(action)s' completed.") % {
+            'action': i18n.status_label(action)}, passed, failed)
 
         res = {
             'success': True,
@@ -7647,29 +8610,51 @@ class WebInterface:
         self.check_permitted(lazylibrarian.perm_force)
         self.label_thread('UPDATES')
         versioncheck.check_for_updates()
-        if CONFIG.get_int('COMMITS_BEHIND') == 0:
+        behind = CONFIG.get_int('COMMITS_BEHIND')
+        if behind == 0:
             if lazylibrarian.COMMIT_LIST:
-                message = "unknown status"
+                message = i18n.gettext("LazyLibrarian status is unknown")
                 messages = lazylibrarian.COMMIT_LIST.replace('\n', '<br>')
                 message = message + '<br><small>' + messages
             else:
-                message = "up to date"
-        elif CONFIG.get_int('COMMITS_BEHIND') > 0:
-            message = (f"behind by {CONFIG.get_int('COMMITS_BEHIND')} "
-                       f"{plural(CONFIG.get_int('COMMITS_BEHIND'), 'commit')}")
+                message = i18n.gettext("LazyLibrarian is up to date")
+        elif behind > 0:
+            message = i18n.ngettext("LazyLibrarian is behind by %(count)s commit",
+                                    "LazyLibrarian is behind by %(count)s commits", behind) % {'count': behind}
             messages = lazylibrarian.COMMIT_LIST.replace('\n', '<br>')
             message = message + '<br><small>' + messages
 
             if '** MANUAL **' in lazylibrarian.COMMIT_LIST:
-                message += "Update needs manual installation"
+                message += i18n.gettext("Update needs manual installation")
         else:
-            message = "unknown version"
-            messages = (f"Your version ({CONFIG['CURRENT_VERSION']}) is not recognized at<br>https://"
-                        f"{CONFIG['GIT_HOST']}/{CONFIG['GIT_USER']}/{CONFIG['GIT_REPO']}  "
-                        f"Branch: {CONFIG['GIT_BRANCH']}")
+            message = i18n.gettext("LazyLibrarian version is unknown")
+            messages = i18n.gettext("Your version (%(version)s) is not recognized at %(repo)s") % {
+                'version': CONFIG['CURRENT_VERSION'],
+                'repo': f"https://{CONFIG['GIT_HOST']}/{CONFIG['GIT_USER']}/{CONFIG['GIT_REPO']}"}
+            messages += '  ' + i18n.gettext('Branch: %(branch)s') % {'branch': CONFIG['GIT_BRANCH']}
             message = message + '<br><small>' + messages
 
-        return f"LazyLibrarian is {message}"
+        return message
+
+    @cherrypy.expose
+    @require_auth()
+    def whats_new(self):
+        self.check_permitted(lazylibrarian.perm_config, redirect_unauth=True)
+        unseen = [item['id'] for item in lazylibrarian.WHATS_NEW]
+        changes = whatsnew.recent_changes()
+        if not changes['error']:
+            # opening the page counts as having seen them, like closing the popup
+            whatsnew.mark_seen()
+        return serve_template(templatename="whatsnew.html", title=i18n.gettext("What's new"), changes=changes,
+                              unseen=unseen, repo=whatsnew.web_url(), branch=whatsnew.branch())
+
+    @cherrypy.expose
+    @cherrypy.tools.allow(methods=['POST'])
+    @require_auth()
+    def whats_new_seen(self, version=''):
+        self.check_permitted(lazylibrarian.perm_config)
+        whatsnew.mark_seen(version)
+        return 'OK'
 
     @cherrypy.expose
     @require_auth()
@@ -7684,15 +8669,33 @@ class WebInterface:
 
     @cherrypy.expose
     @require_auth()
-    def update(self):
+    @cherrypy.tools.json_out()
+    def force_openlibrary_dump(self):
+        """ AJAX: manually trigger an OpenLibrary bulk-dump sync right now instead of
+        waiting for its next scheduled run. Resumes any partially-downloaded file left
+        from a previous interrupted run via the same Range-resume logic the scheduled
+        job itself uses - see oldump.download_dump_file. """
         self.check_permitted(lazylibrarian.perm_force)
+        logger = logging.getLogger(__name__)
+        if not CONFIG['OL_USE_DUMP']:
+            return {'error': 'OpenLibrary local dump indexing is not enabled in Config -> Importing'}
+        if 'OLDUMPUPDATE' in [n.name for n in list(threading.enumerate())]:
+            return {'error': 'OpenLibrary dump sync is already running'}
+        threading.Thread(target=update_openlibrary_dump, name='OLDUMPUPDATE', args=[]).start()
+        logger.info("Manually triggered OpenLibrary bulk dump sync")
+        return {'success': True}
+
+    @cherrypy.expose
+    @require_auth()
+    def update(self):
+        self.check_permitted(lazylibrarian.perm_force, redirect_unauth=True)
         logger = logging.getLogger(__name__)
         self.label_thread('UPDATING')
         logger.debug('(webServe-Update) - Performing update')
         remove_file(os.path.join(DIRS.CACHEDIR, 'alive.png'))
         lazylibrarian.SIGNAL = 'update'
-        message = 'Updating...'
-        return serve_template(templatename="shutdown.html", prefix='LazyLibrarian is ', title="Updating",
+        message = i18n.gettext('LazyLibrarian is updating...')
+        return serve_template(templatename="shutdown.html", prefix='', title=i18n.gettext("Updating"),
                               message=message, timer=90)
 
     # IMPORT/EXPORT #####################################################
@@ -7882,17 +8885,19 @@ class WebInterface:
             try:
                 csvfile = csv_file(CONFIG['ALTERNATE_DIR'], library=library)
                 if path_exists(csvfile):
-                    message = f"Importing csv (background task) from {csvfile}"
+                    message = i18n.gettext("Importing csv (background task) from %(file)s") % {'file': csvfile}
                     threading.Thread(target=import_csv, name=f'IMPORTCSV_{library}',
                                      args=[CONFIG['ALTERNATE_DIR'], 'Wanted', library]).start()
                 else:
-                    message = f"No {library} CSV file in [{CONFIG['ALTERNATE_DIR']}]"
+                    message = i18n.gettext("No %(library)s CSV file in [%(folder)s]") % {
+                        'library': i18n.status_label(library), 'folder': CONFIG['ALTERNATE_DIR']}
             except Exception as e:
-                message = f'Unable to complete the import: {type(e).__name__} {str(e)}'
-                logger.error(message)
+                logger.error(f'Unable to complete the import: {type(e).__name__} {str(e)}')
+                message = i18n.gettext('Unable to complete the import: %(error)s') % {
+                    'error': f'{type(e).__name__} {str(e)}'}
         else:
-            message = 'IMPORTCSV already running'
-            logger.debug(message)
+            logger.debug('IMPORTCSV already running')
+            message = i18n.gettext('CSV import is already running')
         return message
 
     @cherrypy.expose
@@ -7910,24 +8915,24 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def shutdown(self):
-        self.check_permitted(lazylibrarian.perm_admin)
+        self.check_permitted(lazylibrarian.perm_admin, redirect_unauth=True)
         self.label_thread('SHUTDOWN')
         # lazylibrarian.config_write()
         remove_file(os.path.join(DIRS.CACHEDIR, 'alive.png'))
         lazylibrarian.SIGNAL = 'shutdown'
-        message = 'closed'
-        return serve_template(templatename="shutdown.html", prefix='LazyLibrarian is ', title="Close library",
+        message = i18n.gettext('LazyLibrarian is closed')
+        return serve_template(templatename="shutdown.html", prefix='', title=i18n.gettext("Close library"),
                               message=message, timer=0)
 
     @cherrypy.expose
     @require_auth()
     def restart(self):
-        self.check_permitted(lazylibrarian.perm_admin)
+        self.check_permitted(lazylibrarian.perm_admin, redirect_unauth=True)
         self.label_thread('RESTART')
         remove_file(os.path.join(DIRS.CACHEDIR, 'alive.png'))
         lazylibrarian.SIGNAL = 'restart'
-        message = 'reopening ...'
-        return serve_template(templatename="shutdown.html", prefix='LazyLibrarian is ', title="Reopen library",
+        message = i18n.gettext('LazyLibrarian is reopening...')
+        return serve_template(templatename="shutdown.html", prefix='', title=i18n.gettext("Reopen library"),
                               message=message, timer=50)
 
     @cherrypy.expose
@@ -8035,8 +9040,8 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def logs(self):
-        self.check_permitted(lazylibrarian.perm_logs)
-        return serve_template(templatename="logs.html", title="Log", lineList=[])  # lazylibrarian.LOGLIST)
+        self.check_permitted(lazylibrarian.perm_logs, redirect_unauth=True)
+        return serve_template(templatename="logs.html", title=i18n.gettext("Log"), lineList=[])  # lazylibrarian.LOGLIST)
 
     # noinspection PyUnusedLocal
     @cherrypy.expose
@@ -8054,7 +9059,10 @@ class WebInterface:
             displaylength = int(iDisplayLength)
             CONFIG.set_int('DISPLAYLENGTH', displaylength)
 
-            filtered, total = LOGCONFIG.get_ui_logrows(sSearch)
+            # minimum level from the Level select, eg WARNING; anything else shows all levels
+            minlevel = logging.getLevelName(str(kwargs.get('level', '')).upper())
+            minlevel = minlevel if isinstance(minlevel, int) else 0
+            filtered, total = LOGCONFIG.get_ui_logrows(sSearch, minlevel)
 
             sortcolumn = int(iSortCol_0)
             filtered.sort(key=lambda y: y[sortcolumn] if y[sortcolumn] is not None else '',
@@ -8075,8 +9083,8 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def history(self):
-        self.check_permitted(lazylibrarian.perm_history)
-        return serve_template(templatename="history.html", title="History", history=[])
+        self.check_permitted(lazylibrarian.perm_history, redirect_unauth=True)
+        return serve_template(templatename="history.html", title=i18n.gettext("History"), history=[])
 
     # noinspection PyUnusedLocal
     @cherrypy.expose
@@ -8108,7 +9116,9 @@ class WebInterface:
 
                 if sSearch:
                     serversidelogger.debug(f"filter {sSearch}")
-                    filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
+                    q = fold(sSearch)
+                    filtered = [x for x in rows if q in fold(x)]
+                    #filtered = [x for x in rows if sSearch.lower() in str(x).lower()]
                 else:
                     filtered = rows
 
@@ -8263,9 +9273,9 @@ class WebInterface:
         if not img:
             img = 'images/nocover.jpg'
         if not title:
-            title = 'BookID not found'
+            title = i18n.gettext('BookID not found')
         if not text:
-            text = 'No Description'
+            text = i18n.gettext('No Description')
         return img + '^' + title + '^' + text
 
     @cherrypy.expose
@@ -8277,7 +9287,7 @@ class WebInterface:
         status, rowid = target.split('^')
         if status == 'Ignored':
             match = db.match('select ScanResult from books WHERE bookid=?', (rowid,))
-            message = f'Reason: {match["ScanResult"]}<br>'
+            message = i18n.gettext('Reason: %(reason)s') % {'reason': match["ScanResult"]} + '<br>'
         else:
             cmd = ("select NZBurl,NZBtitle,NZBdate,NZBprov,Status,NZBsize,AuxInfo,NZBmode,DLResult,Source,"
                    "DownloadID from wanted where rowid=?")
@@ -8288,20 +9298,23 @@ class WebInterface:
                     dltype = 'eBook'
                 else:
                     dltype = 'Magazine'
-            message = f"Title: {match['NZBtitle']}<br>"
-            message += f"Type: {match['NZBmode']} {dltype}<br>"
-            message += f"Date: {match['NZBdate']}<br>"
-            message += f"Size: {match['NZBsize']} Mb<br>"
-            message += f"Provider: {CONFIG.disp_name(match['NZBprov'])}<br>"
-            message += f"Downloader: {match['Source']}<br>"
-            message += f"DownloadID: {match['DownloadID']}<br>"
-            message += f"URL: {match['NZBurl']}<br>"
+            lines = [
+                i18n.gettext("Title: %(value)s") % {'value': match['NZBtitle']},
+                i18n.gettext("Type: %(value)s") % {'value': f"{match['NZBmode']} {i18n.status_label(dltype)}"},
+                i18n.gettext("Date: %(value)s") % {'value': match['NZBdate']},
+                i18n.gettext("Size: %(value)s Mb") % {'value': match['NZBsize']},
+                i18n.gettext("Provider: %(value)s") % {'value': CONFIG.disp_name(match['NZBprov'])},
+                i18n.gettext("Downloader: %(value)s") % {'value': match['Source']},
+                i18n.gettext("DownloadID: %(value)s") % {'value': match['DownloadID']},
+                i18n.gettext("URL: %(value)s") % {'value': match['NZBurl']},
+            ]
+            message = '<br>'.join(lines) + '<br>'
             if status == 'Processed':
-                message += f"File: {match['DLResult']}<br>"
+                message += i18n.gettext("File: %(value)s") % {'value': match['DLResult']} + '<br>'
             elif status == 'Seeding':
-                message += status
+                message += i18n.status_label(status)
             else:
-                message += f"Error: {match['DLResult']}<br>"
+                message += i18n.gettext("Error: %(value)s") % {'value': match['DLResult']} + '<br>'
         db.close()
         return message
 
@@ -8355,10 +9368,9 @@ class WebInterface:
         db = database.DBConnection()
         if not status or status == 'all':
             logger.info("Clearing all history")
-            # also reset the Snatched status in book table to Wanted and cancel any failed download task
-            # ONLY reset if status is still Snatched, as maybe a later task succeeded
+            # Reset Snatched books back to Wanted so they get searched again
             status = "Snatched"
-            cmd = "SELECT BookID,AuxInfo,Source,DownloadID from wanted WHERE Status=?"
+            cmd = "SELECT BookID,AuxInfo from wanted WHERE Status=?"
             rowlist = db.select(cmd, (status,))
             for book in rowlist:
                 if book['BookID'] != 'unknown':
@@ -8368,15 +9380,12 @@ class WebInterface:
                     elif book['AuxInfo'] == 'AudioBook':
                         db.action("UPDATE books SET AudioStatus='Wanted' WHERE Bookid=? AND AudioStatus=?",
                                   (book['BookID'], status))
-                    if CONFIG.get_bool('DEL_FAILED'):
-                        delete_task(book['Source'], book['DownloadID'], True)
             db.action("DELETE from wanted")
         else:
             logger.info(f"Clearing history where status is {status}")
             if status == 'Snatched':
-                # also reset the Snatched status in book table to Wanted and cancel any failed download task
-                # ONLY reset if status is still Snatched, as maybe a later task succeeded
-                cmd = "SELECT BookID,AuxInfo,Source,DownloadID from wanted WHERE Status in ('Snatched', 'Matched')"
+                # Reset Snatched books back to Wanted so they get searched again
+                cmd = "SELECT BookID,AuxInfo from wanted WHERE Status in ('Snatched', 'Matched')"
                 rowlist = db.select(cmd)
                 for book in rowlist:
                     if book['BookID'] != 'unknown':
@@ -8386,8 +9395,6 @@ class WebInterface:
                         elif book['AuxInfo'] == 'AudioBook':
                             db.action("UPDATE books SET AudioStatus='Wanted' WHERE Bookid=? AND AudioStatus=?",
                                       (book['BookID'], status))
-                    if CONFIG.get_bool('DEL_FAILED'):
-                        delete_task(book['Source'], book['DownloadID'], True)
                 db.action("DELETE from wanted WHERE Status='Matched'")
             db.action('DELETE from wanted WHERE Status=?', (status,))
         db.close()
@@ -8399,12 +9406,16 @@ class WebInterface:
         # ol_api is true/false, not an api key
         if kwargs['status']:
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         else:
             CONFIG.set_bool('OL_API', False)
         if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
-                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')):
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
             # ensure at least one option is available
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         return kwargs['status']
 
     @cherrypy.expose
@@ -8413,12 +9424,70 @@ class WebInterface:
         # dnb_api is true/false, not an api key
         if kwargs['status']:
             CONFIG.set_bool('DNB_API', True)
+            CONFIG.set_str('BOOK_API', 'DNB')
         else:
             CONFIG.set_bool('DNB_API', False)
         if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
-                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')):
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
             # ensure at least one option is available
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
+        return kwargs['status']
+
+    @cherrypy.expose
+    @require_auth()
+    def bn_api_changed(self, **kwargs):
+        # bn_api is true/false, not an api key
+        if kwargs['status']:
+            CONFIG.set_bool('BN_API', True)
+            CONFIG.set_str('BOOK_API', 'BN')
+        else:
+            CONFIG.set_bool('BN_API', False)
+        if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
+            # ensure at least one option is available
+            CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
+        return kwargs['status']
+
+    @cherrypy.expose
+    @require_auth()
+    def dbk_api_changed(self, **kwargs):
+        # dbk_api is true/false, not an api key
+        if kwargs['status']:
+            CONFIG.set_bool('DBK_API', True)
+            CONFIG.set_str('BOOK_API', 'DBK')
+        else:
+            CONFIG.set_bool('DBK_API', False)
+        if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
+            # ensure at least one option is available
+            CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
+        return kwargs['status']
+
+    @cherrypy.expose
+    @require_auth()
+    def ran_api_changed(self, **kwargs):
+        # ran_api is true/false, not an api key
+        if kwargs['status']:
+            CONFIG.set_bool('RAN_API', True)
+            CONFIG.set_str('BOOK_API', 'RanobeDB')
+        else:
+            CONFIG.set_bool('RAN_API', False)
+        if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
+            # ensure at least one option is available
+            CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         return kwargs['status']
 
     @cherrypy.expose
@@ -8427,12 +9496,16 @@ class WebInterface:
         # hc_api is true/false, not an api key
         if kwargs['status']:
             CONFIG.set_bool('HC_API', True)
+            CONFIG.set_str('BOOK_API', 'HardCover')
         else:
             CONFIG.set_bool('HC_API', False)
         if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
-                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')):
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
             # ensure at least one option is available
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         return kwargs['status']
 
     @cherrypy.expose
@@ -8440,10 +9513,15 @@ class WebInterface:
     def gr_api_changed(self, **kwargs):
         self.validate_param("goodreads api", kwargs['gr_api'], ['<', '>', '='], 404)
         CONFIG.set_str('GR_API', kwargs['gr_api'])
+        if kwargs['gr_api']:
+            CONFIG.set_str('BOOK_API', 'GoodReads')
         if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
-                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')):
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
             # ensure at least one option is available
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         return kwargs['gr_api']
 
     @cherrypy.expose
@@ -8451,11 +9529,22 @@ class WebInterface:
     def gb_api_changed(self, **kwargs):
         self.validate_param("googlebooks api", kwargs['gb_api'], ['<', '>', '='], 404)
         CONFIG.set_str('GB_API', kwargs['gb_api'])
+        if kwargs['gb_api']:
+            CONFIG.set_str('BOOK_API', 'GoogleBooks')
         if (not CONFIG.get_bool('HC_API') and not bool(CONFIG.get_str('GR_API'))
-                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')):
+                and not bool(CONFIG.get_str('GB_API')) and not CONFIG.get_bool('DNB_API')
+                and not CONFIG.get_bool('BN_API') and not CONFIG.get_bool('DBK_API')
+                and not CONFIG.get_bool('RAN_API')):
             # ensure at least one option is available
             CONFIG.set_bool('OL_API', True)
+            CONFIG.set_str('BOOK_API', 'OpenLibrary')
         return kwargs['gb_api']
+
+    @cherrypy.expose
+    @require_auth()
+    def book_api_changed(self, **kwargs):
+        CONFIG.set_str('BOOK_API', kwargs['book_api'])
+        return kwargs['book_api']
 
     @cherrypy.expose
     @require_auth()
@@ -8472,27 +9561,28 @@ class WebInterface:
             fail = ''
             if not self.validate_param("provider name", kwargs['name'], ['<', '>', '='], None):
                 fail += 'name '
-            if not self.validate_param("provider host", kwargs['host'], ['<', '>'], None):
+            if not self.validate_param("provider host", host, ['<', '>'], None):
                 fail += 'host '
-            if not self.validate_param("provider api", kwargs['api'], ['<', '>'], None):
+            if not self.validate_param("provider api", api, ['<', '>'], None):
                 fail += 'api '
             if fail:
-                return f"{kwargs['name']} test FAILED, bad parameter: {fail}"
+                return i18n.gettext("%(name)s test FAILED, bad parameter: %(param)s") % {
+                    'name': kwargs['name'], 'param': fail}
 
             result, name = test_provider(kwargs['name'], host=host, api=api)
             if result is False:
-                msg = f"{name} test FAILED, check debug log"
+                msg = i18n.gettext("%(name)s test FAILED, check debug log") % {'name': name}
             elif result is True:
-                msg = f"{name} test PASSED"
+                msg = i18n.gettext("%(name)s test PASSED") % {'name': name}
                 CONFIG.save_config_and_backup_old(section=kwargs['name'])
             else:
                 wishtype = wishlist_type(host)
                 if wishtype:
                     name = f'Wishlist {wishtype} {name}'
-                msg = f"{name} test PASSED, found {result}"
+                msg = i18n.gettext("%(name)s test PASSED, found %(result)s") % {'name': name, 'result': result}
                 CONFIG.save_config_and_backup_old(section=kwargs['name'])
         else:
-            msg = "Invalid or missing name in testprovider"
+            msg = i18n.gettext("Invalid or missing name in testprovider")
         return msg
 
     @cherrypy.expose
@@ -8503,9 +9593,9 @@ class WebInterface:
         logger = logging.getLogger(__name__)
         # clear any currently blocked providers
         num = BLOCKHANDLER.clear_all()
-        result = f'Cleared {num} blocked {plural(num, "provider")}'
-        logger.debug(result)
-        return result
+        logger.debug(f'Cleared {num} blocked {plural(num, "provider")}')
+        return i18n.ngettext('Cleared %(count)s blocked provider', 'Cleared %(count)s blocked providers',
+                             num) % {'count': num}
 
     @cherrypy.expose
     @require_auth()
@@ -8531,12 +9621,12 @@ class WebInterface:
                 num = count['counter']
             else:
                 num = 0
-            result = f'Deleted download counter for {num} {plural(num, "provider")}'
             db.action('DELETE from downloads')
         finally:
             db.close()
-        logger.debug(result)
-        return result
+        logger.debug(f'Deleted download counter for {num} {plural(num, "provider")}')
+        return i18n.ngettext('Deleted download counter for %(count)s provider',
+                             'Deleted download counter for %(count)s providers', num) % {'count': num}
 
     @cherrypy.expose
     @require_auth()
@@ -8556,7 +9646,7 @@ class WebInterface:
             result += new_entry
 
         if result == '':
-            result = 'No downloads'
+            result = i18n.gettext('No downloads')
         return result
 
     @cherrypy.expose
@@ -8564,7 +9654,7 @@ class WebInterface:
     def sync_to_calibre(self):
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         if 'CalSync' in [n.name for n in list(threading.enumerate())]:
-            msg = 'Calibre Sync is already running'
+            msg = i18n.gettext('Calibre Sync is already running')
         else:
             self.label_thread('CalSync')
             cookie = cherrypy.request.cookie
@@ -8573,7 +9663,7 @@ class WebInterface:
                 msg = sync_calibre_list(userid=userid)
                 self.label_thread('WEBSERVER')
             else:
-                msg = "No userid found"
+                msg = i18n.gettext("No userid found")
         return msg
 
     @cherrypy.expose
@@ -8672,7 +9762,7 @@ class WebInterface:
             else:
                 fail += "oauth_secret "
         if fail:
-            res = f'gr_auth failed, bad parameter: {fail}'
+            res = i18n.gettext('%(name)s failed, bad parameter: %(param)s') % {'name': 'GoodReads', 'param': fail}
         else:
             res = grsync.test_auth()
         if res.startswith('Pass:'):
@@ -8695,9 +9785,9 @@ class WebInterface:
             result = notifiers.twitter_notifier._get_credentials(key)
             if result:
                 CONFIG.save_config_and_backup_old(section='Twitter')
-                return "Key verification successful"
-            return "Unable to verify key"
-        return "No Key provided"
+                return i18n.gettext("Key verification successful")
+            return i18n.gettext("Unable to verify key")
+        return i18n.gettext("No key provided")
 
     @cherrypy.expose
     @require_auth()
@@ -8706,8 +9796,8 @@ class WebInterface:
         thread_name("WEBSERVER")
         result = notifiers.twitter_notifier.test_notify()
         if result:
-            return "Tweet successful, check your twitter to make sure it worked"
-        return "Error sending tweet"
+            return i18n.gettext("Tweet successful, check your twitter to make sure it worked")
+        return i18n.gettext("Error sending tweet")
 
     @cherrypy.expose
     @require_auth()
@@ -8736,10 +9826,10 @@ class WebInterface:
             result = notifiers.androidpn_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='AndroidPN')
-            return "Test AndroidPN notice sent successfully"
+            return i18n.gettext("Test %(name)s notice sent successfully") % {'name': 'AndroidPN'}
         if fail:
-            return f"AndroidPN failed, bad parameter: {fail}"
-        return "Test AndroidPN notice failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'AndroidPN', 'param': fail}
+        return i18n.gettext("Test %(name)s notice failed") % {'name': 'AndroidPN'}
 
     @cherrypy.expose
     @require_auth()
@@ -8758,10 +9848,10 @@ class WebInterface:
             result = notifiers.boxcar_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='Boxcar')
-            return f"Boxcar notification successful,\n{result}"
+            return i18n.gettext("%(name)s notification successful") % {'name': 'Boxcar'} + f",\n{result}"
         if fail:
-            return f'boxcar failed, bad parameter: {fail}'
-        return "Boxcar notification failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Boxcar', 'param': fail}
+        return i18n.gettext("%(name)s notification failed") % {'name': 'Boxcar'}
 
     @cherrypy.expose
     @require_auth()
@@ -8785,10 +9875,10 @@ class WebInterface:
             result = notifiers.pushbullet_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='PushBullet')
-            return f"Pushbullet notification successful,\n{result}"
+            return i18n.gettext("%(name)s notification successful") % {'name': 'Pushbullet'} + f",\n{result}"
         if fail:
-            return f'Pushbullet failed, bad parameter: {fail}'
-        return "Pushbullet notification failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Pushbullet', 'param': fail}
+        return i18n.gettext("%(name)s notification failed") % {'name': 'Pushbullet'}
 
     @cherrypy.expose
     @require_auth()
@@ -8822,10 +9912,10 @@ class WebInterface:
             result = notifiers.pushover_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='Pushover')
-            return f"Pushover notification successful,\n{result}"
+            return i18n.gettext("%(name)s notification successful") % {'name': 'Pushover'} + f",\n{result}"
         if fail:
-            return f'Pushover failed, bad parameter: {fail}'
-        return "Pushover notification failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Pushover', 'param': fail}
+        return i18n.gettext("%(name)s notification failed") % {'name': 'Pushover'}
 
     @cherrypy.expose
     @require_auth()
@@ -8849,10 +9939,10 @@ class WebInterface:
             result = notifiers.telegram_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='Telegram')
-            return "Test Telegram notice sent successfully"
+            return i18n.gettext("Test %(name)s notice sent successfully") % {'name': 'Telegram'}
         if fail:
-            return f'Telegram failed, bad parameter: {fail}'
-        return "Test Telegram notice failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Telegram', 'param': fail}
+        return i18n.gettext("Test %(name)s notice failed") % {'name': 'Telegram'}
 
     @cherrypy.expose
     @require_auth()
@@ -8876,10 +9966,10 @@ class WebInterface:
             result = notifiers.prowl_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='Prowl')
-            return "Test Prowl notice sent successfully"
+            return i18n.gettext("Test %(name)s notice sent successfully") % {'name': 'Prowl'}
         if fail:
-            return f'Prowl failed, bad parameter: {fail}'
-        return "Test Prowl notice failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Prowl', 'param': fail}
+        return i18n.gettext("Test %(name)s notice failed") % {'name': 'Prowl'}
 
     @cherrypy.expose
     @require_auth()
@@ -8903,10 +9993,10 @@ class WebInterface:
             result = notifiers.growl_notifier.test_notify()
         if result:
             CONFIG.save_config_and_backup_old(section='Growl')
-            return "Test Growl notice sent successfully"
+            return i18n.gettext("Test %(name)s notice sent successfully") % {'name': 'Growl'}
         if fail:
-            return f'Growl failed, bad parameter: {fail}'
-        return "Test Growl notice failed"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Growl', 'param': fail}
+        return i18n.gettext("Test %(name)s notice failed") % {'name': 'Growl'}
 
     @cherrypy.expose
     @require_auth()
@@ -8929,15 +10019,16 @@ class WebInterface:
         else:
             result = notifiers.slack_notifier.test_notify()
         if result != "ok":
-            return f"Slack notification failed,\n{result}"
+            return i18n.gettext("%(name)s notification failed") % {'name': 'Slack'} + f",\n{result}"
         if fail:
-            return f'Slack failed, bad parameter: {fail}'
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Slack', 'param': fail}
         CONFIG.save_config_and_backup_old(section='Slack')
-        return "Slack notification successful"
+        return i18n.gettext("%(name)s notification successful") % {'name': 'Slack'}
 
     @cherrypy.expose
     @require_auth()
     def test_custom(self, **kwargs):
+        self.check_permitted(lazylibrarian.perm_admin)
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         thread_name("WEBSERVER")
         fail = ''
@@ -8951,11 +10042,11 @@ class WebInterface:
         else:
             result = notifiers.custom_notifier.test_notify()
         if not result:
-            return "Custom notification failed"
+            return i18n.gettext("Custom notification failed")
         if fail:
-            return f'Custom notification failed, bad parameter: {fail}'
+            return i18n.gettext("Custom notification failed, bad parameter: %(param)s") % {'param': fail}
         CONFIG.save_config_and_backup_old(section='Custom')
-        return "Custom notification successful"
+        return i18n.gettext("Custom notification successful")
 
     @cherrypy.expose
     @require_auth()
@@ -9013,11 +10104,11 @@ class WebInterface:
         else:
             result = notifiers.email_notifier.test_notify()
         if not result:
-            return "Email notification failed"
+            return i18n.gettext("Email notification failed")
         if fail:
-            return f'email notificaton failed, bad parameter: {fail}'
+            return i18n.gettext("Email notification failed, bad parameter: %(param)s") % {'param': fail}
         CONFIG.save_config_and_backup_old(section='Email')
-        return "Email notification successful, check your email"
+        return i18n.gettext("Email notification successful, check your email")
 
     # API ###############################################################
 
@@ -9032,11 +10123,13 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def generate_ro_api(self):
+        self.check_permitted(lazylibrarian.perm_admin)
         return self.generate_api(ro=True)
 
     @cherrypy.expose
     @require_auth()
     def generate_api(self, ro=False):
+        self.check_permitted(lazylibrarian.perm_admin)
         logger = logging.getLogger(__name__)
         api_key = hashlib.sha224(str(random.getrandbits(256)).encode('utf-8')).hexdigest()[0:32]
         if ro:
@@ -9127,7 +10220,7 @@ class WebInterface:
     @cherrypy.expose
     @require_auth()
     def manage(self, **kwargs):
-        self.check_permitted(lazylibrarian.perm_managebooks)
+        self.check_permitted(lazylibrarian.perm_managebooks, redirect_unauth=True)
         types = []
         if CONFIG.get_bool('EBOOK_TAB'):
             types.append('eBook')
@@ -9143,7 +10236,7 @@ class WebInterface:
             which_status = kwargs['whichStatus']
         if which_status == 'None':
             which_status = "Wanted"
-        return serve_template(templatename="managebooks.html", title=f"Manage {library}s",
+        return serve_template(templatename="managebooks.html", title=i18n.gettext('Manage AudioBooks') if library == 'AudioBook' else i18n.gettext('Manage eBooks'),
                               books=[], types=types, library=library, whichStatus=which_status)
 
     @cherrypy.expose
@@ -9186,13 +10279,13 @@ class WebInterface:
             else:
                 fail += 'user '
         if fail:
-            return f"deluge failed, bad parameter: {fail}"
+            return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Deluge', 'param': fail}
 
         try:
             if not CONFIG['DELUGE_USER']:
                 # no username, talk to the webui
-                msg = deluge.check_link()
-                if 'FAILED' in msg:
+                msg, ok = deluge.check_link()
+                if not ok:
                     return msg
             else:
                 # if there's a username, talk to the daemon directly
@@ -9207,13 +10300,13 @@ class WebInterface:
                                          CONFIG['DELUGE_USER'],
                                          CONFIG['DELUGE_PASS'])
                 client.connect()
-                msg = "Deluge: Daemon connection Successful\n"
+                msg = i18n.gettext("Deluge: Daemon connection successful") + "\n"
                 if CONFIG['DELUGE_LABEL']:
                     labels = client.call('label.get_labels')
                     if labels:
                         dlcommslogger.debug(f"Valid labels: {str(labels)}")
                     else:
-                        msg += "Deluge daemon seems to have no labels set\n"
+                        msg += i18n.gettext("Deluge daemon seems to have no labels set") + "\n"
 
                     mylabel = CONFIG['DELUGE_LABEL'].lower()
                     if mylabel != CONFIG['DELUGE_LABEL']:
@@ -9223,22 +10316,22 @@ class WebInterface:
                     if mylabel not in labels:
                         res = client.call('label.add', mylabel)
                         if not res:
-                            msg += f"Label [{CONFIG['DELUGE_LABEL']}] was added"
+                            msg += i18n.gettext("Label [%(label)s] was added") % {'label': CONFIG['DELUGE_LABEL']}
                         else:
                             msg = str(res)
                     else:
-                        msg += f'Label [{CONFIG["DELUGE_LABEL"]}] is valid'
+                        msg += i18n.gettext("Label [%(label)s] is valid") % {'label': CONFIG["DELUGE_LABEL"]}
             # success, save settings
             CONFIG.save_config_and_backup_old(section='DELUGE')
             return msg
 
         except Exception as e:
-            msg = "Deluge: Daemon connection FAILED\n"
+            msg = i18n.gettext("Deluge: Daemon connection FAILED") + "\n"
             if 'Connection refused' in str(e):
                 msg += str(e)
-                msg += "Check Deluge daemon HOST and PORT settings"
+                msg += i18n.gettext("Check Deluge daemon HOST and PORT settings")
             elif 'need more than 1 value' in str(e):
-                msg += "Invalid USERNAME or PASSWORD"
+                msg += i18n.gettext("Invalid USERNAME or PASSWORD")
             else:
                 msg += type(e).__name__ + ' ' + str(e)
             return msg
@@ -9282,10 +10375,10 @@ class WebInterface:
             else:
                 fail += 'subdir '
         if fail:
-            msg = f"sab failed, bad parameter: {fail}"
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'SABnzbd', 'param': fail}
         else:
-            msg = sabnzbd.check_link()
-            if 'success' in msg:
+            msg, ok = sabnzbd.check_link()
+            if ok:
                 CONFIG.save_config_and_backup_old(section='sab_nzbd')
         return msg
 
@@ -9320,11 +10413,11 @@ class WebInterface:
         if 'pri' in kwargs:
             CONFIG.set_int('NZBGET_PRIORITY', check_int(kwargs['pri'], 0))
         if fail:
-            msg = f'NzbGet failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'NZBGet', 'param': fail}
         else:
-            msg = nzbget.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='NZBGet')
+            msg, ok = nzbget.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='NZBGet')
         return msg
 
     @cherrypy.expose
@@ -9356,11 +10449,11 @@ class WebInterface:
         #    else:
         #        fail += 'password '
         if fail:
-            msg = f'Transmission failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Transmission', 'param': fail}
         else:
-            msg = transmission.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='TRANSMISSION')
+            msg, ok = transmission.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='TRANSMISSION')
         return msg
 
     @cherrypy.expose
@@ -9399,11 +10492,11 @@ class WebInterface:
         if 'ignore_ssl' in kwargs:
             CONFIG.set_bool('QBITTORRENT_IGNORE_SSL', kwargs['ignore_ssl'] == '1')
         if fail:
-            msg = f'QbitTorrent failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'qBittorrent', 'param': fail}
         else:
-            msg = qbittorrent.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='QBITTORRENT')
+            msg, ok = qbittorrent.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='QBITTORRENT')
         return msg
 
     @cherrypy.expose
@@ -9440,11 +10533,11 @@ class WebInterface:
             else:
                 fail += 'label '
         if fail:
-            msg = f'utorrent failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'uTorrent', 'param': fail}
         else:
-            msg = utorrent.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='UTORRENT')
+            msg, ok = utorrent.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='UTORRENT')
         return msg
 
     @cherrypy.expose
@@ -9479,11 +10572,11 @@ class WebInterface:
             else:
                 fail += 'label '
         if fail:
-            msg = f'rtorrent failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'rTorrent', 'param': fail}
         else:
-            msg = rtorrent.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='RTORRENT')
+            msg, ok = rtorrent.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='RTORRENT')
         return msg
 
     @cherrypy.expose
@@ -9515,16 +10608,17 @@ class WebInterface:
             else:
                 fail += 'dir '
         if fail:
-            msg = f'synology failed, bad parameter: {fail}'
+            msg = i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'Synology', 'param': fail}
         else:
-            msg = synology.check_link()
-        if 'success' in msg:
-            CONFIG.save_config_and_backup_old(section='SYNOLOGY')
+            msg, ok = synology.check_link()
+            if ok:
+                CONFIG.save_config_and_backup_old(section='SYNOLOGY')
         return msg
 
     @cherrypy.expose
     @require_auth()
     def test_ffmpeg(self, **kwargs):
+        self.check_permitted(lazylibrarian.perm_admin)
         thread_name("WEBSERVER")
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         postprocesslogger = logging.getLogger('special.postprocess')
@@ -9532,7 +10626,7 @@ class WebInterface:
             if self.validate_param("ffmpeg program", kwargs['prg'], ['<', '>', '='], None):
                 CONFIG.set_str('FFMPEG', kwargs['prg'])
             else:
-                return 'ffmpeg failed, bad parameter: program'
+                return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'ffmpeg', 'param': 'program'}
         ffmpeg = CONFIG['FFMPEG']
         try:
             if postprocesslogger.isEnabledFor(logging.DEBUG):
@@ -9552,60 +10646,66 @@ class WebInterface:
 
             ff_ver = make_unicode(res).strip().split("Copyright")[0].split()[-1]
             lazylibrarian.FFMPEGVER = ff_ver
-            return f"Found ffmpeg version {ff_ver}"
+            return i18n.gettext("Found %(name)s version %(version)s") % {'name': 'ffmpeg', 'version': ff_ver}
         except Exception as e:
             lazylibrarian.FFMPEGVER = None
-            return f"ffmpeg -version failed: {type(e).__name__} {str(e)}"
+            return i18n.gettext("%(command)s failed: %(error)s") % {
+                'command': 'ffmpeg -version', 'error': f'{type(e).__name__} {str(e)}'}
 
     @cherrypy.expose
     @require_auth()
     def test_ebook_convert(self, **kwargs):
+        self.check_permitted(lazylibrarian.perm_admin)
         thread_name("WEBSERVER")
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         if 'prg' in kwargs and kwargs['prg']:
             if self.validate_param("ebook convert", kwargs['prg'], ['<', '>', '='], None):
                 CONFIG.set_str('EBOOK_CONVERT', kwargs['prg'])
             else:
-                return "ebook-convert failed, bad parameter"
+                return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'ebook-convert', 'param': 'program'}
 
         prg = CONFIG['EBOOK_CONVERT']
         try:
             params = [prg, "--version"]
             res = subprocess.check_output(params, stderr=subprocess.STDOUT)
             res = make_unicode(res).strip().split("(")[1].split(")")[0]
-            return f"Found ebook-convert version {res}"
+            return i18n.gettext("Found %(name)s version %(version)s") % {'name': 'ebook-convert', 'version': res}
         except Exception as e:
-            return f"ebook-convert --version failed: {type(e).__name__} {str(e)}"
+            return i18n.gettext("%(command)s failed: %(error)s") % {
+                'command': 'ebook-convert --version', 'error': f'{type(e).__name__} {str(e)}'}
 
     @cherrypy.expose
     @require_auth()
     def test_calibredb(self, **kwargs):
+        self.check_permitted(lazylibrarian.perm_admin)
         thread_name("WEBSERVER")
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         if 'prg' in kwargs and kwargs['prg']:
             if self.validate_param("calibredb", kwargs['prg'], ['<', '>', '='], None):
                 CONFIG.set_str('IMP_CALIBREDB', kwargs['prg'])
             else:
-                return 'calibredb failed, bad parameter: program'
+                return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'calibredb', 'param': 'program'}
         return calibre_test()
 
     @cherrypy.expose
     @require_auth()
     def test_preprocessor(self, **kwargs):
+        self.check_permitted(lazylibrarian.perm_admin)
         thread_name("WEBSERVER")
         cherrypy.response.headers['Cache-Control'] = "max-age=0,no-cache,no-store"
         if 'prg' in kwargs and kwargs['prg']:
             if self.validate_param("preprocessor", kwargs['prg'], ['<', '>', '='], None):
                 CONFIG.set_str('EXT_PREPROCESS', kwargs['prg'])
             else:
-                return 'preprocessor failed, bad parameter: program'
+                return i18n.gettext("%(name)s failed, bad parameter: %(param)s") % {'name': 'preprocessor', 'param': 'program'}
         if len(CONFIG['EXT_PREPROCESS']):
             params = [CONFIG['EXT_PREPROCESS'], 'test', '']
             rc, res, err = run_script(params)
             if rc:
-                return f"Preprocessor returned {rc}: res[{res}] err[{err}]"
+                return i18n.gettext('Preprocessor returned %(rc)s: res[%(res)s] err[%(err)s]') % {
+                    'rc': rc, 'res': res, 'err': err}
         else:
-            return "No preprocessor set in config"
+            return i18n.gettext("No preprocessor set in config")
         return res
 
     @cherrypy.expose
@@ -9616,9 +10716,11 @@ class WebInterface:
         data = op.fetch_data()
         return data
 
-    def send_file(self, myfile, name=None, email=False):
+    def send_file(self, myfile, name=None, email=False, perm_check=True):
         logger = logging.getLogger(__name__)
-        self.check_permitted(lazylibrarian.perm_download)
+        # serve_item() may have already validated the embedded feed token and perm_download
+        if perm_check:
+            self.check_permitted(lazylibrarian.perm_download, redirect_unauth=True)
         userid = ''
         if CONFIG.get_bool('USER_ACCOUNTS'):
             cookie = cherrypy.request.cookie
@@ -9638,12 +10740,14 @@ class WebInterface:
                         addrs = get_list(res['SendTo'])
                     else:
                         addrs = [res['SendTo']]
+                    lang = emailtemplates.user_language(userid)
                     for addr in addrs:
                         logger.debug(f"Emailing {myfile} to {addr}")
+                        subject, file_msg = emailtemplates.file_message(name or '', emailtemplates.ATTACHED,
+                                                                        lang=lang)
                         if name:
-                            msg = lazylibrarian.NEWFILE_MSG.replace('{name}', name).replace(
-                                '{method}', ' is attached').replace('{link}', '')
-                        result = notifiers.email_notifier.email_file(subject="Message from LazyLibrarian",
+                            msg = file_msg
+                        result = notifiers.email_notifier.email_file(subject=subject,
                                                                      message=msg, to_addr=addr, files=[myfile])
                         if result:
                             db.action('INSERT into sent_file (WhenSent, UserID, Addr, FileName) VALUES (?, ?, ?, ?)',
@@ -9654,13 +10758,14 @@ class WebInterface:
                     db.close()
                     msg = ''
                     if sent:
-                        msg = f"Emailed file {os.path.basename(myfile)} to {','.join(sent)} "
-                        logger.debug(msg)
+                        logger.debug(f"Emailed file {os.path.basename(myfile)} to {','.join(sent)}")
+                        msg = i18n.gettext("Emailed file %(file)s to %(addresses)s") % {
+                            'file': os.path.basename(myfile), 'addresses': ','.join(sent)} + ' '
                     if not_sent:
-                        msg2 = f"Failed to email file {os.path.basename(myfile)} to {','.join(not_sent)}"
-                        logger.error(msg2)
-                        msg += msg2
-                return serve_template(templatename="choosetype.html", title='Send file',
+                        logger.error(f"Failed to email file {os.path.basename(myfile)} to {','.join(not_sent)}")
+                        msg += i18n.gettext("Failed to email file %(file)s to %(addresses)s") % {
+                            'file': os.path.basename(myfile), 'addresses': ','.join(not_sent)}
+                return serve_template(templatename="choosetype.html", title=i18n.gettext('Send file'),
                                       pop_message=msg, pop_types='', bookid='', valid='', email=email)
         if not name:
             name = os.path.basename(myfile)
@@ -9716,4 +10821,4 @@ class WebInterface:
         CONFIG.set_int('TELEMETRY_INTERVAL', 6)
         CONFIG.set_url('TELEMETRY_SERVER', 'https://lazylibrarian.telem.ch')
         CONFIG.save_config_and_backup_old(section='Telemetry')
-        return "Thank you for enabling Telemetry"
+        return i18n.gettext("Thank you for enabling Telemetry")

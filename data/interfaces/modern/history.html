@@ -1,0 +1,322 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'history'
+%>
+<%def name="headIncludes()">
+<style>
+  .llh-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .llh-filter { flex: 1 1 100%; order: 5; } }
+  .llh-list { border-top: 1px solid var(--bs-border-color-translucent); }
+  .llh-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: "icon title status" "icon meta status";
+             gap: 2px 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--bs-border-color-translucent); cursor: pointer; }
+  .llh-row:hover { background: var(--bs-tertiary-bg); }
+  .llh-row:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: -2px; }
+  .llh-icon { grid-area: icon; width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+              background: var(--bs-secondary-bg); color: var(--bs-secondary-color); font-size: .9rem; }
+  .llh-title { grid-area: title; font-weight: 600; font-size: .9rem; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2;
+               -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+  .llh-meta { grid-area: meta; font-size: .75rem; color: var(--bs-secondary-color); display: flex; flex-wrap: wrap; gap: 0 .9rem; min-width: 0; }
+  .llh-meta a { color: inherit; text-underline-offset: 2px; }
+  .llh-meta span { white-space: nowrap; }
+  .llh-status { grid-area: status; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+  .llh-pill { font-size: .68rem; font-weight: 600; padding: 3px 9px; }
+  .llh-prog { width: 110px; height: 6px; border-radius: 6px; background: var(--bs-secondary-bg); overflow: hidden; }
+  .llh-prog i { display: block; height: 100%; background: var(--ll-accent); transition: width .4s ease; }
+  .llh-pct { font-size: .68rem; font-variant-numeric: tabular-nums; color: var(--bs-secondary-color); }
+  @media (max-width: 480px) { .llh-prog { width: 70px; } .llh-title { font-size: .84rem; } }
+  .llh-skel { height: 54px; border-bottom: 1px solid var(--bs-border-color-translucent); animation: llh-pulse 1.2s ease-in-out infinite; background: var(--bs-tertiary-bg); }
+  @keyframes llh-pulse { 50% { opacity: .5; } }
+  .llh-info dt { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--bs-secondary-color); font-weight: 500; }
+  .llh-info dd { margin: 0 0 .7rem; overflow-wrap: anywhere; font-size: .9rem; }
+  .llh-pre { font-family: var(--bs-font-monospace); font-size: .82rem; white-space: pre-wrap; margin: 0; }
+  @media (prefers-reduced-motion: reduce) { .llh-skel { animation: none; } .llh-prog i { transition: none; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_status = bool(perm & lazylibrarian.perm_status)
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+%>
+<div x-data="llHistory" x-init="start()">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="badge rounded-pill text-bg-info" x-show="active" x-cloak x-text="llNgettext(T.active, active)"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llh-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+    </div>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="4:desc">${_('Newest')}</option>
+      <option value="4:asc">${_('Oldest')}</option>
+      <option value="0:asc">${_('Title')}</option>
+      <option value="3:asc">${_('Provider')}</option>
+      <option value="5:desc">${_('Size')}</option>
+    </select>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="downloads()">
+      <i class="fa fa-download" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('Download Count')}</span>
+    </button>
+    %if can_edit:
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" @click="clear('Processed')"><i class="fa fa-check fa-fw me-2" aria-hidden="true"></i>${_('Clear Processed')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="clear('Snatched')"><i class="fa fa-download fa-fw me-2" aria-hidden="true"></i>${_('Clear Snatched')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="clear('Failed')"><i class="fa fa-times fa-fw me-2" aria-hidden="true"></i>${_('Clear Failed')}</button></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><button type="button" class="dropdown-item text-danger" @click="clear('all')"><i class="fa fa-broom fa-fw me-2" aria-hidden="true"></i>${_('Clear All History')}</button></li>
+      </ul>
+    </div>
+    %endif
+  </div>
+
+  <div class="llh-list">
+    <template x-for="h in items" :key="h.rowid">
+      <div class="llh-row" tabindex="0" @click="info(h, $event)" @keydown.enter.prevent="info(h, $event)">
+        <span class="llh-icon" :title="h.typeLabel"><i class="fa" :class="h.icon" aria-hidden="true"></i></span>
+        <span class="llh-title" :title="h.title" x-text="h.title"></span>
+        <span class="llh-meta">
+          <template x-if="h.link"><a :href="h.link" x-text="h.typeLabel"></a></template>
+          <template x-if="!h.link"><span x-text="h.typeLabel"></span></template>
+          <template x-if="h.authorId"><a :href="'author_page?authorid=' + encodeURIComponent(h.authorId)">${_('Author')}</a></template>
+          <span x-show="h.provider" x-text="h.provider"></span>
+          <span x-show="h.size" x-text="h.size"></span>
+          <span :title="h.fullDate" x-text="h.date"></span>
+        </span>
+        <span class="llh-status">
+          <template x-if="h.progress >= 0 && h.progress < 100">
+            <span class="d-flex align-items-center gap-2">
+              <span class="llh-pct" x-text="h.progress + '%'"></span>
+              <span class="llh-prog" role="progressbar" :aria-valuenow="h.progress" aria-valuemin="0" aria-valuemax="100"><i :style="'width:' + h.progress + '%'"></i></span>
+            </span>
+          </template>
+          <span class="badge rounded-pill llh-pill" :class="pillClass(h.status)" x-text="llStatus(h.status)"></span>
+        </span>
+      </div>
+    </template>
+    <template x-for="n in (loading ? (items.length ? 3 : 10) : 0)" :key="'s' + n"><div class="llh-skel"></div></template>
+    <div class="text-center text-body-secondary py-5" x-show="!loading && done && !items.length" x-cloak>${_('No history found')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && items.length ? T.allShown : ''"></div>
+
+  <div class="modal fade" id="llh-modal" tabindex="-1" aria-labelledby="llh-modal-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title h5" id="llh-modal-title" x-text="modal.title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center py-3" x-show="modal.loading"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></div>
+        <dl class="llh-info" x-show="modal.lines.length">
+          <template x-for="(l, n) in modal.lines" :key="n">
+            <div><dt x-text="l[0]"></dt><dd x-text="l[1]"></dd></div>
+          </template>
+        </dl>
+        <pre class="llh-pre" x-show="modal.text" x-text="modal.text"></pre>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <template x-if="modal.kind === 'item'">
+          <div class="d-flex gap-2 me-auto">
+            %if can_status:
+            <button type="button" class="btn btn-sm btn-outline-warning rounded-pill" x-show="modal.item && modal.item.status !== 'Failed'" @click="markFailed()">${_('Mark Failed')}</button>
+            %endif
+            %if can_edit:
+            <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" @click="remove()">${_('Delete')}</button>
+            %endif
+          </div>
+        </template>
+        %if can_status:
+        <template x-if="modal.kind === 'count'">
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill me-auto" @click="clearCounters()">${_('Clear Counters')}</button>
+        </template>
+        %endif
+        <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-dismiss="modal">${_('Close')}</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 50, REFRESH = ${max(CONFIG.get_int('HIST_REFRESH'), 5000) if CONFIG.get_int('HIST_REFRESH') else 10000};
+  var T = {
+    allShown: ${_js('That is all')}, failed: ${_js('Something went wrong, try again')},
+    downloads: ${_js('Successful Downloads')}, download: ${_js('Download')}, done: ${_js('Done')},
+    markedFailed: ${_js('Marked Failed')}, deleted: ${_js('Deleted')},
+    confirmClear: ${_js('Clear this part of the history?')}, confirmAll: ${_js('Clear all history? Snatched books go back to Wanted.')},
+    confirmDelete: ${_js('Delete this history entry?')},
+    types: {eBook: ${_js('eBook')}, AudioBook: ${_js('AudioBook')}, Magazine: ${_js('Magazine')}, comic: ${_js('Comic')}},
+    entries: ${_jsn('%(count)s entry', '%(count)s entries')},
+    active: ${_jsn('%(count)s downloading', '%(count)s downloading')}
+  };
+  function text(html) { var d = document.createElement('div'); d.innerHTML = String(html == null ? '' : html); return (d.textContent || '').trim(); }
+  function hrefOf(html) { var m = /href=['"]?([^'"\s>]+)/.exec(String(html || '')); return m ? m[1] : ''; }
+
+  // get_history row: 0 title, 1 type (eBook/AudioBook as a button, issue date for magazines, 'comic'), 2 id (may be a link),
+  // 3 provider, 4 date, 5 size, 6 status, 7 downloader, 8 download id, 9 progress (-1 if none), 10 rowid, 11 full date
+  function toItem(r) {
+    var type = text(r[1]), id = text(r[2]), href = hrefOf(r[2]), kind = 'eBook', link = '', authorId = '';
+    if (type === 'AudioBook' || type === 'eBook' || type === '' || type === 'None') {
+      kind = type === 'AudioBook' ? 'AudioBook' : 'eBook';
+      link = 'book_detail?bookid=' + encodeURIComponent(id) + (kind === 'AudioBook' ? '&library=AudioBook' : '');
+      var a = /authorid=([^&'"]+)/.exec(href); if (a) { authorId = decodeURIComponent(a[1]); }
+    } else if (type === 'comic') {
+      kind = 'comic'; link = href;
+    } else {
+      kind = 'Magazine'; link = href;
+    }
+    var icons = {eBook: 'fa-book', AudioBook: 'fa-headphones', Magazine: 'fa-newspaper', comic: 'fa-images'};
+    return {
+      rowid: String(r[10]), title: String(r[0] || ''), kind: kind, icon: icons[kind], typeLabel: T.types[kind] + (kind === 'Magazine' && type ? ' ' + type : ''),
+      id: id, link: link, authorId: authorId, provider: r[3] || '', date: r[4] || '', fullDate: r[11] || '',
+      size: r[5] ? String(r[5]) + (/^[0-9.]+$/.test(String(r[5])) ? ' MB' : '') : '', status: String(r[6] || ''), progress: +r[9]
+    };
+  }
+
+  Alpine.data('llHistory', function () {
+    return {
+      T: T, items: [], total: 0, start_: 0, loading: false, done: false, gen: 0, timer: 0,
+      q: '', sort: '4:desc', toastText: '', modal: {title: '', lines: [], text: '', loading: false, kind: '', item: null},
+      get countText() { return this.total || this.done ? llNgettext(T.entries, this.total) : ''; },
+      get active() { return this.items.filter(function (h) { return h.progress >= 0 && h.progress < 100; }).length; },
+      start: function () {
+        var self = this;
+        try {
+          var saved = JSON.parse(sessionStorage.getItem('llh-history') || 'null');
+          if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
+        } catch (e) {}
+        ['q', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'}).observe(this.$refs.sentinel);
+        this.load();
+      },
+      url: function (start, len) {
+        var p = this.sort.split(':');
+        return 'get_history?iDisplayStart=' + start + '&iDisplayLength=' + len + '&iSortCol_0=' + p[0] +
+          '&sSortDir_0=' + p[1] + '&sSearch=' + encodeURIComponent(this.q) + '&_=' + Date.now();
+      },
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(this.start_, PAGE), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.items = self.items.concat(rows.map(toItem));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+          self.schedule();
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+      // while something is downloading, refresh the rows already on screen (keeps the scroll position)
+      schedule: function () {
+        var self = this;
+        clearTimeout(this.timer);
+        if (!this.active) { return; }
+        this.timer = setTimeout(function () {
+          var gen = self.gen;
+          fetch(self.url(0, Math.max(self.items.length, PAGE)), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+            if (gen !== self.gen) { return; }
+            self.items = (json.aaData || []).map(toItem);
+            self.start_ = self.items.length;
+            self.total = json.iTotalDisplayRecords || 0;
+            self.done = self.start_ >= self.total;
+            self.schedule();
+          }).catch(function () { self.schedule(); });
+        }, REFRESH);
+      },
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.items = []; this.done = false; this.loading = false;
+        clearTimeout(this.timer);
+        try { sessionStorage.setItem('llh-history', JSON.stringify({q: this.q, sort: this.sort})); } catch (e) {}
+        this.load();
+      },
+      pillClass: function (s) {
+        return {Processed: 'bg-success-subtle text-success-emphasis', Snatched: 'text-bg-info', Seeding: 'text-bg-info',
+                Failed: 'text-bg-danger', Aborted: 'text-bg-warning', Wanted: 'text-bg-warning'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+      showModal: function () { bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show(); },
+      hideModal: function () { bootstrap.Modal.getOrCreateInstance(this.$refs.modal).hide(); },
+      info: function (h, e) {
+        if (e && e.target.closest('a')) { return; }
+        var self = this;
+        this.modal = {title: llStatus(h.status) + ' · ' + h.typeLabel, lines: [], text: '', loading: true, kind: 'item', item: h};
+        this.showModal();
+        fetch('dlinfo?target=' + encodeURIComponent(h.status + '^' + h.rowid), {credentials: 'same-origin'})
+          .then(function (r) { return r.text(); })
+          .then(function (t) {
+            // dlinfo answers "Label: value<br>" lines
+            self.modal.lines = String(t).split(/<br\s*\/?>/i).map(text).filter(Boolean).map(function (l) {
+              var i = l.indexOf(': '); return i > 0 ? [l.slice(0, i), l.slice(i + 2)] : ['', l];
+            });
+          })
+          .catch(function () { self.modal.text = T.failed; })
+          .finally(function () { self.modal.loading = false; });
+      },
+      markFailed: function () {
+        var self = this, h = this.modal.item;
+        fetch('markhistory?rowid=' + encodeURIComponent(h.rowid), {credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } h.status = 'Failed'; h.progress = -1; self.hideModal(); self.toast(T.markedFailed); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      remove: function () {
+        var self = this, h = this.modal.item;
+        if (!window.confirm(T.confirmDelete)) { return; }
+        fetch('deletehistory?rowid=' + encodeURIComponent(h.rowid), {credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            self.items = self.items.filter(function (x) { return x !== h; }); self.total = Math.max(0, self.total - 1);
+            self.hideModal(); self.toast(T.deleted);
+          })
+          .catch(function () { self.toast(T.failed); });
+      },
+      clear: function (status) {
+        if (!window.confirm(status === 'all' ? T.confirmAll : T.confirmClear)) { return; }
+        var self = this;
+        fetch('clearhistory?status=' + encodeURIComponent(status), {credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } self.toast(T.done); self.reset(); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      downloads: function () {
+        var self = this;
+        this.modal = {title: T.downloads, lines: [], text: '', loading: true, kind: 'count', item: null};
+        this.showModal();
+        fetch('showdownloads', {credentials: 'same-origin'}).then(function (r) { return r.text(); })
+          .then(function (t) { self.modal.text = text(String(t).replace(/<br\s*\/?>/gi, '\n')) || '-'; })
+          .catch(function () { self.modal.text = T.failed; })
+          .finally(function () { self.modal.loading = false; });
+      },
+      clearCounters: function () {
+        var self = this;
+        fetch('cleardownloads', {credentials: 'same-origin'}).then(function () { self.hideModal(); self.toast(T.done); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

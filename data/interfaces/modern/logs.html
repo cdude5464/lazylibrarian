@@ -1,0 +1,207 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'logs'
+%>
+<%def name="headIncludes()">
+<style>
+  .llg-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .llg-filter { flex: 1 1 100%; order: 5; } }
+  .llg-list { font-family: var(--bs-font-monospace); font-size: .78rem; border-top: 1px solid var(--bs-border-color-translucent); }
+  .llg-row { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 0 10px; align-items: baseline; padding: 5px 6px 5px 10px;
+             border-bottom: 1px solid var(--bs-border-color-translucent); border-left: 3px solid transparent; cursor: pointer; }
+  .llg-row:hover { background: var(--bs-tertiary-bg); }
+  .llg-row.lv-WARNING { border-left-color: var(--bs-warning); }
+  .llg-row.lv-ERROR, .llg-row.lv-CRITICAL { border-left-color: var(--bs-danger); background: var(--bs-danger-bg-subtle); }
+  .llg-time { color: var(--bs-secondary-color); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .llg-lvl { font-size: .62rem; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; min-width: 4.4em; text-align: center; }
+  .llg-msg { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+  .llg-row:not(.open) .llg-msg { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+  .llg-src { grid-column: 3; color: var(--bs-secondary-color); font-size: .7rem; }
+  @media (max-width: 575.98px) {
+    .llg-row { grid-template-columns: auto minmax(0, 1fr); }
+    .llg-time { grid-column: 2; grid-row: 1; justify-self: end; font-size: .68rem; }
+    .llg-lvl { grid-row: 1; }
+    .llg-msg, .llg-src { grid-column: 1 / -1; }
+  }
+  .llg-skel { height: 28px; border-bottom: 1px solid var(--bs-border-color-translucent); background: var(--bs-tertiary-bg); animation: llg-pulse 1.2s ease-in-out infinite; }
+  @keyframes llg-pulse { 50% { opacity: .5; } }
+  @media (prefers-reduced-motion: reduce) { .llg-skel { animation: none; } }
+</style>
+</%def>
+<%def name="body()">
+<div x-data="llLogs" x-init="start()">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llg-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+             placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+    </div>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="level" aria-label="${_('Level') | h}">
+      <option value="">${_('All levels')}</option>
+      <option value="INFO">${_('Info and above')}</option>
+      <option value="WARNING">${_('Warnings and errors')}</option>
+      <option value="ERROR">${_('Errors only')}</option>
+    </select>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="desc">${_('Newest')}</option>
+      <option value="asc">${_('Oldest')}</option>
+    </select>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model.number="refresh" aria-label="${_('Refresh rate') | h}">
+      <option value="0">${_('No Refresh')}</option>
+      <option value="5">${_('5 Seconds')}</option>
+      <option value="15">${_('15 Seconds')}</option>
+      <option value="30">${_('30 Seconds')}</option>
+      <option value="60">${_('60 Seconds')}</option>
+    </select>
+    <button type="button" class="btn btn-sm rounded-pill" :class="details ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="details"
+            @click="details = !details" title="${_('Thread, file and line') | h}"><i class="fa fa-list-ul" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('Details')}</span></button>
+    <div class="dropdown">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" @click="run('clear_log', false)"><i class="fa fa-broom fa-fw me-2" aria-hidden="true"></i>${_('Clear screen Log')}</button></li>
+        <li><button type="button" class="dropdown-item text-danger" @click="run('delete_logs', true)"><i class="fa fa-times fa-fw me-2" aria-hidden="true"></i>${_('Delete Log Files')}</button></li>
+        %if CONFIG.get_bool('LOGFILEREDACT'):
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="get_support_zip"><i class="fa fa-download fa-fw me-2" aria-hidden="true"></i>${_('Get Support ZIP')}</a></li>
+        %endif
+      </ul>
+    </div>
+  </div>
+
+  <div class="llg-list">
+    <template x-for="l in lines" :key="l.k">
+      <div class="llg-row" :class="['lv-' + l.level, l.open && 'open']" @click="if (!window.getSelection().toString()) { l.open = !l.open; }">
+        <span class="llg-lvl" :class="lvlClass(l.level)" x-text="l.level"></span>
+        <span class="llg-time" :title="l.time" x-text="shortTime(l.time)"></span>
+        <span class="llg-msg" x-text="l.msg"></span>
+        <span class="llg-src" x-show="details || l.open" x-text="l.thread + ' · ' + l.file + ':' + l.line + ' ' + l.method + '()'"></span>
+      </div>
+    </template>
+    <template x-for="n in (loading ? (lines.length ? 3 : 14) : 0)" :key="'s' + n"><div class="llg-skel"></div></template>
+    <div class="text-center text-body-secondary py-5" x-show="!loading && done && !lines.length" x-cloak>${_('No log information available')}</div>
+  </div>
+  <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && lines.length ? T.allShown : ''"></div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var PAGE = 100;
+  var T = {
+    allShown: ${_js('That is all')}, failed: ${_js('Something went wrong, try again')}, done: ${_js('Done')},
+    confirmDelete: ${_js('Delete the log files on disk?')},
+    lines: ${_jsn('%(count)s line', '%(count)s lines')}
+  };
+  var seq = 0;
+  // get_log row: 0 timestamp, 1 level, 2 thread, 3 file, 4 method, 5 line, 6 message
+  function toLine(r) {
+    return {k: ++seq, time: String(r[0] || ''), level: String(r[1] || ''), thread: r[2] || '', file: r[3] || '', method: r[4] || '',
+            line: r[5] || '', msg: String(r[6] == null ? '' : r[6]), open: false};
+  }
+
+  Alpine.data('llLogs', function () {
+    return {
+      T: T, lines: [], total: 0, start_: 0, loading: false, done: false, gen: 0, timer: 0,
+      q: '', level: '', sort: 'desc', refresh: 0, details: ${'true' if CONFIG.get_int('DETAILEDUILOG') else 'false'}, toastText: '',
+      get countText() { return this.total || this.done ? llNgettext(T.lines, this.total) : ''; },
+      start: function () {
+        var self = this;
+        try { var lv = localStorage.getItem('ll_log_level'); if (lv !== null) { this.level = lv; } } catch (e) {}
+        try { var d = localStorage.getItem('llg-details'); if (d !== null) { this.details = d === '1'; } } catch (e) {}
+        try { var rf = +sessionStorage.getItem('llg-refresh'); if (rf) { this.refresh = rf; } } catch (e) {}
+        ['q', 'level', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
+        this.$watch('level', function (v) { try { localStorage.setItem('ll_log_level', v); } catch (e) {} });
+        this.$watch('details', function (v) { try { localStorage.setItem('llg-details', v ? '1' : '0'); } catch (e) {} });
+        this.$watch('refresh', function (v) { try { sessionStorage.setItem('llg-refresh', v); } catch (e) {} self.schedule(); });
+        new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'}).observe(this.$refs.sentinel);
+        this.load();
+      },
+      url: function (start, len) {
+        return 'get_log?iDisplayStart=' + start + '&iDisplayLength=' + len + '&iSortCol_0=0&sSortDir_0=' + this.sort +
+          '&sSearch=' + encodeURIComponent(this.q) + '&level=' + encodeURIComponent(this.level) + '&_=' + Date.now();
+      },
+      load: function () {
+        if (this.loading || this.done) { return; }
+        var self = this, gen = this.gen;
+        this.loading = true;
+        fetch(this.url(this.start_, PAGE), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          if (gen !== self.gen) { return; }
+          var rows = json.aaData || [];
+          self.lines = self.lines.concat(rows.map(toLine));
+          self.start_ += rows.length;
+          self.total = json.iTotalDisplayRecords || 0;
+          self.done = rows.length === 0 || self.start_ >= self.total;
+          self.schedule();
+        }).catch(function () {
+          if (gen === self.gen) { self.done = true; self.toast(T.failed); }
+        }).finally(function () {
+          if (gen !== self.gen) { return; }
+          self.loading = false;
+          self.$nextTick(function () {
+            if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+          });
+        });
+      },
+      // auto refresh re-reads the lines already shown, so new ones appear without losing the scroll position
+      schedule: function () {
+        var self = this;
+        clearTimeout(this.timer);
+        if (!this.refresh) { return; }
+        this.timer = setTimeout(function () {
+          var gen = self.gen;
+          fetch(self.url(0, Math.max(self.lines.length, PAGE)), {credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+            if (gen !== self.gen) { return; }
+            var open = {};
+            self.lines.forEach(function (l) { if (l.open) { open[l.time + l.msg] = true; } });
+            self.lines = (json.aaData || []).map(function (r) { var l = toLine(r); l.open = !!open[l.time + l.msg]; return l; });
+            self.start_ = self.lines.length;
+            self.total = json.iTotalDisplayRecords || 0;
+            self.done = self.start_ >= self.total;
+            self.schedule();
+          }).catch(function () { self.schedule(); });
+        }, this.refresh * 1000);
+      },
+      reset: function () {
+        this.gen++; this.start_ = 0; this.total = 0; this.lines = []; this.done = false; this.loading = false;
+        clearTimeout(this.timer);
+        this.load();
+      },
+      lvlClass: function (lv) {
+        return {DEBUG: 'bg-secondary-subtle text-secondary-emphasis', INFO: 'bg-info-subtle text-info-emphasis',
+                WARNING: 'text-bg-warning', ERROR: 'text-bg-danger', CRITICAL: 'text-bg-danger'}[lv] || 'bg-secondary-subtle text-secondary-emphasis';
+      },
+      // "2026-10-31 07:40:12,345" -> "07:40:12" today, "31.10. 07:40" otherwise
+      shortTime: function (t) {
+        var m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d:\d\d:\d\d)/.exec(t);
+        if (!m) { return t; }
+        var now = new Date(), today = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+        return (m[1] + '-' + m[2] + '-' + m[3]) === today ? m[4] : (+m[3]) + '.' + (+m[2]) + '. ' + m[4].slice(0, 5);
+      },
+      run: function (action, ask) {
+        if (ask && !window.confirm(T.confirmDelete)) { return; }
+        var self = this;
+        fetch(action, {credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } self.toast(T.done); self.reset(); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

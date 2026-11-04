@@ -8,11 +8,11 @@
 <%def name="headerIncludes()">
   <div id="subhead_container">
     <div id="subhead_menu">
-      <a href="clear_log" class="button btn btn-sm btn-primary"><i class="far fa-square"></i> Clear screen Log </a>
-      <a href="toggle_detailed_logs" class="button btn btn-sm btn-primary"><i class="fa fa-list-ul"></i> Toggle detail/summary </a>
-      <a href="delete_logs" class="button btn btn-sm btn-primary"><i class="far fa-square"></i> Delete Log Files </a>
+      <a href="clear_log" class="button btn btn-sm btn-primary"><i class="far fa-square"></i> ${_('Clear screen Log')} </a>
+      <a href="toggle_detailed_logs" class="button btn btn-sm btn-primary"><i class="fa fa-list-ul"></i> ${_('Toggle detail/summary')} </a>
+      <a href="delete_logs" class="button btn btn-sm btn-primary"><i class="far fa-square"></i> ${_('Delete Log Files')} </a>
       %if CONFIG.get_bool('LOGFILEREDACT'):
-      <a href="get_support_zip" class="button btn btn-sm btn-primary"><i class="fa fa-save"></i> Get Support ZIP </a>
+      <a href="get_support_zip" class="button btn btn-sm btn-primary"><i class="fa fa-save"></i> ${_('Get Support ZIP')} </a>
       %endif
     </div>
   </div>
@@ -25,27 +25,34 @@
   <div class="row">
     <div class="col-xs-12 col-sm-5">
       <div class="form-group">
-        <label for="refreshrate" class="">Refresh rate</label>
+        <label for="refreshrate" class="">${_('Refresh rate')}</label>
         <select id="refreshrate" class="button btn btn-sm btn-primary" onchange="setRefresh()">
-          <option value="0" selected="selected">No Refresh</option>
-          <option value="5">5 Seconds</option>
-          <option value="15">15 Seconds</option>
-          <option value="30">30 Seconds</option>
-          <option value="60">60 Seconds</option>
-          <option value="300">5 Minutes</option>
-          <option value="600">10 Minutes</option>
+          <option value="0" selected="selected">${_('No Refresh')}</option>
+          <option value="5">${_('5 Seconds')}</option>
+          <option value="15">${_('15 Seconds')}</option>
+          <option value="30">${_('30 Seconds')}</option>
+          <option value="60">${_('60 Seconds')}</option>
+          <option value="300">${_('5 Minutes')}</option>
+          <option value="600">${_('10 Minutes')}</option>
+        </select>
+        <label for="loglevel" class="">${_('Level')}</label>
+        <select id="loglevel" class="button btn btn-sm btn-primary">
+          <option value="" selected="selected">${_('All levels')}</option>
+          <option value="INFO">${_('Info and above')}</option>
+          <option value="WARNING">${_('Warnings and errors')}</option>
+          <option value="ERROR">${_('Errors only')}</option>
         </select>
       </div>
     </div>
     %if CONFIG['TOGGLES']:
       <div class="toggles col-xs-12 col-sm-7 text-right">
-        Toggle: <a class="toggle-vis" data-column="0"> Timestamp</a>
-        <a class="toggle-vis" data-column="1"> Level</a>
+        ${_('Toggle:')} <a class="toggle-vis" data-column="0"> ${_('Timestamp')}</a>
+        <a class="toggle-vis" data-column="1"> ${_('Level')}</a>
         %if CONFIG['DETAILEDUILOG']:
-          <a class="toggle-vis" data-column="2"> Thread</a>
-          <a class="toggle-vis" data-column="3"> File</a>
-          <a class="toggle-vis" data-column="4"> Method</a>
-          <a class="toggle-vis" data-column="5"> Line No</a>
+          <a class="toggle-vis" data-column="2"> ${_('Thread')}</a>
+          <a class="toggle-vis" data-column="3"> ${_('File')}</a>
+          <a class="toggle-vis" data-column="4"> ${_('Method')}</a>
+          <a class="toggle-vis" data-column="5"> ${_('Line No')}</a>
         %endif
       </div>
     %endif
@@ -54,15 +61,15 @@
     <table class="display table table-striped table-hover table-bordered" id="log_table">
       <thead>
         <tr>
-          <th class="timestamp">Timestamp</th>
-          <th class="level">Level</th>
+          <th class="timestamp">${_('Timestamp')}</th>
+          <th class="level">${_('Level')}</th>
           %if CONFIG['DETAILEDUILOG']:
-            <th class="thead">Thread</th>
-            <th class="file">File</th>
-            <th class="method">Method</th>
-            <th class="lineno">Line No</th>
+            <th class="thead">${_('Thread')}</th>
+            <th class="file">${_('File')}</th>
+            <th class="method">${_('Method')}</th>
+            <th class="lineno">${_('Line No')}</th>
           %endif
-          <th class="message">Message</th>
+          <th class="message">${_('Message')}</th>
         </tr>
       </thead>
     </table>
@@ -73,6 +80,16 @@
 <%def name="javascriptIncludes()">
   <script>
     $(document).ready(function() {
+        // remembered level filter, per browser
+        try {
+            var savedLevel = localStorage.getItem('ll_log_level');
+            if (savedLevel !== null) {
+                $('#loglevel').val(savedLevel);
+            }
+        } catch (e) {}
+        if ($('#loglevel').val() === null) {
+            $('#loglevel').val('');
+        }
         var oTable = $('#log_table').DataTable({
                 "bAutoWidth": false,
                 "aoColumnDefs": [
@@ -84,17 +101,14 @@
                     { "sWidth": "60%", "aTargets": [ 6 ] }
                     %endif
                 ],
-                 "stateSave": true,
+                 "stateSave": true, 
+                 "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "order": [[ 0, 'desc' ]],
-                "oLanguage": {
-                    "sSearch":"Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No log information available",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"
-                },
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No log information available')}}),
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "sPaginationType": "full_numbers",
                 "aaSorting": [],
@@ -119,12 +133,19 @@
                 },
                 "fnServerData": function (sSource, aoData, fnCallback) {
                     // Add some extra data to the sender
+                    aoData.push({"name": "level", "value": $('#loglevel').val()});
                     $.getJSON(sSource, aoData, function (json) {
                         fnCallback(json)
                     });
                 }
             });
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
+            $('#loglevel').change(function() {
+                try {
+                    localStorage.setItem('ll_log_level', $(this).val());
+                } catch (e) {}
+                oTable.draw();
+            });
             //$(window).resize(function() {oTable.draw(false)});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();

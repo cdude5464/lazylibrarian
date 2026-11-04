@@ -9,34 +9,34 @@
       <input type="hidden" name="comicfilter" id="comicfilter" value=''>
       <div id="subhead_menu" class="col-xs-12 col-md-8">
         %if perm&lazylibrarian.perm_force:
-        <a href="force_search?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> Search</a>
-        <a href="force_process?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> Run Post-Processor</a>
-        <a href="comic_scan" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> Library Scan</a>
+        <a href="force_search?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> ${_('Search')}</a>
+        <a href="force_process?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> ${_('Run Post-Processor')}</a>
+        <a href="comic_scan" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> ${_('Library Scan')}</a>
         %endif
-        <a href="comic_wall" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> Recent Issues</a>
+        <a href="comic_wall" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> ${_('Recent Issues')}</a>
         %if CONFIG['USER_ACCOUNTS']:
           %if CONFIG['RSS_ENABLED']:
-            <a href="rss_feed?user=${user}&type=Comic&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="rss feed of recent downloads"><i class="fa fa-rss"></i></a>
-            <link rel="alternate" type="application/rss+xml" title="LazyLibrarian latest comics" href="rss_feed?user=${user}&type=Comic&limit=10.xml">
+            <a href="rss_feed?user=${user}&type=Comic&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent downloads') | h}"><i class="fa fa-rss"></i></a>
+            <link rel="alternate" type="application/rss+xml" title="${_('LazyLibrarian latest comics') | h}" href="rss_feed?user=${user}&type=Comic&limit=10.xml">
           %endif
           %if pref&lazylibrarian.pref_mycomics:
-            <a href="toggle_my_comics" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-user-circle"></i></a>
+            <a href="toggle_my_comics" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-user-circle"></i></a>
           %else:
-            <a href="toggle_my_comics" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-users"></i></a>
+            <a href="toggle_my_comics" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-users"></i></a>
           %endif
         %endif
       </div>
       <div class="clearfix visible-xs"><hr/></div>
       <div class="col-xs-12 col-md-4">
         <div class="form-group">
-          <label class="sr-only">Comic Title</label>
+          <label class="sr-only">${_('Comic Title')}</label>
           <div class="input-group">
-            <input type="text" placeholder="Comic Title" name="title" class="form-control input-sm col-xs-12">
+            <input type="text" placeholder="${_('Comic Title') | h}" name="title" class="form-control input-sm col-xs-12">
             <span class="input-group-btn">
               %if CONFIG['IMP_AUTOSEARCH']:
-              <button type="submit" value="Comic" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="Search for comic"><i class="fa fa-search-plus"></i><span> Comic</span></button>
+              <button type="submit" value="Comic" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="${_('Search for comic') | h}"><i class="fa fa-search-plus"></i><span> ${_('Comic')}</span></button>
               %else:
-              <button type="submit" value="Comic" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="Add comic"><i class="fa fa-plus"></i><span> Comic</span></button>
+              <button type="submit" value="Comic" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="${_('Add comic') | h}"><i class="fa fa-plus"></i><span> ${_('Comic')}</span></button>
               %endif
             </span>
           </div>
@@ -49,7 +49,7 @@
   <h1>${title}</h1>
   %if lazylibrarian.COMIC_UPDATE == True:
     <p>
-    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Libraryscan in progress ...</button>
+    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Libraryscan in progress ...')}</button>
     </p>
   %endif
   <form name="mark_comics" id="mark_comics" action="mark_comics" method="get" class="form-inline" onsubmit="return false;">
@@ -57,33 +57,33 @@
       % if perm%lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
       <div class="col-xs-12 col-sm-5">
         <div class="form-group">
-          <label for="action" class="">Mark selected as</label>
+          <label for="action" class="">${_('Mark selected as')}</label>
           <select class="mark_comics form-control input-sm" id="action" name="action">
             %if perm&lazylibrarian.perm_status:
-            <option value="Active">Active</option>
-            <option value="Paused">Paused</option>
-            <option value="Reset">Reset</option>
-            <option value="Remove">Remove</option>
-            <option value="Delete">Delete</option>
+            <option value="Active">${_('Active')}</option>
+            <option value="Paused">${_('Paused')}</option>
+            <option value="Reset">${_('Reset')}</option>
+            <option value="Remove">${_('Remove')}</option>
+            <option value="Delete">${_('Delete')}</option>
             %endif
             %if CONFIG['USER_ACCOUNTS']:
-            <option value="Subscribe">Subscribe</option>
-            <option value="Unsubscribe">Unsubscribe</option>
+            <option value="Subscribe">${_('Subscribe')}</option>
+            <option value="Unsubscribe">${_('Unsubscribe')}</option>
             %endif
           </select>
         </div>
-        <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">Go</button>
+        <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">${_('Go')}</button>
       </div>
       %endif
       %if CONFIG['TOGGLES']:
       <div class="toggles col-xs-12 col-sm-7 text-right">
-      Toggle: <a class="toggle-vis" data-column="1"> Cover</a>
-      <a class="toggle-vis" data-column="2"> Title</a>
-      <a class="toggle-vis" data-column="3"> Num</a>
-      <a class="toggle-vis" data-column="4"> Added</a>
-      <a class="toggle-vis" data-column="5"> Latest</a>
-      <a class="toggle-vis" data-column="6"> Status</a>
-      <a class="toggle-vis" data-column="7"> Select</a>
+      ${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Cover')}</a>
+      <a class="toggle-vis" data-column="2"> ${_('Title')}</a>
+      <a class="toggle-vis" data-column="3"> ${_('Num')}</a>
+      <a class="toggle-vis" data-column="4"> ${_('Added')}</a>
+      <a class="toggle-vis" data-column="5"> ${_('Latest')}</a>
+      <a class="toggle-vis" data-column="6"> ${_('Status')}</a>
+      <a class="toggle-vis" data-column="7"> ${_('Select')}</a>
       </div>
       %endif
     </div>
@@ -98,16 +98,16 @@
             <th class="hidden"></th>
             %endif
             % if covercount > 0:
-            <th class="bookart text-center no-sort">Cover</th>
+            <th class="bookart text-center no-sort">${_('Cover')}</th>
             % else:
-            <th class="bookart hidden">Cover</th>
+            <th class="bookart hidden">${_('Cover')}</th>
             % endif
-            <th class="bookname text-center">Title</th>
-            <th class="number text-center">Num</th>
-            <th class="series text-center">Added</th>
-            <th class="date text-center">Latest Issue</th>
-            <th class="stars text-center">Status</th>
-            <th class="status text-center no-sort">Select</th>
+            <th class="bookname text-center">${_('Title')}</th>
+            <th class="number text-center">${_('Num')}</th>
+            <th class="series text-center">${_('Added')}</th>
+            <th class="date text-center">${_('Latest Issue')}</th>
+            <th class="stars text-center">${_('Status')}</th>
+            <th class="status text-center no-sort">${_('Select')}</th>
           </tr>
         </thead>
       </table>
@@ -125,7 +125,10 @@
         var oTable = $('#book_table').DataTable(
             {
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "order": [[ 2, 'asc']],
                 "rowId": 0,
                 "columnDefs":
@@ -139,7 +142,7 @@
                     { targets: [1],
                         'class': 'text-center',
                         'render': function(data, type, row) {
-                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="Cover" class="bookcover-sm img-responsive"></a>';} },
+                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="' + ${_js('Cover')} + '" class="bookcover-sm img-responsive"></a>';} },
                     { targets: [2],
                         'class': 'text-left',
                         'render': function(data, type, row) {
@@ -170,41 +173,36 @@
                                 btn = '<a class="button green btn btn-xs btn-warning" href="open_comic?comicid=' +
                                         row[0] + '" target="_self"><i class="fa fa-book"></i>'
                                 %if CONFIG['COMIC_SINGLE']:
-                                    if ( row[3] == 1) { btn = btn + ' Open</a>' }
-                                    else { btn = btn + ' Show</a>' }
+                                    if ( row[3] == 1) { btn = btn + ' ' + ${_js('Open')} + '</a>' }
+                                    else { btn = btn + ' ' + ${_js('Show')} + '</a>' }
                                 %else:
-                                    btn = btn + ' Show</a>'
+                                    btn = btn + ' ' + ${_js('Show')} + '</a>'
                                 %endif
                            }
                         else if ( btn.indexOf('Wanted') >= 0 ) {
                             btn = '<p><a class="a btn btn-xs btn-danger" href="comicissue_page?comicid=' + row[0] +
-                                      '" target="_self">' + btn + '</a></p>'
+                                      '" target="_self">' + llStatus(btn) + '</a></p>'
                             %if perm&lazylibrarian.perm_force:
                                btn += '<p><a class="b btn btn-xs btn-success" href="search_for_comic?comicid=' + row[0] +
-                                      '" target="_self"><i class="fa fa-search"></i> Search</a></p>'
+                                      '" target="_self"><i class="fa fa-search"></i> ' + ${_js('Search')} + '</a></p>'
                             %endif
                             }
                         else if ( btn.indexOf('Snatched') >= 0 ) {
                             btn = '<a class="button btn btn-xs btn-info"  href="comicissue_page?comicid=' + row[0] +
-                                      '" target="_self">' + btn + '</a>'}
+                                      '" target="_self">' + llStatus(btn) + '</a>'}
                         else if ( btn.indexOf('Have') >= 0 ) {
                             btn = '<a class="button btn btn-xs btn-info"  href="comicissue_page?comicid=' + row[0] +
-                                      '" target="_self">' + btn + '</a>'}
-                        else { btn = '<a class="button btn btn-xs btn-default grey">' + btn + '</a>'}
+                                      '" target="_self">' + llStatus(btn) + '</a>'}
+                        else { btn = '<a class="button btn btn-xs btn-default grey">' + llStatus(btn) + '</a>'}
                         return btn;} },
                         ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No comics found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 results",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No comics found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[2, 'asc']],
                 "bServerSide": true,
                 "sAjaxSource": 'get_comics',
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "bFilter": true,
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
@@ -246,7 +244,7 @@
               oTable.search(filt).draw()
             }
 
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();
                 var column = oTable.column( $(this).attr('data-column') );
@@ -261,17 +259,17 @@
         var all_check = document.getElementById("allcheck").checked;
         if (all_check) { c -= 1};
         if (c > 0 && x == "Delete") {
-            if (c == 1) {msg = "Are you sure you want to permanently delete the selected comic?"}
-            if (c > 1) {msg = "Are you sure you want to permanently delete the " + c + " selected comics?"}
+            msg = llNgettext(${_jsn('Are you sure you want to permanently delete the selected comic?',
+                                    'Are you sure you want to permanently delete the %(count)s selected comics?')}, c);
             bootbox.confirm({
                 message: msg,
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },

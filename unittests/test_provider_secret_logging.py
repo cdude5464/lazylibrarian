@@ -48,6 +48,26 @@ class ProviderSecretLoggingTest(TestCase):
         self.assertEqual(args.kwargs, {'raw': True})
         self.assert_safe(logger)
 
+    def test_search_accepts_real_typed_config_without_dict_get(self):
+        from lazylibrarian.configtypes import ConfigDict
+        provider = ConfigDict()
+        provider['HOST'] = 'https://example.invalid/torznab/abt'
+        provider['API'] = SECRET
+        provider['DISPNAME'] = 'Typed provider'
+        book = {'bookid': '123', 'searchterm': 'Author Title'}
+        logger = Mock()
+        response = b'<rss><channel /></rss>'
+        # Config read tracing is a separate logging boundary; this test observes
+        # only provider network diagnostics while exercising a real ConfigDict.
+        def get_logger(name=None):
+            return Mock() if name == 'special.configread' else logger
+
+        with patch.object(providers.logging, 'getLogger', side_effect=get_logger), \
+             patch.object(providers, 'return_search_structure', return_value={'q': 'Author Title', 'apikey': SECRET}), \
+             patch.object(providers, 'fetch_url', return_value=(response, True)):
+            self.assertEqual(providers.newznab_plus(book, provider, 'generalbook', 'torznab'), (True, []))
+        self.assert_safe(logger)
+
     def test_result_download_url_unchanged_without_result_dictionary_dump(self):
         logger = Mock()
         item = ElementTree.fromstring('<item><title>Title</title><link /></item>')
@@ -60,7 +80,7 @@ class ProviderSecretLoggingTest(TestCase):
     def fetch(self, side_effect=None, response=None, retry=False):
         logger = Mock()
         cfg = Mock(); cfg.get_bool.return_value = True; cfg.__getitem__ = Mock(return_value='')
-        with patch.object(cache.logging, 'getLogger', return_value=logger), patch.object(cache, 'CONFIG', cfg), patch.object(cache, 'proxy_list', return_value={}), patch.object(cache, 'get_user_agent', return_value='test'), patch.object(cache.requests, 'get', side_effect=side_effect, return_value=response) as get, patch.object(cache.lazylibrarian, 'REQUESTSLOG', True):
+        with patch.object(cache.logging, 'getLogger', return_value=logger), patch.object(cache, 'CONFIG', cfg), patch.object(cache, 'proxy_list', return_value={}), patch.object(cache.requests, 'get', side_effect=side_effect, return_value=response) as get, patch.object(cache.lazylibrarian, 'REQUESTSLOG', True):
             result = cache.fetch_url(URL, retry=retry, timeout=False, raw=True)
         self.assertEqual(get.call_args.args[0], URL)
         self.assertEqual(http.client.HTTPConnection.debuglevel, 0)
@@ -92,7 +112,7 @@ class ProviderSecretLoggingTest(TestCase):
         self.assertTrue(filename.endswith(digest + '.xml'))
         with patch.object(cache, 'fetch_url', return_value=(b'<rss />', True)) as fetch:
             self.assertEqual(request.fetch_data(), (b'<rss />', True))
-        fetch.assert_called_once_with(URL, raw=True, headers=None)
+        fetch.assert_called_once_with(URL, raw=True, headers={'Accept': 'application/xml', 'Accept-Language': 'en-US,en;q=0.5'}, impersonate='chrome')
         with patch.object(cache.DIRS, 'get_cachedir', return_value='/tmp/testcache'), patch.object(cache, 'CONFIG') as cfg, patch.object(request, 'is_in_cache', return_value=True), patch.object(request, 'read_from_cache', return_value=(b'<rss />', True)):
             cfg.get_int.return_value = 1
             self.assertEqual(request.get_cached_request(), (b'<rss />', True))

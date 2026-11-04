@@ -78,3 +78,7 @@ Thumbs.db
 .directory
 *~
 *.db
+
+# Runtime and test leftovers
+unbundled.libs
+unittests/tmp/

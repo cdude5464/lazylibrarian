@@ -1,12 +1,41 @@
 <%
+    import os
+    import cherrypy
     import lazylibrarian
+    from lazylibrarian import i18n
     from lazylibrarian.common import docker
     from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.filesystem import DIRS
     from lazylibrarian.scheduling import show_running
+    # invite the user to help translate if their language has no translation or is only partly translated
+    user_lang = cherrypy.request.cookie.get('ll_uilang')
+    invite_lang, invite_percent = i18n.translation_invite(
+        user_lang.value if user_lang else '', CONFIG.get_str('UI_LANGUAGE'),
+        cherrypy.request.headers.get('Accept-Language', ''))
+
+    # css and js are served without cache headers, so browsers (phones especially) can keep an old copy for days
+    # after an update. Our own files change with releases, give them their modification time in the url
+    def asset(name):
+        try:
+            return '%s?v=%d' % (name, os.path.getmtime(os.path.join(DIRS.PROG_DIR, 'data', name)))
+        except OSError:
+            return name
+
+    # the interface and the UI language can be switched from the navbar and the new interface popup.
+    # With user accounts it is each user's own choice, without them the interface is global, so only
+    # someone allowed to change the config may switch it (see switch_interface in webServe.py)
+    ui_look = context.get('ui_look', CONFIG['HTTP_LOOK'])
+    can_switch = bool(perm > 0 and (CONFIG['USER_ACCOUNTS'] or perm & lazylibrarian.perm_config))
+    offer_modern = (can_switch and ui_look != 'modern'
+                    and os.path.isdir(os.path.join(DIRS.PROG_DIR, 'data', 'interfaces', 'modern')))
+    cur_lang = user_lang.value if user_lang else ''
+    lang_opts = [('', _('Default')), (i18n.AUTO, _('Automatic (browser language)'))] + \
+        [(code, i18n.language_name(code)) for code in i18n.available_languages()]
 %>
 <!doctype html>
-<html>
+<html lang="${ui_lang}">
   <head>
+    <base href="${(CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else '')}/">
     <meta http-equiv="content-type" content="text/html; charset=UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>LazyLibrarian - ${title}</title>
@@ -24,7 +53,11 @@
     %endif
     <!--link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.0.13/css/all.css" integrity="sha384-DNOHZ68U8hZfKXOrtjWvjxusGo9WQnrNx2sqG0tfsghAvtVlRW3tvkXWZh58N9jp" crossorigin="anonymous"-->
     <link href="css/fontawesome/fontawesome-all.css" rel="stylesheet">
-    <link href="css/bookstrap.css" rel="stylesheet">
+    <link href="${asset('css/bookstrap.css')}" rel="stylesheet">
+    <script type="text/javascript">
+      // table view mode is a per browser choice, set it before the page renders to avoid a flash
+      try { document.documentElement.className += ' ll-view-' + (localStorage.getItem('llView') || 'detailed'); } catch (e) {}
+    </script>
     <style>
       input[type="search"]::-webkit-search-cancel-button {
       -webkit-appearance: none;
@@ -34,9 +67,96 @@
       background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23777'><path d='M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'/></svg>");
       cursor: pointer;
     }
+    .help-icon {
+      margin-left: .4em;
+      color: #777;
+      cursor: help;
+    }
+    .help-icon:hover, .help-icon:focus {
+      color: inherit;
+      text-decoration: none;
+    }
+    legend .help-icon {
+      font-size: 70%;
+      vertical-align: middle;
+    }
+    .popover {
+      /* A fixed width rather than shrink-to-fit, so the popover doesn't get squeezed against
+         the right edge of the window once it's positioned; and never wider than the window */
+      width: max-content;
+      max-width: 400px;
+      max-width: min(400px, calc(100vw - 20px));
+    }
     </style>
+    %if ui_lang_auto:
+    <script type="text/javascript">
+      // Interface language is automatic: the Accept-Language header doesn't always match the browser
+      // language, so pass navigator.languages to the server in a cookie, and reload once if that
+      // gives a different language than this page was rendered in. Matching is as in i18n.py
+      (function () {
+          var name = ${js(ui_lang_cookie)}, langs = ${js(ui_langs)}, current = ${js(ui_lang)};
+          var wanted = (navigator.languages && navigator.languages.length) ? navigator.languages : [navigator.language || ''];
+          var value = encodeURIComponent(Array.prototype.join.call(wanted, ','));
+          var match = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+          if (match && match[1] === value) {
+              return;
+          }
+          document.cookie = name + '=' + value + '; path=/; max-age=31536000; SameSite=Lax';
+          if (document.cookie.indexOf(name + '=' + value) < 0) {
+              return;  // cookies are blocked, don't reload in a loop
+          }
+          var lookup = {};
+          for (var i = 0; i < langs.length; i++) {
+              lookup[langs[i].toLowerCase().split('-').join('_')] = langs[i];
+          }
+          for (var j = 0; j < wanted.length; j++) {
+              var code = String(wanted[j]).toLowerCase().split('-').join('_');
+              var lang = lookup[code] || lookup[code.split('_')[0]];
+              if (lang) {
+                  if (lang !== current) {
+                      window.location.reload();
+                  }
+                  return;
+              }
+          }
+      })();
+    </script>
+    %endif
     <script src="js/jquery-3.4.1.min.js"></script>
-    <script src="js/lazylibrarian-bs.js"></script>
+    <script src="${asset('js/lazylibrarian-bs.js')}"></script>
+    <script type="text/javascript">
+      // Translation helpers for counts only known in the browser, see lazylibrarian/i18n.py
+      // the first argument comes from the _jsn(singular, plural) template helper
+      function llNgettext(msg, n) {
+          var idx = msg.t ? Number(${js_plural()}) : Number(n != 1);
+          return msg.f[Math.min(idx, msg.f.length - 1)].replace(/%\(count\)[sd]/g, n);
+      }
+      // Translated status labels: the tables get English status values from the server and use
+      // them for logic, llStatus() only translates the leading status word for display
+      var llStatusLabels = ${js(status_labels())};
+      function llStatus(s) {
+          return String(s).replace(/^[A-Za-z]+/, function (w) { return llStatusLabels[w] || w; });
+      }
+      // Shared DataTables labels, pages can extend this with their own sEmptyTable etc.
+      var llDataTablesLanguage = {
+          "sSearch": ${_js('Filter: ')},
+          ## TRANSLATORS: _MENU_ is replaced by the rows per page dropdown, keep it as it is
+          "sLengthMenu": ${_js('_MENU_ rows per page')},
+          ## TRANSLATORS: _START_, _END_ and _TOTAL_ are replaced by numbers, keep them as they are
+          "sInfo": ${_js('Showing _START_ to _END_ of _TOTAL_ rows')},
+          "sInfoEmpty": ${_js('Showing 0 to 0 of 0 rows')},
+          ## TRANSLATORS: _MAX_ is replaced by a number, keep it as it is
+          "sInfoFiltered": ${_js('(filtered from _MAX_ total rows)')},
+          "sProcessing": ${_js('Processing...')},
+          "sLoadingRecords": ${_js('Loading...')},
+          "oPaginate": {
+              "sFirst": ${_js('First')},
+              "sPrevious": ${_js('Previous')},
+              "sNext": ${_js('Next')},
+              "sLast": ${_js('Last')}
+          }
+      };
+    </script>
 
     <!-- include summernote css/js -->
     <link href="css/summernote.css" rel="stylesheet">
@@ -50,7 +170,7 @@
         $(document).ready(function () {
             $.fn.dataTableExt.oApi.clearSearch = function ( oSettings ) {
                 var table = this;
-                var clearSearch = $('<i id="Clear" title="Clear" class="fa fa-times" style="height:20px;width:20px;vertical-align:center;cursor:pointer;">&nbsp;</i>');
+                var clearSearch = $('<i id="Clear" title="'+${_js('Clear')}+'" class="fa fa-times" style="height:20px;width:20px;vertical-align:center;cursor:pointer;">&nbsp;</i>');
                 $(clearSearch).click( function () {
                                 table.fnFilter('');
                                 $('input[type=search]').val('');
@@ -80,7 +200,97 @@
     <script type="text/javascript" src="js/datatables.min.js"></script>
     <script type="text/javascript" src="js/natural.js"></script>
     <script type="text/javascript" src="js/bootbox.min.js"></script>
+    <script type="text/javascript">
+      // translated default buttons for bootbox dialogs that don't set their own labels
+      bootbox.addLocale('ll', {OK: ${_js('OK')}, CANCEL: ${_js('Cancel')}, CONFIRM: ${_js('OK')}});
+      bootbox.setLocale('ll');
+      // texts used by js/lazylibrarian-bs.js, which is a static file
+      var llTexts = {
+          restartConfirm: ${_js('Are you sure you want to restart LazyLibrarian?')},
+          shutdownConfirm: ${_js('Are you sure you want to shutdown LazyLibrarian?')}
+      };
+    </script>
     <script type="text/javascript" src="js/bootstrap-notify.min.js"></script>
+    <script type="text/javascript">
+      // View mode dropdown for the table pages, next to the column toggles, or above the table if those are off.
+      // The modes are only css, the grid and list need to know what each cell holds, so copy the header class to
+      // the cells, and put what follows the title button (subtitle, site links, genres) in a span list can hide
+      $(function () {
+          // only tables with a picture column get the modes, without pictures they would all look the same
+          var tables = $('.table-responsive table').filter(function () {
+              return $(this).find('thead th.bookart, thead th.authorimg').length;
+          });
+          if (!tables.length) { return; }
+          tables.addClass('ll-view-table ll-grid-table');
+          var modes = [['detailed', ${_js('Detailed')}], ['compact', ${_js('Compact')}],
+                       ['list', ${_js('List')}], ['grid', ${_js('Grid')}]];
+          var html = $('html');
+          var current = 'detailed';
+          var select = $('<select class="ll-view-select form-control input-sm"></select>');
+          $.each(modes, function (i, mode) {
+              select.append($('<option></option>').val(mode[0]).text(mode[1]));
+              if (html.hasClass('ll-view-' + mode[0])) { current = mode[0]; }
+          });
+          select.val(current);
+          var label = $('<span class="ll-view-label"></span>').text(${_js('View:')} + ' ').append(select);
+          var toggles = $('.toggles').first();
+          // the column toggles get their column's header class too, so a mode can hide the ones it doesn't show
+          var headers = tables.first().find('thead tr').first().children('th');
+          toggles.find('a.toggle-vis').each(function () {
+              var name = (headers.eq($(this).attr('data-column')).attr('class') || '').split(' ')[0];
+              if (name && name !== 'hidden') { $(this).addClass('ll-toggle-' + name); }
+          });
+          toggles.addClass('ll-grid-toggles');
+          if (toggles.length) {
+              toggles.append(' | ', label);
+          } else {
+              tables.first().closest('.table-responsive').before($('<div class="text-right"></div>').append(label));
+          }
+          select.on('change', function () {
+              var mode = select.val();
+              html.removeClass('ll-view-detailed ll-view-compact ll-view-list ll-view-grid').addClass('ll-view-' + mode);
+              try { localStorage.setItem('llView', mode); } catch (err) {}
+          });
+          function markCells(table) {
+              var names = $(table).find('thead tr').first().children('th').map(function () {
+                  var name = (this.className || '').split(' ')[0];
+                  return name && name !== 'hidden' ? 'll-' + name : '';
+              }).get();
+              $(table).find('tbody tr').each(function () {
+                  $(this).children('td').each(function (i) {
+                      if (names[i]) { $(this).addClass(names[i]); }
+                  });
+              });
+              $(table).find('tbody td.ll-bookname').each(function () {
+                  var title = $(this).children('button.btn-link').first();
+                  if (!title.length || title.next('.ll-title-extra').length) { return; }
+                  var nodes = $(this).contents();
+                  var after = nodes.slice(nodes.index(title) + 1);
+                  if (after.length) { after.wrapAll('<span class="ll-title-extra"></span>'); }
+              });
+              $(table).find('tbody td.ll-date > br').replaceWith('<span class="ll-break"></span>');
+          }
+          tables.each(function () { markCells(this); });
+          $(document).on('draw.dt', function (e) {
+              if ($(e.target).hasClass('ll-view-table')) { markCells(e.target); }
+          });
+          // a click on the picture opens what the title opens (the book or author page, the magazine, the issue)
+          // instead of the picture itself. With ctrl, shift or cmd the picture still opens in a new tab
+          tables.on('click', 'td.ll-bookart a, td.ll-authorimg a', function (e) {
+              if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) { return; }
+              var row = $(this).closest('tr');
+              var cells = [$(this).closest('td').hasClass('ll-authorimg') ? 'td.ll-authorname' : 'td.ll-bookname',
+                           'td.ll-issuedate', 'td.ll-issue'];
+              var target = $();
+              $.each(cells, function (i, cell) {
+                  if (!target.length) { target = row.find(cell).find('a, button.btn-link').first(); }
+              });
+              if (!target.length) { return; }
+              e.preventDefault();
+              target[0].click();
+          });
+      });
+    </script>
 <style>
 
 #show_newz_prov {display:  none; }
@@ -181,13 +391,13 @@
           <div class="container">
             <div class="navbar-header">
               <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#MainNav" aria-expanded="false">
-                <span class="sr-only">Toggle navigation</span>
+                <span class="sr-only">${_('Toggle navigation')}</span>
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
                 <span class="icon-bar"></span>
               </button>
               <div id="brand">
-                <a class="navbar-brand" href="home"><i class="fa fa-home"></i> LazyLibrarian
+                <a class="navbar-brand" href="${CONFIG['HTTP_ROOT'] or ''}/home"><i class="fa fa-home"></i> LazyLibrarian
                   <i class="fa fa-spin fa-spinner" id="spinner" title="${'\n'.join(show_running())}"></i>
                 % if not show_running():
                   <script type="text/javascript">
@@ -201,19 +411,19 @@
               <ul class="nav navbar-nav">
                 <!--li><a href="home" class="navbarele">Authors</a></li-->
                 % if CONFIG['HOMEPAGE'] != 'Authors':
-                  <li><a id="authors" href="authors" class="navbarele">Authors</a></li>
+                  <li><a id="authors" href="authors" class="navbarele">${_('Authors')}</a></li>
                 % endif
                 % if CONFIG['HOMEPAGE'] != 'eBooks':
                 % if CONFIG['EBOOK_TAB']:
                   % if perm&lazylibrarian.perm_ebook:
-                  <li><a id="books" href="books" class="navbarele">eBooks</a></li>
+                  <li><a id="books" href="books" class="navbarele">${_('eBooks')}</a></li>
                   % endif
                 % endif
                 % endif
                 % if CONFIG['HOMEPAGE'] != 'Series':
                 % if CONFIG['SERIES_TAB']:
                   %if perm&lazylibrarian.perm_series:
-                  <li><a id="series" href="series" class="navbarele">Series</a></li>
+                  <li><a id="series" href="series" class="navbarele">${_('Series')}</a></li>
                   % endif
                 % endif
                 % endif
@@ -221,8 +431,8 @@
                 % if CONFIG['AUDIO_TAB']:
                   %if perm&lazylibrarian.perm_audio:
                   <li><a id="audio" href="audio" class="navbarele">
-                  <div class="shorten" data-abbr="Audio">
-                      <span>AudioBooks</span>
+                  <div class="shorten" data-abbr="${_('Audio') | h}">
+                      <span>${_('AudioBooks')}</span>
                   </div>
                   </a></li>
                   % endif
@@ -232,8 +442,8 @@
                 % if CONFIG['MAG_TAB']:
                   %if perm&lazylibrarian.perm_magazines:
                   <li><a id="magazines" href="magazines" class="navbarele">
-                  <div class="shorten" data-abbr="Mags">
-                      <span>Magazines</span>
+                  <div class="shorten" data-abbr="${_('Mags') | h}">
+                      <span>${_('Magazines')}</span>
                   </div>
                   </a></li>
                   % endif
@@ -242,34 +452,60 @@
                 % if CONFIG['HOMEPAGE'] != 'Comics':
                 % if CONFIG['COMIC_TAB']:
                   %if perm&lazylibrarian.perm_comics:
-                  <li><a id="comics" href="comics" class="navbarele">Comics</a></li>
+                  <li><a id="comics" href="comics" class="navbarele">${_('Comics')}</a></li>
                   % endif
                 % endif
                 % endif
                 %if perm&lazylibrarian.perm_managebooks:
                   % if CONFIG['AUDIO_TAB']:
-                    <li><a id="amanage" href="manage" class="navbarele">Manage</a></li>
+                    <li><a id="amanage" href="manage" class="navbarele">${_('Manage')}</a></li>
                   % elif CONFIG['EBOOK_TAB']:
-                    <li><a id="emanage" href="manage" class="navbarele">Manage</a></li>
+                    <li><a id="emanage" href="manage" class="navbarele">${_('Manage')}</a></li>
                   % endif
                 % endif
                 %if perm&lazylibrarian.perm_history:
-                  <li><a id="history" href="history" class="navbarele">History</a></li>
+                  <li><a id="history" href="history" class="navbarele">${_('History')}</a></li>
                 % endif
                 %if perm&lazylibrarian.perm_logs:
-                  <li><a id="logs" href="logs" class="navbarele">Logs</a></li>
+                  <li><a id="logs" href="logs" class="navbarele">${_('Logs')}</a></li>
                 % endif
                 %if perm&lazylibrarian.perm_config:
-                  <li><a id="config" href="config" class="navbarcfg"><i class="fa fa-cog"></i> Config</a></li>
+                  <li><a id="config" href="config" class="navbarcfg"><i class="fa fa-cog"></i> ${_('Config')}</a></li>
                 % endif
-                <li><a id="help" href="help" target="_new"><i class="fa fa-question-circle"></i> Help</a></li>
+                %if perm&lazylibrarian.perm_config:
+                  <li><a id="whatsnew" href="whats_new" title="${_("What's new") | h}"><i class="fa fa-bell"></i>
+                  <span class="visible-xs-inline">${_("What's new") | h}</span>
+                  %if lazylibrarian.WHATS_NEW:
+                    <span class="badge">${len(lazylibrarian.WHATS_NEW)}</span>
+                  %endif
+                  </a></li>
+                %endif
+                <li><a id="help" href="help" target="_new"><i class="fa fa-question-circle"></i> ${_('Help')}</a></li>
+                %if can_switch and len(lang_opts) > 3:
+                  <li class="dropdown"><a href="#" id="uilang" class="dropdown-toggle" data-toggle="dropdown" role="button"
+                      aria-haspopup="true" aria-expanded="false" title="${_('Interface language') | h}"><i class="fa fa-globe"></i>
+                      <span class="visible-xs-inline">${_('Interface language')}</span> <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                    %for code, name in lang_opts:
+                      <li${' class="active"' if code == cur_lang else ''}><a href="#" data-ll-lang="${code | h}">${name | h}</a></li>
+                    %endfor
+                    </ul>
+                  </li>
+                %endif
+                %if offer_modern:
+                  <li><a id="modernlook" href="#" data-ll-look="modern" title="${_('Try the new interface (beta)') | h}"><i class="fa fa-magic"></i>
+                  <span class="visible-xs-inline">${_('New interface (beta)')}</span></a></li>
+                %elif ui_look == 'modern':
+                  <li><a id="modernlook" href="home" title="${_('Back to the new interface') | h}"><i class="fa fa-magic"></i>
+                  <span class="visible-xs-inline">${_('Back to the new interface')}</span></a></li>
+                %endif
                 %if perm > 0:
                   %if CONFIG['USER_ACCOUNTS']:
                     %if perm&lazylibrarian.perm_config == 0:
-                      <li><a href="profile" class="navbarele" id="profile">User</a></li>
+                      <li><a href="profile" class="navbarele" id="profile">${_('User')}</a></li>
                     %endif
                     %if lazylibrarian.SHOWLOGOUT == 1:
-                      <li>&nbsp<button class="button btn btn-primary" type="button" value="removeme" id="removeme">  Logout</button></li>
+                      <li>&nbsp<button class="button btn btn-primary" type="button" value="logoutbtn" id="logoutbtn">  ${_('Logout')}</button></li>
                     %endif
                   %endif
                 %endif
@@ -286,50 +522,46 @@
       <div id="main" class="main container">
         ${next.body()}
       </div>
-      <button onclick="topFunction()" id="myBtn" title="Go to top"><i class="fa fa-arrow-up"></i></button>
+      <button onclick="topFunction()" id="myBtn" title="${_('Go to top') | h}"><i class="fa fa-arrow-up"></i></button>
     </div>
     <script type="text/javascript">
       msg = ''
       % if perm&lazylibrarian.perm_config:
         % if not CONFIG['TELEMETRY_ENABLE']:
-          title = 'LazyLibrarian Telemetry'
-          msg = '<div class="input-group">LazyLibrarian has the ability to send basic information about the installation, how it is configured,'
-          msg += ' and how it is used to a server. This helps the developers figure out where it is worth improving, and which parts nobody uses.'
-          msg += ' All telemetry information is 100% anonymized.<br><br>'
-          msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="Enable Telemetry" id="enableTelemetry">Turn on</a>&nbsp;'
-          msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="Ask me again later" id="ignoreTelemetry">Maybe Later</a></div>'
+          title = ${_js('LazyLibrarian Telemetry')}
+          msg = '<div class="input-group">' + ${_js('LazyLibrarian has the ability to send basic information about the installation, how it is configured, and how it is used to a server. This helps the developers figure out where it is worth improving, and which parts nobody uses. All telemetry information is 100% anonymized.')} + '<br><br>'
+          msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="' + ${_js('Enable Telemetry')} + '" id="enableTelemetry">' + ${_js('Turn on')} + '</a>&nbsp;'
+          msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="' + ${_js('Ask me again later')} + '" id="ignoreTelemetry">' + ${_js('Maybe Later')} + '</a></div>'
           if (readCookie('ignoreTelemetry') != null) { msg = '' }
         % elif CONFIG['INSTALL_TYPE'] in ['git', 'source']:
-          title = 'LazyLibrarian Update'
+          title = ${_js('LazyLibrarian Update')}
           % if not CONFIG['CURRENT_VERSION']:
-              msg = '<div class="input-group">You are running an unknown version of lazylibrarian'
+              msg = '<div class="input-group">' + ${_js('You are running an unknown version of lazylibrarian')}
           % elif (CONFIG['INSTALL_TYPE'] == 'source' and CONFIG['CURRENT_VERSION'] == 'No Version File' ):
-              msg = '<div class="input-group">You are running an unknown version via source install'
+              msg = '<div class="input-group">' + ${_js('You are running an unknown version via source install')}
           % elif CONFIG['CURRENT_VERSION'] != CONFIG['LATEST_VERSION']:
-            % if CONFIG['LATEST_VERSION'] == 'Not_Available_From_Git':
-              msg = '<div class="input-group">Unable to get the latest version from git'
+            % if CONFIG['LATEST_VERSION'].startswith('Not_Available_From_Git'):
+              msg = '<div class="input-group">' + ${_js('Unable to get the latest version from git')}
             % elif CONFIG.get_int('COMMITS_BEHIND') < 0:
-              msg = '<div class="input-group">Running a local updated version. Push changes to git or rollback to Master release'
-            % elif CONFIG.get_int('COMMITS_BEHIND') == 1:
-              msg = '<div class="input-group">New version available. You are one commit behind.'
-            % elif CONFIG.get_int('COMMITS_BEHIND') > 1:
-              msg = '<div class="input-group">New version available. You are ${CONFIG['COMMITS_BEHIND']} commits behind.'
+              msg = '<div class="input-group">' + ${_js('Running a local updated version. Push changes to git or rollback to Master release')}
+            % elif CONFIG.get_int('COMMITS_BEHIND') > 0:
+              <% behind = CONFIG.get_int('COMMITS_BEHIND') %>
+              msg = '<div class="input-group">' + ${js(ngettext('New version available. You are one commit behind.', 'New version available. You are %(count)d commits behind.', behind) % {'count': behind})}
             % endif
             % if CONFIG.get_int('COMMITS_BEHIND') > 0:
               % if "** MANUAL **" in lazylibrarian.COMMIT_LIST:
-                msg += '<strong>Manual update is required</strong>'
+                msg += '<strong>' + ${_js('Manual update is required')} + '</strong>'
               % endif
               msg += '</div><div>'
               % if "** MANUAL **" not in lazylibrarian.COMMIT_LIST and not docker():
-                  msg += '<a href="update" class="btn btn-xs btn-primary" data-toggle="tooltip" title="Update to the latest release" id="doUpdate">Update</a>&nbsp;'
+                  msg += '<a href="update" class="btn btn-xs btn-primary" data-toggle="tooltip" title="' + ${_js('Update to the latest release')} + '" id="doUpdate">' + ${_js('Update')} + '</a>&nbsp;'
               % endif
-              msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="Show Changes" id="getChangelog">Changes</a>&nbsp;'
             % endif
           % else:
             msg = ''
           % endif
           if (msg.length) {
-            msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="Ignore the update message for 24 hours" id="ignoreUpdate">Ignore</a></div>'
+            msg += '<a href="#" class="btn btn-xs btn-primary" data-toggle="tooltip" title="' + ${_js('Ignore the update message for 24 hours')} + '" id="ignoreUpdate">' + ${_js('Ignore')} + '</a></div>'
           }
           if (readCookie('ignoreUpdate') != null) { msg = '' }
         % endif
@@ -374,6 +606,133 @@
               sessionStorage.setItem('llSearchInitiated', 'Search initiated.');
             } catch (e) {}
           });
+        %if invite_lang:
+        <%
+            invite_name = i18n.language_name(invite_lang)
+            if invite_lang in i18n.available_languages():
+                invite_url = f'https://hosted.weblate.org/projects/lazylibrarian/webui/{invite_lang}/'
+            else:
+                invite_url = 'https://hosted.weblate.org/engage/lazylibrarian/'
+            if invite_percent:
+                invite_text = _('LazyLibrarian is only %(percent)s%% translated into %(language)s. '
+                                'You can help finish the translation on Hosted Weblate, no coding needed.') % {
+                                'percent': invite_percent, 'language': invite_name}
+            else:
+                invite_text = _('LazyLibrarian is not available in %(language)s yet. '
+                                'You can help translate it on Hosted Weblate, no coding needed.') % {
+                                'language': invite_name}
+        %>
+        if (readCookie('ll_translate_prompt') != ${js(invite_lang)}) {
+          var translateMsg = '<div>' + ${js(invite_text)} + '<br><br>' +
+              '<a href="' + ${js(invite_url)} + '" target="_blank" rel="noopener" class="btn btn-xs btn-primary"' +
+              ' id="translateYes">' + ${_js('Help translate')} + '</a>&nbsp;' +
+              '<a href="#" class="btn btn-xs btn-primary" id="translateNo">' + ${_js('No thanks')} + '</a></div>';
+          $.notify({
+              icon: "images/ll48.png",
+              title: '<strong>' + ${_js('Translate LazyLibrarian')} + '</strong>',
+              message: translateMsg
+          },{
+              icon_type: 'image',
+              type: 'info',
+              delay: 0
+          });
+          // the answer is remembered for this language, for 30 days after following the link
+          // and a year for "no thanks"
+          function hideTranslateNotice(link, days) {
+              createCookie('ll_translate_prompt', ${js(invite_lang)}, days);
+              $(link).closest('[data-notify="container"]').remove();
+          }
+          $(document).on('click', '#translateYes', function() { hideTranslateNotice(this, 30); });
+          $(document).on('click', '#translateNo', function(e) { e.preventDefault(); hideTranslateNotice(this, 365); });
+        }
+        %endif
+
+        // the language menu and the new interface link and popup, see switch_interface in webServe.py
+        function llSwitchInterface(data) {
+            $.post('switch_interface', data).done(function () { window.location.reload(); })
+                .fail(function () { bootbox.alert(${_js('Something went wrong, try again')}); });
+        }
+        $(document).on('click', '[data-ll-lang]', function (e) {
+            e.preventDefault();
+            llSwitchInterface({lang: $(this).attr('data-ll-lang')});
+        });
+        $(document).on('change', 'select.ll-lang-select', function () {
+            llSwitchInterface({lang: $(this).val()});
+        });
+        $(document).on('click', '[data-ll-look]', function (e) {
+            e.preventDefault();
+            createCookie('ll_modern_prompt', 'yes', 365);
+            llSwitchInterface({look: $(this).attr('data-ll-look')});
+        });
+
+        %if offer_modern:
+        // offer the new interface once, with the language choice next to it. "Not now" asks again after 30 days,
+        // trying it (here or from the navbar) doesn't ask again, also after going back to this interface
+        if (readCookie('ll_modern_prompt') == null) {
+          var modernMsg = $('<div></div>').append($('<div></div>').text(${_js('LazyLibrarian has a new interface: covers as cards, '
+              'infinite scroll and a layout made for phones. Pages it does not have yet open in this one, '
+              'and you can switch back at any time.')}));
+          var modernLangs = ${js(lang_opts)}, modernLang = ${js(cur_lang)};
+          if (modernLangs.length > 3) {
+              var modernSel = $('<select class="form-control input-sm ll-lang-select" style="width:auto;display:inline-block"></select>');
+              $.each(modernLangs, function (i, o) {
+                  var opt = $('<option></option>').val(o[0]).text(o[1]);
+                  if (o[0] === modernLang) { opt.attr('selected', 'selected'); }
+                  modernSel.append(opt);
+              });
+              modernMsg.append($('<div style="margin-top:8px"></div>')
+                  .append($('<label style="margin-right:6px"></label>').text(${_js('Interface language:')})).append(modernSel));
+          }
+          modernMsg.append($('<div style="margin-top:8px"></div>')
+              .append($('<a href="#" class="btn btn-xs btn-primary" data-ll-look="modern"></a>').text(${_js('Try it')}))
+              .append('&nbsp;')
+              .append($('<a href="#" class="btn btn-xs btn-default" id="modernLater"></a>').text(${_js('Not now')})));
+          $.notify({
+              icon: "images/ll48.png",
+              title: '<strong>' + ${_js('New interface (beta)')} + '</strong>',
+              message: modernMsg.html()
+          },{
+              icon_type: 'image',
+              type: 'info',
+              delay: 0
+          });
+          $(document).on('click', '#modernLater', function (e) {
+              e.preventDefault();
+              createCookie('ll_modern_prompt', 'later', 30);
+              $(this).closest('[data-notify="container"]').remove();
+          });
+        }
+        %endif
+
+        %if perm&lazylibrarian.perm_config and lazylibrarian.WHATS_NEW:
+        <%
+            news = lazylibrarian.WHATS_NEW
+            news_count = len(news)
+        %>
+        var newsMsg = '<div>' + ${js(ngettext('One change since you last looked:', '%(count)d changes since you last looked:', news_count) % {'count': news_count})} + '<ul>';
+        %for item in news[:5]:
+        newsMsg += '<li>' + ${js(item['html'])} + '</li>';
+        %endfor
+        newsMsg += '</ul><a href="whats_new" class="btn btn-xs btn-primary">' + ${_js("What's new")} + '</a>&nbsp;' +
+            '<a href="#" class="btn btn-xs btn-primary" id="whatsNewSeen">' + ${_js('Dismiss')} + '</a></div>';
+        $.notify({
+            icon: "images/ll48.png",
+            title: '<strong>' + ${_js('LazyLibrarian updated')} + '</strong>',
+            message: newsMsg
+        },{
+            icon_type: 'image',
+            type: 'info',
+            delay: 0,
+            // shown until closed, closing marks the version it was shown for as seen
+            onClose: function() {
+                $.post('whats_new_seen', {version: ${js(CONFIG['CURRENT_VERSION'])}}, function() { $('#whatsnew .badge').remove(); });
+            }
+        });
+        $(document).on('click', '#whatsNewSeen', function(e) {
+            e.preventDefault();
+            $(this).closest('[data-notify="container"]').find('[data-notify="dismiss"]').click();
+        });
+        %endif
 
         $('#ignoreTelemetry').click(function() {
             createCookie("ignoreTelemetry", true, 14);
@@ -382,11 +741,11 @@
        $('#enableTelemetry').on('click', function(e) {
             $.get('enable_telemetry', function(data) {
                 bootbox.dialog({
-                    title: 'Enable Telemetry',
+                    title: ${_js('Enable Telemetry')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(){ location.reload(true); }
                         },
@@ -407,11 +766,11 @@
        $('#getChangelog').on('click', function(e) {
             $.get('check_for_updates', function(data) {
                 bootbox.dialog({
-                    title: 'Check Version',
+                    title: ${_js('Check Version')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(){ location.reload(true); }
                         },
@@ -421,23 +780,23 @@
         });
       });
 
-        $('#removeme').click(function () {
+        $('#logoutbtn').click(function () {
             bootbox.confirm({
-                message: "Are you sure you want to logout?",
+                message: ${_js('Are you sure you want to logout?')},
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
                 callback: function (result) {
                   if (result) { $.get("logout", { },
                       function (data) {
-                         window.location = "home"
+                         window.location = "${CONFIG['HTTP_ROOT'] or ''}/login";
                       }); }
                 }
             });
@@ -446,6 +805,66 @@
       // Initialise tooltips
       $(function () {
         $('[data-toggle="tooltip"]').tooltip()
+      })
+
+      // Turn help text into an info icon with a popover, next to the field's label or button,
+      // or failing that next to the section heading (legend) above it. Several help texts
+      // under one heading share its icon. Help marked help-keep stays visible.
+      function nearestLegend(el) {
+        while (el.length && !el.is('.tab-pane, body')) {
+          var legend = el.prevAll('legend').first();
+          if (legend.length) { return legend; }
+          el = el.parent();
+        }
+        return $();
+      }
+
+      // Beside the icon (right, else left) when the popover fits there, otherwise below it,
+      // so on narrow screens it isn't pushed off the edge of the window.
+      function helpPlacement(tip, el) {
+        var rect = el.getBoundingClientRect();
+        var width = Math.min(400, $(window).width() - 20) + 20;
+        if ($(window).width() - rect.right >= width) { return 'right'; }
+        if (rect.left >= width) { return 'left'; }
+        return 'auto bottom';
+      }
+
+      $(function () {
+        $('.help-block').not('.help-keep').each(function () {
+          var help = $(this);
+          var anchor = help.prevAll('label, button').not('.input-group-addon').first();
+          var icon;
+          if (anchor.length) {
+            icon = $('<a tabindex="0" role="button" class="help-icon"><i class="fa fa-info-circle"></i></a>');
+            anchor.after(icon);
+          } else {
+            anchor = nearestLegend(help);
+            if (!anchor.length) { return; }
+            icon = anchor.children('.help-icon');
+            if (!icon.length) {
+              icon = $('<a tabindex="0" role="button" class="help-icon"><i class="fa fa-info-circle"></i></a>');
+              anchor.append(icon);
+            }
+          }
+          var helps = (icon.data('helps') || []).concat([help]);
+          icon.data('helps', helps);
+          icon.attr('aria-label', $.map(helps, function (h) { return h.text().trim(); }).join(' '));
+          help.addClass('hidden');
+          if (helps.length > 1) { return; }
+          icon.popover({
+            content: function () {
+              return $.map(icon.data('helps'), function (h) { return h.html(); }).join('<hr>');
+            },
+            html: true,
+            trigger: 'hover focus',
+            // A short hide delay stops the popover flickering when the pointer briefly
+            // leaves the icon, e.g. while the popover is being positioned.
+            delay: { show: 100, hide: 300 },
+            placement: helpPlacement,
+            container: 'body',
+            viewport: { selector: 'body', padding: 10 }
+          });
+        });
       })
 
         function truncateOnWord(str, limit) {
@@ -507,6 +926,14 @@
       }
 
       function bookinfo(bookid) {
+        // Plain book ids get the new read-only detail page; author ("A_" prefix) and
+        // comic ("CV"/"CX" prefix) ids keep the existing popup - see bookdesc() in
+        // webServe.py for the same prefix split server-side.
+        var idStr = String(bookid);
+        if (!idStr.startsWith('A_') && !idStr.startsWith('CV') && !idStr.startsWith('CX')) {
+            window.location = 'book_detail?bookid=' + idStr;
+            return;
+        }
         $.get('bookdesc', {'bookid': bookid},
         function(data) {
             var $textAndPic = $('<div></div>');
@@ -522,7 +949,7 @@
                 message: $textAndPic,
                 buttons: {
                    primary: {
-                        label: "Close",
+                        label: ${_js('Close')},
                         className: 'btn-primary'
                     }
                 }

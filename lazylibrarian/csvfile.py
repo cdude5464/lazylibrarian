@@ -319,6 +319,7 @@ def import_csv(search_dir: str, status: str = 'Wanted', library: str = '', confi
                     return msg
             elif row:
                 total += 1
+                authorid = None
                 item = dict(list(zip(headers, row, strict=True)))
                 authorname = format_author_name(item['Author'], postfix=get_list(config.get_csv('NAME_POSTFIX')))
                 title = make_unicode(item['Title'])
@@ -340,82 +341,86 @@ def import_csv(search_dir: str, status: str = 'Wanted', library: str = '', confi
                         authcount += 1
                     if not authorid:
                         logger.warning(f"Authorname {authorname} not added to database")
-
-                    if authorid:
-                        bookmatch = finditem(item, authorname, library=library, reason=f'import_csv: {csvfile}')
-                    else:
-                        bookmatch = {}
-
-                    imported = False
-                    results = []
-                    if bookmatch:
-                        authorname = bookmatch['AuthorName']
-                        bookname = bookmatch['BookName']
-                        bookid = bookmatch['BookID']
-                        bookstatus = bookmatch['Status'] if library == 'eBook' else bookmatch['AudioStatus']
-                        if bookstatus in ['Open', 'Wanted', 'Have']:
-                            existing += 1
-                            logger.info(f'Found {library} {bookname} by {authorname}, already marked as "{bookstatus}"')
-                            imported = True
-                        else:  # skipped/ignored
-                            logger.info(f'Found {library} {bookname} by {authorname}, marking as "{status}"')
-                            control_value_dict = {"BookID": bookid}
-                            new_value_dict = {"Status": status} if library == 'eBook' else {"AudioStatus": status}
-                            db.upsert("books", new_value_dict, control_value_dict)
-                            bookcount += 1
-                    elif authorid:
-                        searchterm = f"{title}<ll>{authorname}"
-                        results = search_for(unaccented(searchterm, only_ascii=False))
-                        for result in results:
-                            if result['book_fuzz'] >= CONFIG.get_int('MATCH_RATIO') \
-                                    and result['authorid'] == authorid:
-                                bookmatch = result
-                                break
-                        if not bookmatch:  # no match on full searchterm, try splitting out subtitle and series
-                            newtitle, _, _ = split_title(authorname, title)
-                            if newtitle != title:
-                                title = newtitle
-                                searchterm = f"{title}<ll>{authorname}"
-                                results = search_for(unaccented(searchterm, only_ascii=False))
-                                for result in results:
-                                    if result['book_fuzz'] >= CONFIG.get_int('MATCH_RATIO') \
-                                            and result['authorid'] == authorid:
-                                        bookmatch = result
-                                        break
-                        if bookmatch:
-                            logger.info(
-                                f"Found ({round(bookmatch['book_fuzz'], 2)}%) {bookmatch['authorname']}: "
-                                f"{bookmatch['bookname']} for {authorname}: {title}")
-                            if library == 'eBook':
-                                import_book(bookmatch['bookid'], ebook=status, wait=True,
-                                            reason=f"Added by import_csv {csvfile}")
-                            else:
-                                import_book(bookmatch['bookid'], audio=status, wait=True,
-                                            reason=f"Added by import_csv {csvfile}")
-                            imported = db.match('select * from books where BookID=?', (bookmatch['bookid'],))
-                            if imported:
-                                bookcount += 1
-
-                    if bookmatch and imported:
-                        update_totals(authorid)
-                    else:
-                        msg = f"Skipping book {title} by {authorname}"
-                        if not results:
-                            msg += ', No results found'
-                            logger.warning(msg)
-                        elif bookmatch and not imported:
-                            msg += f", Failed to import {bookmatch['bookid']}"
-                            logger.warning(msg)
-                        else:
-                            msg += ', No match found'
-                            logger.warning(msg)
-                            msg = (f"Closest match ({round(results[0]['author_fuzz'], 2)}% "
-                                   f"{round(results[0]['book_fuzz'], 2)}%) "
-                                   f"{results[0]['authorname']}: {results[0]['bookname']}")
-                            if results[0]['authorid'] != authorid:
-                                msg += ' wrong authorid'
-                            logger.warning(msg)
                         skipcount += 1
+                        continue
+
+                if authorid:
+                    bookmatch = finditem(item, authorname, library=library, reason=f'import_csv: {csvfile}')
+                else:
+                    bookmatch = {}
+
+                imported = False
+                marked = False
+                results = []
+                if bookmatch:
+                    authorname = bookmatch['AuthorName']
+                    bookname = bookmatch['BookName']
+                    bookid = bookmatch['BookID']
+                    bookstatus = bookmatch['Status'] if library == 'eBook' else bookmatch['AudioStatus']
+                    if bookstatus in ['Open', 'Wanted', 'Have']:
+                        existing += 1
+                        logger.info(f'Found {library} {bookname} by {authorname}, already marked as "{bookstatus}"')
+                        imported = True
+                    else:  # skipped/ignored
+                        logger.info(f'Found {library} {bookname} by {authorname}, marking as "{status}"')
+                        control_value_dict = {"BookID": bookid}
+                        new_value_dict = {"Status": status} if library == 'eBook' else {"AudioStatus": status}
+                        db.upsert("books", new_value_dict, control_value_dict)
+                        bookcount += 1
+                        marked = True
+                elif authorid:
+                    searchterm = f"{title}<ll>{authorname}"
+                    results = search_for(unaccented(searchterm, only_ascii=False))
+                    for result in results:
+                        if result['book_fuzz'] >= CONFIG.get_int('MATCH_RATIO') \
+                                and result['author_fuzz'] >= CONFIG.get_int('MATCH_RATIO'):
+                            bookmatch = result
+                            break
+                    if not bookmatch:  # no match on full searchterm, try splitting out subtitle and series
+                        newtitle, _, _ = split_title(authorname, title)
+                        if newtitle != title:
+                            title = newtitle
+                            searchterm = f"{title}<ll>{authorname}"
+                            results = search_for(unaccented(searchterm, only_ascii=False))
+                            for result in results:
+                                if result['book_fuzz'] >= CONFIG.get_int('MATCH_RATIO') \
+                                        and result['authorid'] == authorid:
+                                    bookmatch = result
+                                    break
+                    if bookmatch:
+                        logger.info(
+                            f"Found ({round(bookmatch['book_fuzz'], 2)}%) {bookmatch['authorname']}: "
+                            f"{bookmatch['bookname']} for {authorname}: {title}")
+                        if library == 'eBook':
+                            import_book(bookmatch['bookid'], ebook=status, wait=True,
+                                        reason=f"Added by import_csv {csvfile}")
+                        else:
+                            import_book(bookmatch['bookid'], audio=status, wait=True,
+                                        reason=f"Added by import_csv {csvfile}")
+                        imported = db.match('select * from books where BookID=?', (bookmatch['bookid'],))
+                        if imported:
+                            bookcount += 1
+
+                if marked or (bookmatch and imported):
+                    update_totals(authorid)
+                else:
+                    msg = f"Skipping book {title} by {authorname}"
+                    if not results:
+                        msg += ', No results found'
+                        logger.warning(msg)
+                    elif bookmatch and not imported:
+                        msg += f", Failed to import {bookmatch['bookid']}"
+                        logger.warning(msg)
+                    else:
+                        msg += ', No match found'
+                        logger.warning(msg)
+                        msg = (f"Closest match ({round(results[0]['author_fuzz'], 2)}% "
+                               f"{round(results[0]['book_fuzz'], 2)}%) "
+                               f"{results[0]['authorname']}: {results[0]['bookname']}")
+                        if results[0]['authorid'] != authorid:
+                            msg += ' wrong authorid'
+                        logger.warning(msg)
+                    skipcount += 1
 
         msg = f"Found {total} {library}{plural(total)} in csv file, {existing} already existing or Wanted"
         logger.info(msg)

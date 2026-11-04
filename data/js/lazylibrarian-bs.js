@@ -1,7 +1,7 @@
 function restartQA(e, message, title) {
 	var self = this;
 	
-	bootbox.confirm("Are you sure you want to restart LazyLibrarian?", function(result) {
+	bootbox.confirm((window.llTexts && llTexts.restartConfirm) || "Are you sure you want to restart LazyLibrarian?", function(result) {
 		if (result) {
 			self.restart(message, title);
 		}
@@ -16,7 +16,7 @@ function restart(message, title) {
 function shutdownQA(e) {
     var self = this;
 
-	bootbox.confirm("Are you sure you want to shutdown LazyLibrarian?", function(result) {
+	bootbox.confirm((window.llTexts && llTexts.shutdownConfirm) || "Are you sure you want to shutdown LazyLibrarian?", function(result) {
 		if (result) {
 			self.shutdown();
 		}

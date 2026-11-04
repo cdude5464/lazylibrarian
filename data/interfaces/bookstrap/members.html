@@ -6,19 +6,19 @@
 <%def name="headerIncludes()">
   <div id="subhead_container">
     <a href="author_page?authorid=${series['AuthorID']}" class="btn btn-sm btn-primary">
-      <i class="fa fa-chevron-left"></i> Return to Author</a>
+      <i class="fa fa-chevron-left"></i> ${_('Return to Author')}</a>
     <a href="series?authorid=${series['AuthorID']}" class="btn btn-sm btn-primary">
-    <i class="fa fa-list"></i> Series List</a>
+    <i class="fa fa-list"></i> ${_('Series List')}</a>
     %if perm&lazylibrarian.perm_force:
       <a href="refresh_author?authorid=${series['AuthorID']}" class="btn btn-sm btn-primary">
-      <i class="fa fa-sync"></i> Refresh Author</a>
+      <i class="fa fa-sync"></i> ${_('Refresh Author')}</a>
       <a href="refresh_series?seriesid=${series['SeriesID']}" class="btn btn-sm btn-primary">
-      <i class="fa fa-sync"></i> Refresh Series</a>
+      <i class="fa fa-sync"></i> ${_('Refresh Series')}</a>
     %endif
     %if ignored == 'True':
-        <a href="series_members?seriesid=${series['SeriesID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> Show Active</a>
+        <a href="series_members?seriesid=${series['SeriesID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Show Active')}</a>
     %else:
-        <a href="series_members?seriesid=${series['SeriesID']}&amp;ignored=True" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> Show Ignored</a>
+        <a href="series_members?seriesid=${series['SeriesID']}&amp;ignored=True" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Show Ignored')}</a>
     %endif
   </div>
 </%def>
@@ -28,13 +28,13 @@
   %else:
   <h1>${series['AuthorName']} : ${title} (${series['SeriesID'][:2]})
   %if perm&lazylibrarian.perm_edit:
-    <a href="edit_series?seriesid=${series['SeriesID']}"><small><i> Edit</i></small></a>
+    <a href="edit_series?seriesid=${series['SeriesID']}"><small><i> ${_('Edit')}</i></small></a>
   %endif
   </h1>
   %endif
   %if lazylibrarian.SERIES_UPDATE == True:
     <p>
-    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Series scan in progress ...</button>
+    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Series scan in progress ...')}</button>
     </p>
   %endif
   <form action="mark_books" name="mark_books" id="mark_books" method="get" class="form-inline" onsubmit="return false;">
@@ -46,51 +46,52 @@
       <div class="form-group">
 
         % if CONFIG.get_int('AUDIO_TAB') != 0 and CONFIG.get_int('EBOOK_TAB') != 0:
-          <label for="marktypes" class="">Mark selected </label>
+          <label for="marktypes" class="">${_('Mark selected')} </label>
           <select class="markTypes form-control input-sm" id="marktypes" name="marktype">
-            // would be nice to use fontawesome icons here but options are not styleable
-            // and some browsers don't show them, eg linux firefox, android chrome
-            // They only show icons on closed select, not in dropdown
-            %for item in ["eBook", "AudioBook", "eBook+Audio"]:
-              <option value="${item}">${item}</option>
+            <% type_options = [("eBook", _('eBook')), ("AudioBook", _('AudioBook')),
+                               ("eBook+AudioBook", _('eBook+Audio'))] %>
+            %for value, label in type_options:
+              <option value="${value}">${label}</option>
             %endfor
           </select>
         %else:
           % if CONFIG.get_int('EBOOK_TAB') != 0:
-            <label for="marketype" class="">Mark selected eBook </label>
+            <label for="marketype" class="">${_('Mark selected eBook')} </label>
             <select class="markTypes form-control input-sm hidden" id="marketype" name="marktype">
-              <option value="eBook">eBook</option>
+              <option value="eBook">${_('eBook')}</option>
             </select>
           %endif
           % if CONFIG.get_int('AUDIO_TAB') != 0:
-            <label for="markatype" class="">Mark selected AudioBook </label>
+            <label for="markatype" class="">${_('Mark selected AudioBook')} </label>
             <select class="markTypes form-control input-sm hidden" id="markatype" name="marktype">
-              <option value="AudioBook">AudioBook</option>
+              <option value="AudioBook">${_('AudioBook')}</option>
             </select>
           %endif
         %endif
 
-        <label for="action" class=""> as </label>
+        <label for="action" class=""> ${_('as')} </label>
         <select class="mark_books form-control input-sm" id="action" name="action">
-          %for item in ["Wanted", "Have", "Ignored", "Skipped", "Remove", "Delete"]:
-            <option value="${item}">${item}</option>
+          <% mark_options = [("Wanted", _('Wanted')), ("Have", _('Have')), ("Ignored", _('Ignored')),
+                             ("Skipped", _('Skipped')), ("Remove", _('Remove')), ("Delete", _('Delete'))] %>
+          %for item, label in mark_options:
+            <option value="${item}">${label}</option>
           %endfor
           %if CONFIG['USER_ACCOUNTS']:
-            <option value="Unread">Unread</option>
-            <option value="Read">Read</option>
-            <option value="ToRead">To Read</option>
-            <option value="Reading">Reading</option>
-            <option value="Abandoned">Abandoned</option>
+            <option value="Unread">${_('Unread')}</option>
+            <option value="Read">${_('Read')}</option>
+            <option value="ToRead">${_('To Read')}</option>
+            <option value="Reading">${_('Reading')}</option>
+            <option value="Abandoned">${_('Abandoned')}</option>
           %endif
         </select>
       </div>
-      <input type="submit" class="mark_books btn btn-sm btn-primary" onclick="submitFormAjax()" value="Go">
+      <input type="submit" class="mark_books btn btn-sm btn-primary" onclick="submitFormAjax()" value="${_('Go') | h}">
       %endif
     %if CONFIG['TOGGLES']:
-    &nbsp;&nbsp;Toggle: <a class="toggle-vis" data-column="1">  Cover</a>
-    <a class="toggle-vis" data-column="2"> Title</a>
-    <a class="toggle-vis"  data-column="4"> Num</a>
-    <a class="toggle-vis" data-column="5"> Status</a>
+    &nbsp;&nbsp;${_('Toggle:')} <a class="toggle-vis" data-column="1">  ${_('Cover')}</a>
+    <a class="toggle-vis" data-column="2"> ${_('Title')}</a>
+    <a class="toggle-vis"  data-column="4"> ${_('Num')}</a>
+    <a class="toggle-vis" data-column="5"> ${_('Status')}</a>
     %endif
     </div>
     <p>&nbsp;</p>
@@ -103,15 +104,15 @@
             %else:
             <td class="hidden"></td>
             %endif
-            <th class="bookart text-center no-sort hidden-xs">Cover</th>
-            <th class="bookname">Title</th>
+            <th class="bookart text-center no-sort hidden-xs">${_('Cover')}</th>
+            <th class="bookname">${_('Title')}</th>
             %if multi == "True":
-            <th class="authorname">Author</th>
+            <th class="authorname">${_('Author')}</th>
             %else:
-            <th class="authorname hidden">Author</th>
+            <th class="authorname hidden">${_('Author')}</th>
             %endif
-            <th class="date col-xs-1 text-center">Num</th>
-            <th class="status text-center">Status</th>
+            <th class="date col-xs-1 text-center">${_('Num')}</th>
+            <th class="status text-center">${_('Status')}</th>
           </tr>
         </thead>
         <tbody>
@@ -122,7 +123,7 @@
             %else:
             <td class="hidden"></td>
             %endif
-            <td class="bookart text-center hidden-xs"><a href="${result['BookImg']}" target="_blank" rel="noreferrer"><img src="${result['BookImg']}" class="bookcover-xs img-responsive" alt="Cover"></a></td>
+            <td class="bookart text-center hidden-xs"><button onclick="bookinfo(${result['BookID']})" class="button btn-link" type="button"><img src="${result['BookImg']}" class="bookcover-xs img-responsive" alt="${_('Cover') | h}"></button></td>
             <td class="bookname">
             <button onclick="bookinfo(${result['BookID']})" class="button btn-link text-left" type="button">${result['BookName']}</button><br>
               %if 'GoodReads' in result['BookLink']:
@@ -132,7 +133,7 @@
                 <a href="${result['WorkPage']}"><small><i>LibraryThing</i></small></a>&nbsp;
               %endif
               %if perm&lazylibrarian.perm_edit:
-              <a href="edit_book?bookid=${result['BookID']}"><small><i>Manual</i></small></a>
+              <a href="edit_book?bookid=${result['BookID']}"><small><i>${_('Manual')}</i></small></a>
               %endif
             </td>
             %if multi == "True":
@@ -145,12 +146,12 @@
               %if 'Open' in result['Status']:
                 <td class="status text-center">
                 <a class="button green btn btn-xs btn-warning" href="open_book?bookid=${result['BookID']}&library=eBook"
-                target="_self"><i class="fa fa-book"></i> Open${result['Flag']}</a>
+                target="_self"><i class="fa fa-book"></i> ${_('Open')}${result['Flag']}</a>
                 %if len(email):
-                    <a class="button green btn btn-xs btn-info" href="send_book?bookid=${result['BookID']}&library=eBook" target="_self">Send</a>
+                    <a class="button green btn btn-xs btn-info" href="send_book?bookid=${result['BookID']}&library=eBook" target="_self">${_('Send')}</a>
                 %endif
               %else:
-                <td class="status text-center"><i class="fa fa-book"></i> ${result['Status']}${result['Flag']}
+                <td class="status text-center"><i class="fa fa-book"></i> ${status_label(result['Status'])}${result['Flag']}
               %endif
             %endif
             % if CONFIG.get_int('AUDIO_TAB') != 0:
@@ -161,12 +162,12 @@
               %endif
               %if 'Open' in result['AudioStatus']:
                 <a class="button green btn btn-xs btn-warning" href="open_book?bookid=${result['BookID']}&library=AudioBook"
-                target="_self"><i class="fa fa-headphones"></i> Open</a>
+                target="_self"><i class="fa fa-headphones"></i> ${_('Open')}</a>
                 %if len(email):
-                    <a class="button green btn btn-xs btn-info" href="send_book?bookid=${result['BookID']}&library=AudioBook" target="_self">Send</a>
+                    <a class="button green btn btn-xs btn-info" href="send_book?bookid=${result['BookID']}&library=AudioBook" target="_self">${_('Send')}</a>
                 %endif
               %else:
-                <i class="fa fa-headphones"></i> ${result['AudioStatus']}
+                <i class="fa fa-headphones"></i> ${status_label(result['AudioStatus'])}
               %endif
             % endif
             </td>
@@ -193,19 +194,14 @@
                 "order": [[ 4, 'asc' ]],
                 "columnDefs": [{ targets: 'no-sort', orderable: false },
                                { type: 'natural', targets: 4 }],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No books found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No books found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[4, 'asc']],
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
             });
-        $('.dataTables_filter input').attr("placeholder", "Results filter");
+        $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
         //$(window).resize(function() {oTable.draw(false)});
         $('a.toggle-vis').click(function (e) {
             e.preventDefault();
@@ -220,7 +216,7 @@
 
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div>',
             size: 'small',
             backdrop: false,
             closeButton: false
@@ -247,21 +243,21 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
             bootbox.dialog({
-                title: 'Mark Books Complete',
+                title: ${_js('Mark Books Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             window.location = data.redirect
@@ -276,11 +272,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload(); }
                         },

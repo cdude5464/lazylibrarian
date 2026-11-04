@@ -157,3 +157,19 @@ class StartupHelperRejectionTest(TestCase):
         with patch.object(self.db, "action", side_effect=reject_before_write):
             dbupgrade._reconcile_orphan_status(self.db, Mock())
         self.assertEqual(self.conn.execute("SELECT AudioStatus FROM books").fetchone()[0], "Snatched")
+
+    def test_duplicate_orchestration_hold_survives_startup(self):
+        reason='destination: Calibre duplicate has no verified existing ebook file; source retained for reconciliation'
+        for source,identifier in (('DIRECT','d'*32),('QBITTORRENT','a'*40)):
+            self.conn.execute('DELETE FROM wanted');self.conn.execute('DELETE FROM books')
+            self.conn.execute("INSERT INTO books VALUES ('42','Skipped','Snatched')")
+            self.add(AuxInfo='eBook',Source=source,DownloadID=identifier,DLResult=reason,Completed=100)
+            dbupgrade._reconcile_orphan_status(self.db,Mock(),'eBook')
+            self.assertEqual(self.conn.execute('SELECT Status FROM books').fetchone()[0],'Snatched')
+
+    def test_reused_direct_hold_row_outranks_older_attempt_timestamp(self):
+        self.conn.execute("INSERT INTO books VALUES ('42','Skipped','Snatched')")
+        self.add(AuxInfo='eBook',Source='DIRECT',DownloadID='d'*32,Completed=100,DLResult='destination: Calibre duplicate has no verified existing ebook file; source retained for reconciliation')
+        self.add(AuxInfo='eBook',Source='DIRECT',DownloadID='e'*32,Completed=10,DLResult='matching: old failure')
+        dbupgrade._reconcile_orphan_status(self.db,Mock(),'eBook')
+        self.assertEqual(self.conn.execute('SELECT Status FROM books').fetchone()[0],'Snatched')

@@ -99,6 +99,7 @@ def slsk_search(book=None, searchtype='ebook', test=False):
     results = []
     removed = 0
 
+    lazylibrarian.test_data = f"SoulSeek checking {len(searchresults)}"
     for item in searchresults:
         author = book['authorName']
         title = item['filename']
@@ -133,7 +134,6 @@ def slsk_search(book=None, searchtype='ebook', test=False):
 
 class SLSKD:
     def __init__(self):
-
         self.logger = logging.getLogger(__name__)
         self.slskd = None
         self.version = None
@@ -141,9 +141,11 @@ class SLSKD:
             self.logger.error("slskd_api module is not loaded")
             return
 
+        self.searchlogger = logging.getLogger('special.searching')
         self.api_key = CONFIG['SLSK_API']
         self.host_url = CONFIG['SLSK_HOST']
-        self.download_dir = get_list(CONFIG['DOWNLOAD_DIR'])[0]
+        dlist = get_list(CONFIG['DOWNLOAD_DIR'])
+        self.download_dir = dlist[0] if dlist else ''
         self.url_base = CONFIG['SLSK_URLBASE']
         self.ignored_users = []
         try:
@@ -163,7 +165,9 @@ class SLSKD:
             return ''
 
         try:
-            self.logger.debug(f"Searching for {searchterm}")
+            msg = f"Searching for {searchterm}"
+            self.logger.debug(msg)
+            lazylibrarian.test_data = msg
             search = self.slskd.searches.search_text(searchText=searchterm,
                                                      searchTimeout=50000,
                                                      filterResponses=True,
@@ -206,8 +210,9 @@ class SLSKD:
                     self.logger.info(f"Ignoring user {username}")
                 else:
                     files = result['files']
-                    msg = f"Parsing result from user: {username}, {len(files)} results"
+                    msg = f"Parsing result from user: {username}: {len(files)} results"
                     self.logger.info(msg)
+                    lazylibrarian.test_data = msg.replace(':', '<br>')
                     rejects = 0
                     for file in files:
                         if username in self.ignored_users:
@@ -224,9 +229,10 @@ class SLSKD:
                             continue
 
                         if not CONFIG.is_valid_booktype(file_name, booktype=searchtype):
-                            rejects += 1  # self.logger.debug(f"Rejecting {file_name}")
+                            rejects += 1
+                            self.searchlogger.debug(f"Rejecting {file_name}: Not {searchtype}")
                             if rejects > 20:
-                                self.logger.debug(f"Ignoring {username}, too many rejects")
+                                self.searchlogger.debug(f"Ignoring {username}, too many rejects")
                                 self.ignored_users.append(username)
                                 break
                         else:
@@ -243,7 +249,7 @@ class SLSKD:
                                 extn = extn.lstrip('.').lower()
                                 if extn in extns:  # reject if multiple files of the same type
                                     new_files = []
-                                    self.logger.debug(f"Rejecting {title}, multiple {extn}")
+                                    self.searchlogger.debug(f"Rejecting {title}, multiple {extn}")
                                     self.ignored_users.append(username)
                                     break
                                 extns.append(extn)
@@ -281,6 +287,7 @@ class SLSKD:
         hashfilename = os.path.join(cache_location, f"{myhash}.slsk")
         with open(hashfilename, 'w') as fp:
             json.dump(results, fp)
+        lazylibrarian.test_data = ''
         return hashfilename
 
     def enqueue(self, username, directory):
@@ -306,10 +313,21 @@ class SLSKD:
         for file in files:
             self.slskd.transfers.cancel_download(username=username, id=file['id'])
 
-        os.chdir(self.download_dir)
+        # delete_dir is derived from a remote Soulseek peer's self-reported directory name
+        # (see slsk_search/on_transfer_update callers) - never trust it as a safe relative
+        # path. A peer reporting a name ending in "\.." (or an absolute path) could otherwise
+        # make this resolve outside download_dir and rmtree something else entirely.
+        base = os.path.realpath(self.download_dir)
+        target = os.path.realpath(os.path.join(base, delete_dir))
+        if not target.startswith(base + os.sep):
+            # Also refuses target == base: this must be a subdirectory of download_dir,
+            # never the download directory itself.
+            self.logger.warning(f"Refusing to delete '{delete_dir}' reported by peer {username}: "
+                                f"resolves outside download directory ({target})")
+            return
 
-        if os.path.exists(delete_dir):
-            shutil.rmtree(delete_dir)
+        if os.path.exists(target):
+            shutil.rmtree(target)
 
     def download(self, results):
         time_count = 0

@@ -151,11 +151,11 @@ class ConfigItem:
         if ok:
             self.accesses[Access.READ_OK] += 1
             logger = logging.getLogger('special.configread')
-            logger.debug(f"Read config[{self.key}]={self.value}")
+            logger.debug(f"Read config[{self.key}]")
         else:
             self.accesses[Access.READ_ERR] += 1
             logger = logging.getLogger(__name__)
-            logger.warning(f"Type error reading config[{self.key}] ({self.value})")
+            logger.warning(f"Type error reading config[{self.key}]")
         return ok
 
     def _on_set(self, value: ValidTypes) -> bool:
@@ -167,20 +167,20 @@ class ConfigItem:
                 # Don't count a write if the value does not change
                 self.accesses[Access.WRITE_OK] += 1
                 logger = logging.getLogger('special.configwrite')
-                logger.debug(f"Set config[{self.key}]={value}")
+                logger.debug(f"Set config[{self.key}]")
             self.value = value
             if self.onchange:
                 self.onchange(self.get_str(), OnChangeReason.SETTING)
             return True
         self.accesses[Access.WRITE_ERR] += 1
         logger = logging.getLogger(__name__)
-        logger.warning(f"Cannot set config[{self.key}] to {value}")
+        logger.warning(f"Cannot set config[{self.key}]: invalid value")
         return False
 
     def _on_type_mismatch(self, value, types) -> bool:
         self.accesses[Access.WRITE_ERR] += 1
         logger = logging.getLogger(__name__)
-        logger.warning(f"Cannot set config[{self.key}] to {value}: incorrect type {types}")
+        logger.warning(f"Cannot set config[{self.key}]: incorrect type {types}")
         return False
 
     def get_accesses(self):
@@ -455,7 +455,7 @@ class ConfigBool(ConfigInt):
         return self._on_type_mismatch(value, 'bool/str')
 
     def set_from_ui(self, value: bool) -> bool:
-        if bool(value) != self.value:
+        if bool(value in ['1', 1, True, 'True', 'true']) != self.value:
             # Don't trigger a change if it's the same
             return self.set_bool(bool(value))
         return False

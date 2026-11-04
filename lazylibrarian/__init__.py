@@ -31,10 +31,14 @@ PIDFILE = ''  # If running as a daemon, the name of the file holding the PID
 SYS_ENCODING = ''  # A copy of CONFIG['SYS_ENCODING'] that can be overridden
 LOGINUSER = None  # UserID of currently logged-in user, if any
 COMMIT_LIST = ''  # List of git commits since last update. If it includes "**MANUAL**", don't update.
+WHATS_NEW = []  # Changes since the version the user last saw, see whatsnew.py
 SHOWLOGOUT = 1  # If 1, the Logout option is shown in the UI.
 REQUESTSLOG = 0  # If 1, sets http.client.HTTPConnection.debuglevel=1.
 DOCKER = False  # Set to True if we discover LL is running inside of Docker
 STOPTHREADS = False  # Part of the scheduling state machine. Should move to a scheduling class?
+OL_UPDATING = False  # set if an openlibrary dump update is in progress
+OL_AUTHORS = 0
+OL_WORKS = 0
 
 # These are globals
 UPDATE_MSG = ''
@@ -61,6 +65,7 @@ TIMERS = {
         }
 IGNORED_AUTHORS = 0
 PRIMARY_AUTHORS = 1
+LANG_REFRESH_STATUS = {'checked': 0, 'updated': 0, 'unignored': 0, 'total': 0}
 CACHE_HIT = 0
 CACHE_MISS = 0
 IRC_CACHE_EXPIRY = 2 * 3600
@@ -88,8 +93,6 @@ RARFILE = None
 FFMPEGVER = ''
 FFMPEGAAC = ''
 SAB_VER = (0, 0, 0)
-NEWUSER_MSG = ''
-NEWFILE_MSG = ''
 libraryscan_data = ''
 magazinescan_data = ''
 test_data = ''

@@ -19,6 +19,7 @@
 # Session tool to be loaded.
 # from cherrypy/tools on gitHub
 
+import ipaddress
 import logging
 import time
 from html import escape
@@ -30,7 +31,7 @@ import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.common import pwd_generator
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.formatter import md5_utf8
+from lazylibrarian.formatter import get_list, md5_utf8
 
 SESSION_KEY = '_cp_username'
 
@@ -53,7 +54,51 @@ def check_credentials(username, password):
     return "Incorrect username or password."
 
 
-# noinspection PyUnusedLocal
+def get_remote_ip():
+    """Return the client IP used for whitelist checks.
+
+    Only trust X-Forwarded-For when PROXY_LOCAL is configured, which
+    means the admin has declared that a reverse proxy sits in front
+    of LazyLibrarian.  Without that setting, use the TCP peer address
+    so a remote client cannot spoof a local IP via a forged header."""
+    if CONFIG.get_str('PROXY_LOCAL'):
+        remote_ip = cherrypy.request.headers.get('X-Host')  # lighttpd
+        if not remote_ip:
+            remote_ip = cherrypy.request.headers.get('X-Forwarded-For')  # apache2 / nginx
+        if remote_ip:
+            remote_ip = remote_ip.split(',')[0].strip()
+            return remote_ip
+    return cherrypy.request.remote.ip
+
+
+
+def is_whitelisted_ip(remote_ip):
+    """True if remote_ip matches an entry in the WHITELIST config.
+    Entries may be exact IPs or CIDR ranges (e.g. 10.46.0.0/16), unlike
+    the older prefix-matching hack this replaces which only understood
+    a single hardcoded /24-shaped string format."""
+    whitelist = get_list(CONFIG.get_csv('WHITELIST'))
+    if not whitelist or not remote_ip:
+        return False
+    try:
+        addr = ipaddress.ip_address(remote_ip)
+    except ValueError:
+        return False
+    for entry in whitelist:
+        entry = entry.strip()
+        if not entry:
+            continue
+        try:
+            if '/' in entry:
+                if addr in ipaddress.ip_network(entry, strict=False):
+                    return True
+            elif addr == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 def check_auth(*args, **kwargs):
     """A tool that looks in config for 'auth.require'. If found, and it
     is not None, a login is required and the entry is evaluated as a list of
@@ -61,6 +106,8 @@ def check_auth(*args, **kwargs):
     conditions = cherrypy.request.config.get('auth.require', None)
     get_params = quote(cherrypy.request.request_line.split()[1])
     if conditions is not None:
+        if is_whitelisted_ip(get_remote_ip()):
+            return
         # noinspection PyUnresolvedReferences
         username = cherrypy.session.get(SESSION_KEY)  # pylint: disable=no-member
         if username:
@@ -151,8 +198,15 @@ class AuthController:
             logger.debug(f"{username} added as a new admin user")
             res = db.match('SELECT UserID,Prefs from users where UserName=?', (username,))
         logger.info(f'{username} successfully logged in.')
-        # cherrypy.response.cookie['ll_uid'] = res['UserID']
-        # cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+        # Set the ll_uid cookie directly rather than relying solely on LOGINUSER being
+        # consumed by serve_template() on the next request: several page handlers
+        # (books/audio/magazines/series/comics) call check_permitted() before ever
+        # calling serve_template(), so without this the cookie never gets set in time
+        # and the very first post-login page load 403s / redirect-loops back to login.
+        cherrypy.response.cookie['ll_uid'] = res['UserID']
+        cherrypy.response.cookie['ll_uid']['path'] = '/'
+        cherrypy.response.cookie['ll_prefs'] = res['Prefs']
+        cherrypy.response.cookie['ll_prefs']['path'] = '/'
         lazylibrarian.LOGINUSER = f"!{res['UserID']}"
         db.close()
 
@@ -180,24 +234,34 @@ class AuthController:
         error_msg = check_credentials(current_username, current_password)
         if error_msg:
             return self.get_loginform(current_username, error_msg, from_page)
-        # noinspection PyUnresolvedReferences
-        cherrypy.session.regenerate()  # pylint: disable=no-member
-        # noinspection PyUnresolvedReferences
-        cherrypy.session[SESSION_KEY] = cherrypy.request.login = current_username  # pylint: disable=no-member
+        # cherrypy.session only exists when the sessions tool is active for this request.
+        # webStart.py only enables tools.sessions.on when USER_ACCOUNTS is off (form/basic
+        # auth mode) - with USER_ACCOUNTS on, the DB-backed ll_uid cookie set by on_login()
+        # below is the actual auth mechanism, so touching cherrypy.session unconditionally
+        # here raised AttributeError on every successful login in that mode.
+        if cherrypy.request.config.get('tools.sessions.on', False):
+            # noinspection PyUnresolvedReferences
+            cherrypy.session.regenerate()  # pylint: disable=no-member
+            # noinspection PyUnresolvedReferences
+            cherrypy.session[SESSION_KEY] = cherrypy.request.login = current_username  # pylint: disable=no-member
         self.on_login(current_username, current_password)
-        if CONFIG['HTTP_ROOT']:
-            from_page = f"{CONFIG['HTTP_ROOT'].rstrip('/')}/{from_page}"
+        root = CONFIG['HTTP_ROOT'].rstrip('/')
+        if root and not from_page.startswith(root):
+            from_page = f"{root}/{from_page}"
         raise cherrypy.HTTPRedirect(from_page or CONFIG['HTTP_ROOT'])
 
     @cherrypy.expose
     def logout(self, from_page="/"):
-        # noinspection PyUnresolvedReferences
-        sess = cherrypy.session  # pylint: disable=no-member
-        username = sess.get(SESSION_KEY, None)
-        sess[SESSION_KEY] = None
+        username = None
+        if cherrypy.request.config.get('tools.sessions.on', False):
+            # noinspection PyUnresolvedReferences
+            sess = cherrypy.session  # pylint: disable=no-member
+            username = sess.get(SESSION_KEY, None)
+            sess[SESSION_KEY] = None
         if username:
             cherrypy.request.login = None
             self.on_logout(username)
-            if CONFIG['HTTP_ROOT']:
-                from_page = f"{CONFIG['HTTP_ROOT']}/{from_page}"
+            root = CONFIG['HTTP_ROOT'].rstrip('/')
+            if root and not from_page.startswith(root):
+                from_page = f"{root}/{from_page}"
             raise cherrypy.HTTPRedirect(from_page or CONFIG['HTTP_ROOT'])

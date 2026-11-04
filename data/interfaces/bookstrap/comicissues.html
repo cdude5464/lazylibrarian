@@ -7,15 +7,15 @@
   <div id="subhead_container">
     <div id="subhead_menu">
       %if perm&lazylibrarian.perm_force:
-        <a href="force_search?source=comics&title=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> Search</a>
-        <a href="force_process?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> Run Post-Processor</a>
-        <a href="comic_scan?comicid=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> Library Scan</a>
+        <a href="force_search?source=comics&title=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-search"></i> ${_('Search')}</a>
+        <a href="force_process?source=comics" class="button btn btn-sm btn-primary"><i class="fa fa-cogs"></i> ${_('Run Post-Processor')}</a>
+        <a href="comic_scan?comicid=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-bolt"></i> ${_('Library Scan')}</a>
       %endif
-      <a href="comic_wall?comicid=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> Recent Issues</a>
+      <a href="comic_wall?comicid=${comicid}" class="button btn btn-sm btn-primary"><i class="fa fa-calendar-check"></i> ${_('Recent Issues')}</a>
         %if CONFIG['USER_ACCOUNTS']:
           %if CONFIG['RSS_ENABLED']:
-            <a href="rss_feed?user=${user}&type=Comic&onetitle=${comicid}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="rss feed of recent downloads"><i class="fa fa-rss"></i></a>
-            <link rel="alternate" type="application/rss+xml" title="LazyLibrarian latest comics" href="rss_feed?user=${user}&type=Comic&onetitle=${comicid}&limit=10.xml">
+            <a href="rss_feed?user=${user}&type=Comic&onetitle=${comicid}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent downloads') | h}"><i class="fa fa-rss"></i></a>
+            <link rel="alternate" type="application/rss+xml" title="${_('LazyLibrarian latest comics') | h}" href="rss_feed?user=${user}&type=Comic&onetitle=${comicid}&limit=10.xml">
           %endif
         %endif
     </div>
@@ -25,27 +25,27 @@
 <%def name="body()">
   <h1>${title}
     %if perm&lazylibrarian.perm_edit:
-    <a href="edit_comic?comicid=${comicid}"><small><i> Edit</i></small></a>
+    <a href="edit_comic?comicid=${comicid}"><small><i> ${_('Edit')}</i></small></a>
   %endif
 </h1>
     %if lazylibrarian.COMIC_UPDATE == True:
     <p>
-    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Libraryscan in progress ...</button>
+    <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Libraryscan in progress ...')}</button>
     </p>
     %endif
     <form name="mark_comic_issues" id="mark_comic_issues" action="mark_comic_issues" method="get" class="form-inline" onsubmit="return false;">
       <div class="form-group">
-        <label for="action" class="control-label">Selected issues:</label>
+        <label for="action" class="control-label">${_('Selected issues:')}</label>
         <select name="action" id="action" class="form-control input-sm">
-          <option value="Remove" selected>Remove</option>
-          <option value="Delete">Delete</option>
+          <option value="Remove" selected>${_('Remove')}</option>
+          <option value="Delete">${_('Delete')}</option>
         </select>
-        <button type="submit" class=" btn btn-m btn-primary" onclick="validateForm()">Go</button>
+        <button type="submit" class=" btn btn-m btn-primary" onclick="validateForm()">${_('Go')}</button>
         %if CONFIG['TOGGLES']:
-        &nbsp;&nbsp;Toggle: <a class="toggle-vis" data-column="1"> Cover</a>
-        <a class="toggle-vis" data-column="2"> Issue</a>
-        <a class="toggle-vis" data-column="3"> Added</a>
-        <a class="toggle-vis" data-column="4"> Select</a>
+        &nbsp;&nbsp;Toggle: <a class="toggle-vis" data-column="1"> ${_('Cover')}</a>
+        <a class="toggle-vis" data-column="2"> ${_('Issue')}</a>
+        <a class="toggle-vis" data-column="3"> ${_('Added')}</a>
+        <a class="toggle-vis" data-column="4"> ${_('Select')}</a>
         %endif
       </div>
       <p>&nbsp;</p>
@@ -59,13 +59,13 @@
             <th class="hidden"></th>
           %endif
           % if covercount > 0:
-            <th class="bookart text-center no-sort" width=20%>Cover</th>
+            <th class="bookart text-center no-sort" width=20%>${_('Cover')}</th>
           % else:
-            <th class="bookart hidden">Cover</th>
+            <th class="bookart hidden">${_('Cover')}</th>
           % endif
-            <th class="issuedate text-center">Issue</th>
-            <th class="lastacquired text-center">Added</th>
-            <th class="issue text-center">Select</th>
+            <th class="issuedate text-center">${_('Issue')}</th>
+            <th class="lastacquired text-center">${_('Added')}</th>
+            <th class="issue text-center">${_('Select')}</th>
         </tr>
         </thead>
         </table>
@@ -82,7 +82,10 @@
         var table = $('#book_table').DataTable(
             {
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "order": [[ 2, 'desc']],
                 "rowId": 4,
                 "columnDefs": [{ targets: 'no-sort', orderable: false },
@@ -95,7 +98,7 @@
                     { targets: [1],
                         'class': 'text-center',
                         'render': function(data, type, row) {
-                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="Cover" class="bookcover-sm img-responsive"></a>';} },
+                        return '<a href="' + data + '" target="_blank" rel="noreferrer"><img src="' + data + '" alt="' + ${_js('Cover')} + '" class="bookcover-sm img-responsive"></a>';} },
                     { targets: [2],
                         'class': 'text-center',
                         'render': function(data, type, row) {
@@ -108,21 +111,16 @@
                         'class': 'text-center',
                         'render': function(data, type, row) {
                         btn = '<a class="button green btn btn-xs btn-warning" href="open_comic?comicid=' + data +
-                                '&issueid=' + row[2] + '" target="_self"><i class="fa fa-book"></i> Open</a>'
+                                '&issueid=' + row[2] + '" target="_self"><i class="fa fa-book"></i> ' + ${_js('Open')} + '</a>'
                         return btn;} },
                 ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"Show _MENU_ issues per page",
-                    "sEmptyTable": "No issues found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ results",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 issues",
-                    "sInfoFiltered":"(filtered from _MAX_ total issues)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No issues found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[2, 'desc']],
                 "bServerSide": true,
                 "sAjaxSource": 'get_comic_issues?comicid=${comicid}',
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "bFilter": true,
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
@@ -159,12 +157,12 @@
               };
             });
 
-            var page = oTable.page();
+            var page = table.page();
             if ( page != '0' ) {
-                if (${firstpage}) { oTable.page( 'first' ).draw( 'page' ); }
+                if (${firstpage}) { table.page( 'first' ).draw( 'page' ); }
             }
 
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
             $('a.toggle-vis').click(function (e) {
                 e.preventDefault();
                 var column = table.column( $(this).attr('data-column') );
@@ -178,17 +176,17 @@
         var all_check = document.getElementById("allcheck").checked;
         if (all_check) { c -= 1};
         if (c > 0 && x == "Delete") {
-            if (c == 1) {msg = "Are you sure you want to permanently delete the selected issue?"}
-            if (c > 1) {msg = "Are you sure you want to permanently delete the " + c + " selected issues?"}
+            msg = llNgettext(${_jsn('Are you sure you want to permanently delete the selected issue?',
+                                    'Are you sure you want to permanently delete the %(count)s selected issues?')}, c);
             bootbox.confirm({
                 message: msg,
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },

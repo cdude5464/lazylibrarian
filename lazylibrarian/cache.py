@@ -16,21 +16,24 @@ import itertools
 import json
 import logging
 import os
+import platform
 import shutil
 import time
 from abc import ABC
 from enum import Enum
 from http.client import responses
 from typing import Any
+from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import requests
+from curl_cffi import requests as requests_cffi
 
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.providerlogging import provider_log_origin
 from lazylibrarian.blockhandler import BLOCKHANDLER
-from lazylibrarian.common import get_user_agent, proxy_list
+from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import (
     DIRS,
@@ -98,7 +101,20 @@ def _reject_bad_author_cache_image(img_type, cachefile, logger):
     return reason
 
 
-service_blocked = ['goodreads', 'librarything', 'googleapis', 'openlibrary', 'hardcover', 'dnb', 'ISBN']
+service_blocked = ['GoodReads', 'LibraryThing', 'googleapis', 'OpenLibrary', 'HardCover', 'DNB', 'RanobeDB', 'DatabazeKnih', 'ISBN']
+
+
+def service_for_url(url: str) -> str:
+    """Match service hosts, not service names appearing in search queries."""
+    url_lower = url.lower()
+    host = urlparse(url_lower).netloc
+    for blocked in service_blocked:
+        if blocked == 'ISBN':
+            if 'google.com/search' in url_lower and 'isbn' in url_lower:
+                return blocked
+        elif blocked.lower() in host:
+            return blocked
+    return ''
 
 
 def gr_api_sleep():
@@ -135,7 +151,7 @@ def init_hex_caches() -> bool:
 
 
 def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
-              raw: bool = False) -> (str | bytes, bool):
+              raw: bool = False, impersonate=None) -> tuple[str | bytes, bool]:
     """ Return the result of fetching a URL and True if success
         Otherwise return error message and False
         Return data as raw/bytes, if raw == True
@@ -151,21 +167,34 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
 
     url = make_unicode(url)
 
-    for blk in service_blocked:
-        if blk in url and BLOCKHANDLER.is_blocked(blk.split('.')[0]):
-            return 'Blocked', False
+    url_lower = url.lower()
+    if ('googleapis' in url_lower or 'books.google.' in url_lower or 'google.com/search' in url_lower) and \
+            (BLOCKHANDLER.is_blocked('googleapis') or BLOCKHANDLER.is_blocked('ISBN')):
+            logger.debug("Intercepted Google request: Provider is blocked due to quota exhaustion")
+            return 'Blocked: Google quota exhausted', False
 
-    if headers is None:
-        # some sites insist on having a user-agent, default is to add one
-        # if you don't want any headers, pass headers={}
-        headers = {'User-Agent': get_user_agent()}
+    blk = service_for_url(url)
+    if blk and BLOCKHANDLER.is_blocked(blk):
+        return 'Blocked', False
+
+    if not headers:
+        headers = {}
+
+    # don't do a blanket User-Agent as impersonate will add one, but there are special cases...
+    if 'openlibrary.org' in url_lower and CONFIG['ADMIN_EMAIL']:
+        # higher requests per second if identified
+        headers['User-Agent'] = f"LazyLibrarian ({platform.system()} {platform.release()} {CONFIG['CURRENT_VERSION'][:8]}) ({CONFIG['ADMIN_EMAIL']})"
+
+    elif 'comicvine.gamespot.com' in url_lower:
+        # comicvine api asks for a descriptive user agent
+        headers['User-Agent'] = f"LazyLibrarian ({platform.system()} {platform.release()} {CONFIG['CURRENT_VERSION'][:8]})"
 
     proxies = proxy_list()
 
     # jackett query all indexers needs a longer timeout
     # /torznab/all/api?q=  or v2.0/indexers/all/results/torznab/api?q=
     if timeout:
-        if '/torznab/' in url and ('/all/' in url or '/aggregate/' in url):
+        if '/torznab/' in url_lower and ('/all/' in url_lower or '/aggregate/' in url_lower):
             timeout = CONFIG.get_int('HTTP_EXT_TIMEOUT')
         else:
             timeout = CONFIG.get_int('HTTP_TIMEOUT')
@@ -180,9 +209,15 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         verify = True
         if CONFIG['SSL_CERTS']:
             verify = CONFIG['SSL_CERTS']
+    def request(verify_cert):
+        if impersonate:
+            return requests_cffi.get(url, verify=verify_cert, headers=headers,
+                                     impersonate=impersonate, **request_kwargs)
+        return requests.get(url, verify=verify_cert, headers=headers, **request_kwargs)
+
     try:
-        r = requests.get(url, verify=verify, headers=headers, **request_kwargs)
-    except requests.exceptions.TooManyRedirects as e:
+        r = request(verify)
+    except (requests.exceptions.TooManyRedirects, requests_cffi.exceptions.TooManyRedirects):
         # This is to work around an oddity (bug??) with verified https goodreads requests
         # Goodreads sometimes redirects back to the same page in a loop using code 301,
         # and after a variable number of tries it might then return 200
@@ -193,23 +228,29 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
             return "TooManyRedirects", False
         logger.debug(f"Retrying - got TooManyRedirects on {provider_log_origin(url)}")
         try:
-            r = requests.get(url, verify=False, headers=headers, **request_kwargs)
+            r = request(False)
             logger.debug(f"TooManyRedirects retry status code {r.status_code}")
         except Exception as e:
             return f"Exception {type(e).__name__}", False
-    except requests.exceptions.Timeout as e:
+    except (requests.exceptions.Timeout, requests_cffi.exceptions.Timeout):
         if not retry:
             logger.error(f"fetch_url: Timeout getting response from {provider_log_origin(url)}")
             return "Timeout", False
         logger.debug(f"fetch_url: retrying - got timeout on {provider_log_origin(url)}")
         try:
-            r = requests.get(url, verify=verify, headers=headers, **request_kwargs)
+            r = request(verify)
         except Exception as e:
             return f"Exception {type(e).__name__}", False
     except Exception as e:
         return f"Exception {type(e).__name__}", False
 
-    if str(r.status_code).startswith('2'):  # (200 OK etc)
+    if r.status_code == 202:
+        logger.debug("Provider returned HTTP 202; retrying once")
+        try:
+            r = request(verify)
+        except Exception as exc:
+            return f"Exception {type(exc).__name__}", False
+    if r.status_code == 200:
         if raw:
             return r.content, True
         return r.text, True
@@ -223,11 +264,7 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
         msg = f"Error {r.status_code}"
 
     if '503' in msg:
-        to_block = ''
-        for blk in service_blocked:
-            if blk in url:
-                to_block = blk
-                break
+        to_block = service_for_url(url)
         if to_block:
             delay = 10
             logger.debug(f'Request denied, {r.status_code}, blocking {to_block} for {delay} seconds')
@@ -237,7 +274,12 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
 
     elif 'googleapis' in url or 'google.com/search?q=ISBN' in url:
         prov = 'googleapis' if 'googleapis' in url else 'ISBN'
-        if 'Limit Exceeded' in msg:
+        # Google's actual wording for a daily-quota block is "Quota exceeded for quota metric
+        # 'Queries' and limit 'Queries per day'" - "Limit Exceeded" alone never matched this in
+        # practice, so a real daily-quota exhaustion fell through to the generic 429 branch below
+        # (60 second retry) and kept re-hitting the same exhausted daily quota all day instead of
+        # actually waiting for the midnight reset.
+        if 'Limit Exceeded' in msg or ('Quota exceeded' in msg and 'per day' in msg):
             # how long until midnight Pacific Time when google reset the quotas
             delay = seconds_to_midnight() + 28800  # PT is 8hrs behind UTC
             if delay > 86400:
@@ -249,7 +291,8 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
             # eg "Cannot determine user location for geographically restricted operation"
             delay = 3600
 
-        logger.debug(f'Request denied, {r.status_code}, blocking {prov} for {delay} seconds')
+        logmethod = logger.warning if delay > 300 else logger.debug
+        logmethod(f'Request denied, {r.status_code}, blocking {prov} for {delay} seconds')
         BLOCKHANDLER.replace_provider_entry(prov, delay, f"HTTP status {r.status_code}")
     else:
         logger.debug(f"Error {r.status_code} url={provider_log_origin(url)}")
@@ -258,7 +301,7 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
     return f"Response status {r.status_code}: {msg}", False
 
 
-def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> (str, bool, bool):
+def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> tuple[str, bool, bool]:
     """ Cache the image from the given filename or URL in the local images cache
         linked to the id.
         On success, return the link to the cached file, True, was_in_cache
@@ -316,18 +359,18 @@ def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> 
     return msg, False, False
 
 
-def gr_xml_request(my_url, use_cache=True, expire=True) -> (Any, bool):
+def gr_xml_request(my_url, use_cache=True, expire=True) -> tuple[Any, bool]:
     # respect goodreads api limit
     result, in_cache = XMLCacheRequest(url=my_url, use_cache=use_cache, expire=expire).get_cached_request()
     return result, in_cache
 
 
-def json_request(my_url, use_cache=True, expire=True) -> (Any, bool):
+def json_request(my_url, use_cache=True, expire=True) -> tuple[Any, bool]:
     result, in_cache = JSONCacheRequest(url=my_url, use_cache=use_cache, expire=expire).get_cached_request()
     return result, in_cache
 
 
-def html_request(my_url, use_cache=True, expire=True) -> (Any, bool):
+def html_request(my_url, use_cache=True, expire=True) -> tuple[Any, bool]:
     result, in_cache = HTMLCacheRequest(url=my_url, use_cache=use_cache, expire=expire).get_cached_request()
     return result, in_cache
 
@@ -352,18 +395,18 @@ class CacheRequest(ABC):
         return f"{cls.name()}Cache"
 
     @abc.abstractmethod
-    def read_from_cache(self, hashfilename: str) -> (str, bool):
+    def read_from_cache(self, hashfilename: str) -> tuple[str, bool]:
         """ Read the source from cache """
 
-    def fetch_data(self) -> (str, bool):
+    def fetch_data(self) -> tuple[str, bool]:
         """ Fetch the data; called if it's not in the cache """
         return fetch_url(self.url, headers=None)
 
     @abc.abstractmethod
-    def load_from_result_and_cache(self, result: str, filename: str, docache: bool) -> (str, bool):
+    def load_from_result_and_cache(self, result: str, filename: str, docache: bool) -> tuple[str, bool]:
         """ Load the value from result and store it in cache if docache is True """
 
-    def get_cached_request(self) -> (Any, bool):
+    def get_cached_request(self) -> tuple[Any, bool]:
         # hashfilename = hash of url
         # if hashfilename exists in cache and isn't too old, return its contents
         # if not, read url and store the result in the cache
@@ -383,9 +426,14 @@ class CacheRequest(ABC):
                 return None, False
         else:
             lazylibrarian.CACHE_MISS += 1
-            for blk in service_blocked:
-                if blk in self.url and BLOCKHANDLER.is_blocked(blk):
+            url_lower = self.url.lower()
+            if ('googleapis' in url_lower or 'books.google.' in url_lower or 'google.com/search' in url_lower) and \
+                    (BLOCKHANDLER.is_blocked('googleapis') or BLOCKHANDLER.is_blocked('ISBN')):
                     return None, False
+
+            blk = service_for_url(self.url)
+            if blk and BLOCKHANDLER.is_blocked(blk):
+                return None, False
 
             result, success = self.fetch_data()
             if success:
@@ -397,11 +445,7 @@ class CacheRequest(ABC):
             else:
                 msg = f"Got error response for {provider_log_origin(self.url)}"
                 self.logger.debug(msg)
-                to_block = ''
-                for blk in service_blocked:
-                    if blk in self.url:
-                        to_block = blk
-                        break
+                to_block = service_for_url(self.url)
                 if to_block:
                     delay = 30
                     self.logger.debug(f'Blocking {to_block} for {delay} seconds')
@@ -411,10 +455,11 @@ class CacheRequest(ABC):
 
     def is_in_cache(self, expiry: int, hashfilename: str, myhash: str) -> bool:
         if self.use_cache and path_isfile(hashfilename):
+            file_size = os.stat(hashfilename).st_size
             cache_modified_time = os.stat(hashfilename).st_mtime
             time_now = time.time()
-            if self.expire and cache_modified_time < time_now - expiry:
-                # Cache entry is too old, delete it
+            if not file_size or (self.expire and cache_modified_time < time_now - expiry):
+                # Cache entry is empty or too old, delete it
                 cachelogger = logging.getLogger('special.cache')
                 cachelogger.debug(f"Expiring {myhash}")
                 os.remove(syspath(hashfilename))
@@ -422,7 +467,7 @@ class CacheRequest(ABC):
             return True
         return False
 
-    def get_hashed_filename(self, cache_location: str) -> (str, str):
+    def get_hashed_filename(self, cache_location: str) -> tuple[str, str]:
         myhash = md5_utf8(self.url)
         hashfilename = os.path.join(cache_location, myhash[0], myhash[1], f"{myhash}.{self.name().lower()}")
         return hashfilename, myhash
@@ -433,7 +478,7 @@ class XMLCacheRequest(CacheRequest):
     def name(cls) -> str:
         return "XML"
 
-    def read_from_cache(self, hashfilename: str) -> (str, bool):
+    def read_from_cache(self, hashfilename: str):
         with open(syspath(hashfilename), "rb") as cachefile:
             result = cachefile.read()
         source = None
@@ -459,14 +504,17 @@ class XMLCacheRequest(CacheRequest):
             return None, False
         return source, True
 
-    def fetch_data(self) -> (str, bool):
+    def fetch_data(self) -> tuple[str, bool]:
         gr_api_sleep()
-        return fetch_url(self.url, raw=True, headers=None)
+        headers = {'Accept': 'application/xml', 'Accept-Language': 'en-US,en;q=0.5'}
+        return fetch_url(self.url, raw=True, headers=headers, impersonate='chrome')
 
-    def load_from_result_and_cache(self, result: str, filename: str, docache: bool) -> (str, bool):
+    def load_from_result_and_cache(self, result: str, filename: str, docache: bool):
         source = None
         result = make_bytestr(result)
-        if result:
+        if not result:
+            self.cachelogger.debug("No result returned")
+        else:
             if not result.startswith(b'<?xml'):
                 self.cachelogger.debug(f"{len(result)} bytes is not xml")
             else:
@@ -517,7 +565,7 @@ class HTMLCacheRequest(CacheRequest):
     def name(cls) -> str:
         return "HTML"
 
-    def read_from_cache(self, hashfilename: str) -> (str, bool):
+    def read_from_cache(self, hashfilename: str) -> tuple[bytes, bool]:
         try:
             with open(syspath(hashfilename), "rb") as cachefile:
                 source = cachefile.read()
@@ -527,7 +575,7 @@ class HTMLCacheRequest(CacheRequest):
             return '', False
 
 
-    def load_from_result_and_cache(self, result: str, filename, docache) -> (str, bool):
+    def load_from_result_and_cache(self, result: str, filename, docache) -> tuple[str, bool]:
         source = make_bytestr(result)
         try:
             with open(syspath(filename), "wb") as cachefile:
@@ -543,7 +591,7 @@ class JSONCacheRequest(CacheRequest):
     def name(cls) -> str:
         return "JSON"
 
-    def read_from_cache(self, hashfilename: str) -> (str, bool):
+    def read_from_cache(self, hashfilename: str) -> tuple[str | None, bool]:
         try:
             try:
                 with open(hashfilename) as f:
@@ -558,7 +606,7 @@ class JSONCacheRequest(CacheRequest):
             return None, False
         return source, True
 
-    def load_from_result_and_cache(self, result: str, filename: str, docache) -> (str, bool):
+    def load_from_result_and_cache(self, result: str, filename: str, docache) -> tuple[str | None, bool]:
         try:
             source = json.loads(result)
             if not docache:
@@ -589,6 +637,7 @@ def clean_cache():
     db = database.DBConnection()
     result = []
     try:
+        logger.debug("Storing start time for CLEANCACHE")
         db.upsert("jobs", {'Start': time.time()}, {'Name': 'CLEANCACHE'})
         result = [
             # Remove files that are too old from cache directories
@@ -640,6 +689,7 @@ def clean_cache():
     except Exception as e:
         logger.error(type(e).__name__)
 
+    logger.debug("Storing finish time for CLEANCACHE")
     db.upsert("jobs", {'Finish': time.time()}, {'Name': 'CLEANCACHE'})
     db.close()
     thread_name(threadname)

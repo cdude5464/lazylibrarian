@@ -3,7 +3,7 @@ import os
 
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, syspath
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 try:
     import gntp.notifier as gntp_notifier
@@ -100,13 +100,13 @@ class GrowlNotifier:
     def notify_snatch(self, title, fail=False):
         if CONFIG.get_bool('GROWL_ONSNATCH'):
             if fail:
-                self._send_growl(growl_host='', growl_password=None, event=notify_strings[NOTIFY_FAIL], message=title)
+                self._send_growl(growl_host='', growl_password=None, event=notify_event(NOTIFY_FAIL), message=title)
             else:
-                self._send_growl(growl_host='', growl_password=None, event=notify_strings[NOTIFY_SNATCH], message=title)
+                self._send_growl(growl_host='', growl_password=None, event=notify_event(NOTIFY_SNATCH), message=title)
 
     def notify_download(self, title):
         if CONFIG.get_bool('GROWL_ONDOWNLOAD'):
-            self._send_growl(growl_host='', growl_password=None, event=notify_strings[NOTIFY_DOWNLOAD], message=title)
+            self._send_growl(growl_host='', growl_password=None, event=notify_event(NOTIFY_DOWNLOAD), message=title)
 
     # noinspection PyUnusedLocal
     def test_notify(self, title="Test"):

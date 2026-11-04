@@ -13,11 +13,11 @@
         %if perm&lazylibrarian.perm_search:
         <div class="col-xs-12 col-md-4">
         <div class="form-group">
-          <label class="sr-only">Search</label>
+          <label class="sr-only">${_('Search')}</label>
           <div class="input-group">
-            <input type="text" class="form-control deletable input-sm col-xs-12" value="" onfocus="if(this.value==this.defaultValue) this.value='';" placeholder="Title / Author / ISBN" id="searchfor" name="searchfor">
+            <input type="text" class="form-control deletable input-sm col-xs-12" value="" onfocus="if(this.value==this.defaultValue) this.value='';" placeholder="${_('Title / Author / ISBN') | h}" id="searchfor" name="searchfor">
             <span class="input-group-btn">
-              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="Results" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="Search for book"><i class="fa fa-search"></i></button>
+              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="Results" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="${_('Search for book') | h}"><i class="fa fa-search"></i></button>
             </span>
           </div>
         </div>
@@ -31,11 +31,11 @@
 <h1>${title}</h1>
     %if lazylibrarian.SEARCHING == 1:
       <p>
-      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %else:
       <p>
-      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %endif
 
@@ -45,14 +45,14 @@
         <thead>
             <tr>
                 <th class="select text-center no-sort"><input type="checkbox" id="allcheck" onClick="toggleAll(this)" /></th>
-                <th class="bookart text-center no-sort">Cover</th>
-                <th class="authorname">Author</th>
-                <th class="bookname">Title</th>
-                <th class="date text-center">Released</th>
-                <th class="stars text-center hidden-sm hidden-xs">Rating</th>
-                <th class="stars text-center hidden-sm hidden-xs">Rating count</th>
-                <th class="add_author text-center no-sort">Add</th>
-                <th class="fuzz text-right">Match</th>
+                <th class="bookart text-center no-sort">${_('Cover')}</th>
+                <th class="authorname">${_('Author')}</th>
+                <th class="bookname">${_('Title')}</th>
+                <th class="date text-center">${_('Released')}</th>
+                <th class="stars text-center hidden-sm hidden-xs">${_('Rating')}</th>
+                <th class="stars text-center hidden-sm hidden-xs">${_('Rating count')}</th>
+                <th class="add_author text-center no-sort">${_('Add')}</th>
+                <th class="fuzz text-right">${_('Match')}</th>
              </tr>
         </thead>
 
@@ -77,19 +77,19 @@
 
                     if authorlist and result['authorid'] in authorlist:
                         destination = "author_page?authorid="+result['authorid']
-                        value = "Have Author"
+                        value = _('Have Author')
                         but_class = "btn-info"
                     elif loadlist and result['authorid'] in loadlist:
                         destination = "#"
-                        value = "Loading"
+                        value = _('Loading')
                         but_class = "btn-warning"
                     elif result['authorid']:
                         destination = "add_author_id?authorid="+result['authorid']+"&authorname="+result['authorname']
-                        value = "Add Author"
+                        value = _('Add Author')
                         but_class = "btn-success"
                     else:
                         destination = "add_author?authorname="+result['authorname']
-                        value = "Add Author"
+                        value = _('Add Author')
                         but_class = "btn-success"
 
                     but_class2 = "btn-info hidden"
@@ -114,8 +114,8 @@
                     elif booklist and result['bookid'] in booklist:
                         for item in booksearch:
                             if item['BookID'] == result['bookid']:
-                                value2 = '<i class="fa fa-book"></i> ' + (item['Status'] or 'Unknown')
-                                value3 = '<i class="fa fa-headphones"></i> ' + (item['AudioStatus'] or 'Unknown')
+                                value2 = '<i class="fa fa-book"></i> ' + (item['Status'] or _('Unknown'))
+                                value3 = '<i class="fa fa-headphones"></i> ' + (item['AudioStatus'] or _('Unknown'))
                                 valid_id = item['BookID']
 
                         if 'Open' in value2:
@@ -128,11 +128,11 @@
                             destination2 = "#"
                             but_class2 = "btn-info"
                         elif 'Skipped' in value2:
-                            destination2 = "add_book?library=eBook&bookid="+result['bookid']
+                            destination2 = "add_book?library=eBook&bookid="+result['bookid']+"&source="+result['source']
                             if result['authorid']:
                                 destination2 = destination2 + "&authorid="+result['authorid']
                             destination2 = destination2 + add_context
-                            value2 = "Add Book"
+                            value2 = _('Add Book')
                             but_class2 = "btn-success"
                         else:
                             destination2 = "#"
@@ -148,28 +148,28 @@
                             destination3 = "#"
                             but_class3 = "btn-info"
                         elif 'Skipped' in value3:
-                            destination3 = "add_book?library=AudioBook&bookid="+result['bookid']
+                            destination3 = "add_book?library=AudioBook&bookid="+result['bookid']+"&source="+result['source']
                             if result['authorid']:
                                 destination3 = destination3 + "&authorid="+result['authorid']
                             destination3 = destination3 + add_context
-                            value3 = "Add Audio"
+                            value3 = _('Add Audio')
                             but_class3 = "btn-success"
                         else:
                             destination3 = "#"
                             but_class3 = "btn-default"
                     else:
-                        destination2 = "add_book?library=eBook&bookid="+result['bookid']
+                        destination2 = "add_book?library=eBook&bookid="+result['bookid']+"&source="+result['source']
                         if result['authorid']:
                             destination2 = destination2 + "&authorid="+result['authorid']
                         destination2 = destination2 + add_context
-                        value2 = "Add Book"
+                        value2 = _('Add Book')
                         but_class2 = "btn-success"
 
-                        destination3 = "add_book?library=AudioBook&bookid="+result['bookid']
+                        destination3 = "add_book?library=AudioBook&bookid="+result['bookid']+"&source="+result['source']
                         if result['authorid']:
                             destination3 = destination3 + "&authorid="+result['authorid']
                         destination3 = destination3 + add_context
-                        value3 = "Add Audio"
+                        value3 = _('Add Audio')
                         but_class3 = "btn-success"
 
                     if not CONFIG.get_int('EBOOK_TAB'):
@@ -183,7 +183,7 @@
                     %>
 <tr>
   <td class="select text-center"><input type="checkbox" name="${result['bookid']}" value="${result['authorid']}|${quote_plus(result.get('authorname') or '')}|${quote_plus(result.get('bookname') or '')}|${quote_plus(result.get('source') or '')}" /></td>
-  <td class="bookart text-center"><a href="${result['bookimg']}" target="_blank" rel="noreferrer"><img src="${result['bookimg']}" alt="Cover" width=200></a></td>
+  <td class="bookart text-center"><a href="${result['bookimg']}" target="_blank" rel="noreferrer"><img src="${result['bookimg']}" alt="${_('Cover') | h}" class="bookcover-sm img-responsive"></a></td>
   <td class="authorname">${result['authorname']}</td>
   <td class="bookname"><a href="${result['booklink']}" target="_blank" rel="noreferrer">${result['bookname']}</a></td>
   <td class="date text-center">${result['bookdate']}</td>
@@ -202,15 +202,15 @@
 </table>
 </div>
   <div class="form-group">
-    <label for="choice" class="control-label">Change selected items to: </label>
+    <label for="choice" class="control-label">${_('Change selected items to:')} </label>
     <select id="choice" class="markResults form-control input-sm" name="action">
-      <option value="AddAuthor">Add Author</option>
-      <option value="AddBook">Want eBook</option>
-      <option value="AddAudio">Want Audio</option>
-      <option value="AddBoth">Want eBook and Audio</option>
+      <option value="AddAuthor">${_('Add Author')}</option>
+      <option value="AddBook">${_('Want eBook')}</option>
+      <option value="AddAudio">${_('Want Audio')}</option>
+      <option value="AddBoth">${_('Want eBook and Audio')}</option>
     </select>
   </div>
-  <input type="submit" class="mark_results btn btn-sm btn-default" onclick="submitFormAjax()" value="Go">
+  <input type="submit" class="mark_results btn btn-sm btn-default" onclick="submitFormAjax()" value="${_('Go') | h}">
 </form>
 
 <p>&nbsp;</p>
@@ -238,40 +238,24 @@
             {
                 "responsive": true,
                 "order": [[ 8, 'desc' ]],
-                "aoColumns": [
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null,
-                    null
-                    ],
                 "columnDefs":
                     [
                         { targets: 'no-sort', orderable: false },
-                        {targets: 4, "type": "alt-string"},
+                        {targets: 5, "type": "alt-string"},
                     ]
                 ,
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"Show _MENU_ books per page",
-                    "sEmptyTable": "No books found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ results",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 books",
-                    "sInfoFiltered":"(filtered from _MAX_ total books)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No books found')}}),
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "sPaginationType": "full_numbers",
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
-                    // hide cover,stars on small devices
-                    $('td', nRow).eq(4).addClass('hidden-sm hidden-xs');
+                    // hide rating and rating count on small devices, as their headers are
                     $('td', nRow).eq(5).addClass('hidden-sm hidden-xs');
+                    $('td', nRow).eq(6).addClass('hidden-sm hidden-xs');
                     return nRow;
                 },
             });
-        $('.dataTables_filter input').attr("placeholder", "Search table here");
+        $('.dataTables_filter input').attr("placeholder", ${_js('Search table here')});
 
 
         //var c = (document.querySelectorAll('a.hidden').length);
@@ -289,7 +273,7 @@
 
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div>',
             size: 'small',
             backdrop: false,
             closeButton: false
@@ -316,21 +300,21 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
             bootbox.dialog({
-                title: 'Operation Complete',
+                title: ${_js('Operation Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             window.location = data.redirect
@@ -345,11 +329,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload('series'); }
                         },

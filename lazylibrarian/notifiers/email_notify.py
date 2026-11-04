@@ -28,13 +28,13 @@ from email.utils import formataddr, formatdate
 import cherrypy
 
 import lazylibrarian
-from lazylibrarian import database, ebook_convert
+from lazylibrarian import database, ebook_convert, emailtemplates
 from lazylibrarian.common import is_valid_email, mime_type, run_script
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import DIRS, path_isfile, splitext, syspath
 from lazylibrarian.formatter import check_int, get_list, unaccented
 from lazylibrarian.librarysync import get_book_info
-from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_strings
+from lazylibrarian.scheduling import NOTIFY_DOWNLOAD, NOTIFY_FAIL, NOTIFY_SNATCH, notify_event
 
 
 class EmailNotifier:
@@ -195,8 +195,8 @@ class EmailNotifier:
     def notify_snatch(self, title, fail=False):
         if CONFIG.get_bool('EMAIL_NOTIFY_ONSNATCH'):
             if fail:
-                return self._notify(message=title, event=notify_strings[NOTIFY_FAIL])
-            return self._notify(message=title, event=notify_strings[NOTIFY_SNATCH])
+                return self._notify(message=title, event=notify_event(NOTIFY_FAIL))
+            return self._notify(message=title, event=notify_event(NOTIFY_SNATCH))
         return False
 
     def notify_download(self, title, bookid=None, force=False):
@@ -207,7 +207,7 @@ class EmailNotifier:
         logger = logging.getLogger(__name__)
         if CONFIG.get_bool('EMAIL_NOTIFY_ONDOWNLOAD') or force:
             files = None
-            event = notify_strings[NOTIFY_DOWNLOAD]
+            event = notify_event(NOTIFY_DOWNLOAD)
             logger.debug(f"Email send attachment is {CONFIG['EMAIL_SENDFILE_ONDOWNLOAD']}")
             if CONFIG.get_bool('EMAIL_SENDFILE_ONDOWNLOAD'):
                 if not bookid:
@@ -293,11 +293,10 @@ class EmailNotifier:
                             if force:
                                 event = title
                                 if filename:
-                                    title = lazylibrarian.NEWFILE_MSG.replace('{name}', data['BookName']).replace(
-                                        '{method}', ' is attached').replace('{link}', '')
+                                    _, title = emailtemplates.file_message(data['BookName'], emailtemplates.ATTACHED)
                                 else:
-                                    title = lazylibrarian.NEWFILE_MSG.replace('{name}', data['BookName']).replace(
-                                        '{method}', ' is not available').replace('{link}', '')
+                                    _, title = emailtemplates.file_message(data['BookName'],
+                                                                           emailtemplates.NOT_AVAILABLE)
                             else:
                                 title = data['BookName']
                             logger.debug(f'Found {filename} for bookid {bookid}')

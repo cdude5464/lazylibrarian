@@ -1,0 +1,124 @@
+# GitLab CI for LazyLibrarian
+#
+# translations-check: on every merge request, fail when it changes a .po file. Translations
+# are done on Hosted Weblate, and a .po change from outside Weblate conflicts with Weblate's
+# pending changes, so Weblate locks the component. Weblate's own merge requests (weblate*
+# branches) are allowed, and so is a merge request with the label weblate-sync, for the rare
+# case where a maintainer resolves a Weblate conflict by hand. The job also checks that all
+# catalogs compile (msgfmt -c), because a broken .po file stops Weblate too.
+#
+# pages: after each push to master, publish the latest commit and the recent commits as
+# changes.json on gitlab pages (https://lazylibrarian.gitlab.io/LazyLibrarian/changes.json).
+# The update check and the what's new page read it when git isn't installed, instead of the
+# gitlab api, which every install shares and which is rate limited.
+#
+# update-pot: after changes are merged into master, regenerate the translation template
+# lazylibrarian/locale/lazylibrarian.pot and commit it when the strings changed.
+# Hosted Weblate watches the repository and merges the new strings into the .po files,
+# so merge requests don't need to touch the .pot file (see lazylibrarian/locale/README.md).
+#
+# The job pushes with a deploy key that has write access (available on GitLab Free).
+# It only runs when the CI/CD variable POT_DEPLOY_KEY exists. Use the "File" type and put
+# the private key in it. The commit message contains [skip ci], so the push doesn't start
+# another pipeline.
+
+# Create a pipeline for master and for merge requests. Other pushes get none: without this,
+# every push got a pipeline with no jobs, which GitLab shows as failed. translations-check
+# runs in every merge request pipeline, so those pipelines are never empty.
+workflow:
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+
+stages:
+  - check
+  - translations
+  - deploy
+
+translations-check:
+  stage: check
+  image: alpine:3.20
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+  before_script:
+    - apk add --no-cache git gettext > /dev/null
+  script:
+    # the clone is shallow, fetch the commit the merge request is compared against
+    - git fetch --quiet --depth=1 origin "$CI_MERGE_REQUEST_DIFF_BASE_SHA"
+    - |
+      changed=$(git diff --name-only "$CI_MERGE_REQUEST_DIFF_BASE_SHA" HEAD -- 'lazylibrarian/locale/*/LC_MESSAGES/*.po')
+      if [ -n "$changed" ]; then
+        case "$CI_MERGE_REQUEST_SOURCE_BRANCH_NAME" in
+          weblate*) echo "Weblate merge request, .po changes are expected" ;;
+          *)
+            case ",$CI_MERGE_REQUEST_LABELS," in
+              *,weblate-sync,*) echo "Label weblate-sync set, .po changes allowed" ;;
+              *)
+                echo "This merge request changes translation files:"
+                echo "$changed"
+                echo ""
+                echo "Translations are done on Hosted Weblate: https://hosted.weblate.org/projects/lazylibrarian/"
+                echo "A .po change from outside Weblate conflicts with its pending changes and locks the component."
+                echo "Please revert the .po changes and translate in Weblate (or upload the file there: Files > Upload translation)."
+                echo "Changing source strings in .py/.html is fine, update-pot regenerates the template after merge."
+                exit 1
+                ;;
+            esac
+            ;;
+        esac
+      fi
+    - for f in lazylibrarian/locale/*/LC_MESSAGES/*.po; do msgfmt -c -o /dev/null "$f" || exit 1; done
+    - echo "Translation files OK"
+
+update-pot:
+  stage: translations
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $POT_DEPLOY_KEY'
+      changes:
+        - "**/*.py"
+        - "data/interfaces/**/*.html"
+        - babel.cfg
+        - Makefile
+  variables:
+    GIT_DEPTH: "10"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git make openssh-client > /dev/null
+    - pip install --quiet --disable-pip-version-check babel mako
+  script:
+    - make translations
+    # pybabel always writes a new POT-Creation-Date, so ignore that line when checking for changes
+    - |
+      if git diff --quiet -I '^"POT-Creation-Date:' -- lazylibrarian/locale/lazylibrarian.pot; then
+        echo "lazylibrarian.pot is up to date"
+        exit 0
+      fi
+    - git config user.name "LazyLibrarian CI"
+    - git config user.email "noreply@gitlab.com"
+    - 'git commit -m "i18n: update lazylibrarian.pot [skip ci]" -- lazylibrarian/locale/lazylibrarian.pot'
+    # push over ssh with the deploy key; the variable is a file, ssh needs it to be private
+    - chmod 600 "$POT_DEPLOY_KEY"
+    - mkdir -p ~/.ssh && ssh-keyscan -t ed25519,rsa "$CI_SERVER_HOST" >> ~/.ssh/known_hosts 2> /dev/null
+    - export GIT_SSH_COMMAND="ssh -i $POT_DEPLOY_KEY -o IdentitiesOnly=yes"
+    - git push "git@${CI_SERVER_HOST}:${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+
+# Runs after update-pot, and fetches master again so the pot commit it may have pushed is the latest.
+# That commit says [skip ci] and gets no pipeline of its own.
+pages:
+  stage: deploy
+  image: python:3.12-slim
+  rules:
+    - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
+      when: always
+  variables:
+    # full history, a shallow clone would show its oldest commits without parents
+    GIT_DEPTH: "0"
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git > /dev/null
+  script:
+    - git fetch origin "$CI_DEFAULT_BRANCH"
+    - mkdir -p public
+    - python3 scripts/ci/changes_json.py FETCH_HEAD "$CI_DEFAULT_BRANCH" public/changes.json
+  artifacts:
+    paths:
+      - public

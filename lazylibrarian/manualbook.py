@@ -14,6 +14,7 @@ import logging
 from urllib.parse import quote, quote_plus
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 from lazylibrarian import database
 from lazylibrarian.config2 import CONFIG
@@ -27,7 +28,7 @@ from lazylibrarian.providers import (
 )
 
 
-def search_item(item=None, bookid=None, cat=None):
+def search_item(item=None, bookid=None, cat=''):
     """
     Call all active search providers to search for item
     return a list of results, each entry in list containing percentage_match, title, provider, size, url
@@ -142,7 +143,7 @@ def search_item(item=None, bookid=None, cat=None):
                 mode = 'magnet'
 
             # calculate match percentage - torrents might have words_with_underscore_separator
-            score = fuzz.token_set_ratio(searchterm, title.replace('_', ' '))
+            score = fuzz.token_set_ratio(searchterm, title, processor=default_process)
             # lose a point for each extra word in the title to get the closest match
             words = len(get_list(searchterm))
             words -= len(get_list(title))

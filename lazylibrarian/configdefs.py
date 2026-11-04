@@ -55,13 +55,17 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('General', 'MAX_WALL', 0),
     ConfigInt('General', 'MATCH_RATIO', 80),
     ConfigInt('General', 'DLOAD_RATIO', 90),
-    ConfigInt('General', 'NAME_RATIO', 90),
+    ConfigInt('General', 'NAME_RATIO', 95),
     ConfigInt('General', 'NAME_PARTIAL', 93),
     ConfigInt('General', 'NAME_PARTNAME', 93),
+    ConfigInt('General', 'PRIORITY_WEIGHT', 0),
     ConfigInt('General', 'DISPLAYLENGTH', 10),
     ConfigInt('General', 'HIST_REFRESH', 1000),
     ConfigBool('General', 'NO_IPV6', 0),
     ConfigStr('General', 'BOOKSTRAP_THEME', 'slate'),
+    ConfigStr('General', 'MODERN_ACCENT', ''),  # accent colour of the modern interface (#rrggbb), empty is the default
+    ConfigStr('General', 'UI_LANGUAGE', 'auto'),  # 'auto' follows the browser's Accept-Language, or a code like 'en'
+    ConfigStr('General', 'NOTIFY_LANGUAGE', ''),  # empty uses UI_LANGUAGE, or the language last shown when 'auto'
     ConfigBool('General', 'SERIES_TAB', 1),
     ConfigBool('General', 'AUDIO_TAB', 1),
     ConfigBool('General', 'EBOOK_TAB', 1),
@@ -77,6 +81,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigCSV('General', 'NAME_DEFINITE', 'the, a', force_lower=True),
     ConfigCSV('General', 'MULTI_AUTHOR_SPLIT', 'and, und, with', force_lower=True),
     ConfigBool('General', 'GOOGLE_TRANS_ID', 1),
+    ConfigStr('General', 'MS_TRANS_ID', ''),
 
     ConfigBool('API', 'API_ENABLED', 0),
     ConfigStr('API', 'API_KEY', ''),
@@ -85,6 +90,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigStr('Proxy', 'PROXY_HOST', ''),
     ConfigStr('Proxy', 'PROXY_TYPE', ''),
     ConfigStr('Proxy', 'PROXY_LOCAL', ''),
+    ConfigStr('Proxy', 'FALLBACK_PROXY', ''),
     ConfigBool('Proxy', 'PROXY_AUTH', 0),
     ConfigBool('Proxy', 'PROXY_REGISTER', 0),
     ConfigStr('Proxy', 'PROXY_AUTH_USER', 'X-WEBAUTH-USER'),
@@ -94,16 +100,19 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigCSV('Postprocess', 'SKIPPED_EXT', 'fail, part, bts, !ut, torrent, magnet, nzb, unpack'),
     ConfigCSV('Postprocess', 'BANNED_EXT', 'avi, mp4, mov, iso, m4v', force_lower=True),
     ConfigCSV('General', 'IMP_PREFLANG', 'en, eng, en-US, en-GB, English', onchange=ImportPrefs.lang_changed),
+    ConfigCSV('General', 'LANGID_LANGUAGES', 'en, fr, de, es, it, pt, nl, sv, da, no, fi, pl, cs, ru, ja, zh, ko, ar, bn, oc'),
     ConfigStr('General', 'PREF_MAGLANG', 'en'),
     ConfigStr('General', 'ISS_FORMAT', '$Y-$m-$d'),
     ConfigStr('General', 'DATE_FORMAT', '$Y-$m-$d'),
-    ConfigStr('General', 'DATE_LANG', 'en_EN.utf8'),
+    ConfigStr('General', 'DATE_LANG', 'en_GB.UTF-8'),
     ConfigStr('General', 'AUTHOR_DATE_FORMAT', '$d-$m-$Y'),
     ConfigCSV('General', 'ISSUE_NOUNS', 'issue, iss, no, nr, #, n', force_lower=True),
     ConfigCSV('General', 'VOLUME_NOUNS', "vol, volume", force_lower=True),
     ConfigCSV('General', 'IMP_MONTHLANG', ''),
     ConfigStr('General', 'IMP_AUTOADD', ''),
     ConfigBool('General', 'IMP_AUTOADD_COPY', 1),
+    ConfigBool('General', 'IMP_EBOOKOPF', 1),
+    ConfigBool('General', 'PREF_EBOOKOPF', 0),
     ConfigBool('General', 'IMP_AUTOADD_BOOKONLY', 0),
     ConfigBool('General', 'IMP_AUTOSEARCH', 0),
     ConfigBool('General', 'BLACKLIST_FAILED', 1),
@@ -132,10 +141,16 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('Logging', 'LOGREDACT', 0, onchange=LogConfig.change_loguiredact),
     ConfigBool('Logging', 'HOSTREDACT', 0),
     ConfigBool('Logging', 'LOGFILEREDACT', 0, onchange=LogConfig.change_logfileredact),
+    ConfigCSV('Logging', 'REDACT_PARAMS', '', force_lower=True),
     ConfigInt('Logging', 'LOGLEVEL', 20, onchange=LogConfig.change_root_loglevel),
     ConfigCSV('Logging', 'LOGSPECIALDEBUG', ''),
 
     ConfigBool('Importer', 'MULTI_SOURCE', 0),
+    ConfigBool('Importer', 'OL_USE_DUMP', 0),
+    ConfigFolder('Importer', 'OL_DUMP_DIR', ''),
+    ConfigScheduler('Importer', 'OL_DUMP_INTERVAL', 'update_openlibrary_dump', 7, TimeUnit.DAY,
+                    'OLDUMPUPDATE', 'lazylibrarian.scheduling.update_openlibrary_dump', 'Update OpenLibrary Bulk Dump',
+                    needs_provider=False, persist=True),
 
     ConfigBool('Calibre', 'CALIBRE_USE_SERVER', 0),
     ConfigStr('Calibre', 'CALIBRE_SERVER', ''),
@@ -162,6 +177,8 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('General', 'CACHE_AGE', 30),
     ConfigInt('General', 'BACKUP_DB', 30),
     ConfigInt('General', 'TASK_AGE', 2),
+    ConfigInt('General', 'STALL_AGE', 72),
+    ConfigInt('General', 'MIN_SEEDERS', 1),
     ConfigBool('General', 'OPF_TAGS', 1),
     ConfigBool('General', 'GENRE_TAGS', 0),
     ConfigBool('General', 'WISHLIST_TAGS', 1),
@@ -186,6 +203,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigStr('Git', 'CURRENT_VERSION', ''),
     ConfigStr('Git', 'LATEST_VERSION', ''),
     ConfigInt('Git', 'COMMITS_BEHIND', 0),
+    ConfigStr('Git', 'WHATS_NEW_SEEN', ''),
     ConfigBool('Git', 'AUTO_UPDATE', False),
     ConfigStr('SABnzbd', 'SAB_HOST', ''),
     ConfigRangedInt('SABnzbd', 'SAB_PORT', 0, 0, 65535),
@@ -262,6 +280,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigStr('QBITTORRENT', 'QBITTORRENT_REMOTE', ''),
     ConfigStr('QBITTORRENT', 'QBITTORRENT_LOCAL', ''),
     ConfigBool('QBITTORRENT', 'QBITTORRENT_IGNORE_SSL', 0),
+    ConfigBool('QBITTORRENT', 'QBITTORRENT_NOAUTH', 0),
     ConfigStr('TRANSMISSION', 'TRANSMISSION_HOST', ''),
     ConfigStr('TRANSMISSION', 'TRANSMISSION_BASE', ''),
     ConfigRangedInt('TRANSMISSION', 'TRANSMISSION_PORT', 0, 0, 65535),
@@ -315,7 +334,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigStr('BOK', 'BOK_EMAIL', ''),
     ConfigStr('BOK', 'BOK_REMIX_USERID', ''),
     ConfigStr('BOK', 'BOK_REMIX_USERKEY', ''),
-    ConfigCSV('BOK', 'BOK_SEARCH_LANG', ''),  # comma separated language names
+    ConfigCSV('BOK', 'BOK_SEARCH_LANG', ''),  # comma separated language names, ANY, or empty to use IMP_PREFLANG
     ConfigBool('BOK', 'BOK', 0),
     ConfigInt('BOK', 'BOK_DLPRIORITY', 0),
     ConfigInt('BOK', 'BOK_DLLIMIT', 5),
@@ -334,8 +353,13 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('ANNA', 'ANNA_DLPRIORITY', 0),
     ConfigInt('ANNA', 'ANNA_DLLIMIT', 0),
     ConfigInt('ANNA', 'ANNA_MAX_SERVERS', 1),
-    ConfigStr('ANNA', 'ANNA_SEARCH_LANG', 'ANY'),  # upper case 2 letter language code or ANY
+    ConfigStr('ANNA', 'ANNA_SEARCH_LANG', ''),  # comma separated upper case 2 letter language codes, ANY, or empty to use IMP_PREFLANG
     ConfigDownloadTypes('ANNA', 'ANNA_DLTYPES', 'E'),
+    ConfigStr('WEBSHARE', 'WEBSHARE_USER', ''),
+    ConfigStr('WEBSHARE', 'WEBSHARE_PASS', ''),
+    ConfigBool('WEBSHARE', 'WEBSHARE', 0),
+    ConfigInt('WEBSHARE', 'WEBSHARE_DLPRIORITY', 0),
+    ConfigDownloadTypes('WEBSHARE', 'WEBSHARE_DLTYPES', 'E'),
     ConfigStr('LIME', 'LIME_HOST', 'https://www.limetorrents.cc'),
     ConfigBool('LIME', 'LIME', 0),
     ConfigInt('LIME', 'LIME_DLPRIORITY', 0),
@@ -352,6 +376,8 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigCSV('General', 'PREFER_WORDS', 'retail', force_lower=True),
     ConfigCSV('General', 'REJECT_AUDIO', 'epub, mobi', force_lower=True),
     ConfigInt('General', 'MAG_AGE', 31),
+    ConfigScheduler('SearchScan', 'TOTALS_INTERVAL', 'update_all_totals', 24, TimeUnit.HOUR,
+                    'UPDATEALLTOTALS', 'lazylibrarian.importer.update_all_totals', 'Update totals', False, persist=False),
     ConfigScheduler('SearchScan', 'SEARCH_BOOKINTERVAL', 'search_book', 360, TimeUnit.MIN,
                     'SEARCHALLBOOKS', 'lazylibrarian.searchbook.cron_search_book', 'Book search', True),
     ConfigScheduler('SearchScan', 'SEARCH_MAGINTERVAL', 'search_magazines', 360, TimeUnit.MIN,
@@ -403,6 +429,7 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('LibraryScan', 'NO_LANG', 0),
     ConfigBool('LibraryScan', 'ISBN_LOOKUP', 1),
     ConfigBool('LibraryScan', 'IMP_IGNORE', 0),
+    ConfigBool('LibraryScan', 'DEL_SECONDARY', 0),
     ConfigBool('LibraryScan', 'CONTRIBUTING_AUTHORS', 1, onchange=ImportPrefs.contrib_changed),
     ConfigStr('PostProcess', 'CREATE_LINK', ''),
     ConfigFolder('PostProcess', 'EBOOK_DEST_FOLDER', '$Author/$Title'),
@@ -420,9 +447,11 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('Comics', 'COMIC_TAB', 0),
     ConfigBool('Comics', 'COMIC_RELATIVE', 1),
     ConfigBool('Comics', 'COMIC_DELFOLDER', 1),
-    ConfigCSV('Comics', 'COMIC_TYPE', 'cbr, cbz', force_lower=True),
+    ConfigCSV('Comics', 'COMIC_TYPE', 'cbr, cbz, epub, pdf', force_lower=True),
     ConfigBool('Comics', 'COMIC_SINGLE', 1),
-    ConfigCSV('Comics', 'REJECT_COMIC', 'epub, mobi', force_lower=True),
+    ConfigCSV('Comics', 'REJECT_COMIC', '', force_lower=True),
+    ConfigCSV('Comics', 'COMIC_GENRES', 'graphic novel, comics, comic, manga, graphic novels, bandes dessinees',
+              force_lower=True),
     ConfigInt('Comics', 'REJECT_MAXCOMIC', 0),
     ConfigInt('Comics', 'REJECT_MINCOMIC', 0),
     ConfigStr('Comics', 'CV_APIKEY', ''),  # ComicVine API key
@@ -443,8 +472,8 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('Magazines', 'IMP_MAGOPF', 1),
     ConfigBool('Magazines', 'IMP_MAGCOVER', 1),
     ConfigBool('Magazines', 'MAG_SINGLE', 1),
-    ConfigCSV('Magazines', 'MAG_NOUNS', "winter, spring, summer, fall, autumn, christmas, edition, special",
-              force_lower=True),
+    # season names are allowed in magazine titles too, from seasons.json
+    ConfigCSV('Magazines', 'MAG_NOUNS', "edition, special", force_lower=True),
     ConfigStr('Magazines', 'IMP_AUTOADDMAG', ''),
     ConfigBool('Magazines', 'IMP_AUTOADDMAG_COPY', 1),
     ConfigBool('Magazines', 'IMP_AUTOADD_MAGONLY', 0),
@@ -523,7 +552,11 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('API', 'CV_WEBSEARCH', 0),
     ConfigBool('API', 'OL_API', 0),
     ConfigBool('API', 'DNB_API', 0),
+    ConfigBool('API', 'BN_API', 0),
+    ConfigBool('API', 'DBK_API', 0),
+    ConfigBool('API', 'RAN_API', 0),
     ConfigBool('API', 'HC_API', 0),
+    ConfigBool('API', 'AUDNEXUS', 0),
     ConfigBool('API', 'HC_SYNC', 0),
     ConfigBool('API', 'HC_SYNCREADONLY', 0),
     ConfigInt('API', 'HC_SYNC_LIMIT', 10),
@@ -557,7 +590,6 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('rss', 'RSS_PODCAST', 1),
     ConfigStr('rss', 'RSS_HOST', ''),
     ConfigInt('General', 'PREF_UNRARLIB', 1),
-    ConfigStr('General', 'USER_AGENT', ''),
     ConfigBool('General', 'RATESTARS', 1),
 
     ConfigStr('Preprocess', 'EBOOK_WANTED_FORMATS', ''),
@@ -644,6 +676,10 @@ ARRAY_DEFS: dict[str, DefaultArrayDef] = {
         ConfigInt('', "DLPRIORITY", 0),
         ConfigDownloadTypes('', "DLTYPES", 'E'),
         ConfigStr('', "LABEL", ''),
+        # an rss feed can be a private tracker's just as much as a torznab
+        # search can, so it needs the same seeding requirement
+        ConfigFloat('', "SEED_RATIO", 0),
+        ConfigInt('', "SEED_DURATION", 0),
     ]),
     'IRC': ('SERVER', 'IRC_%s', [
         ConfigStr('', 'NAME', 'IRC', persist=False),
@@ -676,7 +712,7 @@ ARRAY_DEFS: dict[str, DefaultArrayDef] = {
 }
 
 CONFIG_GIT = ['GIT_REPO', 'GIT_USER', 'GIT_BRANCH', 'LATEST_VERSION', 'GIT_UPDATED', 'CURRENT_VERSION',
-              'GIT_HOST', 'COMMITS_BEHIND', 'INSTALL_TYPE', 'AUTO_UPDATE']
+              'GIT_HOST', 'COMMITS_BEHIND', 'INSTALL_TYPE', 'AUTO_UPDATE', 'WHATS_NEW_SEEN']
 
 
 def get_default(setting: str):

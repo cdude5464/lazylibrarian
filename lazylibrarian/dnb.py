@@ -6,14 +6,12 @@
 
 import datetime
 import logging
-import os
 import re
-import time
 import traceback
 from queue import Queue
 from urllib.parse import quote
 
-import requests
+from curl_cffi import requests
 
 # Two different iso639 libraries.
 # The first library used languages, but does not support python 3.12
@@ -23,9 +21,9 @@ try:
 except (ImportError, ModuleNotFoundError):
     Lang = None
 try:
-    from iso639 import languages
-except ImportError:
-    languages = None
+    from iso639 import languages as iso_langs
+except (ImportError, ModuleNotFoundError):
+    iso_langs = None
 try:
     from lxml import etree
 except ImportError:
@@ -34,6 +32,7 @@ except ImportError:
 import contextlib
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
@@ -44,19 +43,18 @@ from lazylibrarian.bookdict import (
     validate_bookdict,
     warn_about_bookdict,
 )
-from lazylibrarian.common import get_user_agent
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.filesystem import DIRS, path_isfile, syspath
+from lazylibrarian.filesystem import DIRS, syspath
 from lazylibrarian.formatter import (
     get_list,
     is_valid_isbn,
-    md5_utf8,
     plural,
     replace_all,
     strip_quotes,
     thread_name,
     unaccented,
 )
+from lazylibrarian.provider_utils import get_hashed_filename, is_in_cache, read_from_cache
 
 
 class DNB:
@@ -93,7 +91,7 @@ class DNB:
                 '&operation=searchRetrieve&recordSchema=MARC21-xml&query=%s')
     COVERURL = 'https://portal.dnb.de/opac/mvb/cover?isbn=%s'
 
-    def search(self, query: str, generic_cover: str = "", start=0, limit=10) -> list | None:
+    def _search(self, query: str, generic_cover: str = "", start=0, limit=10) -> list | None:
         try:
             if not self.active:
                 return []
@@ -198,7 +196,6 @@ class DNB:
             self.logger.error('DNB query unavailable: lxml module missing')
             return [], False
         headers = {
-            'User-Agent': get_user_agent(),
             'Accept': 'application/xml, text/xml',
             'Accept-Language': 'en-US,en;q=0.9,de;q=0.8',
             'Accept-Encoding': 'gzip, deflate',
@@ -216,15 +213,15 @@ class DNB:
         try:
             cache_location = DIRS.get_cachedir('XMLCache')
             filename = query_url
-            hashfilename, myhash = self._get_hashed_filename(cache_location, filename)
+            hashfilename, myhash = get_hashed_filename(cache_location, filename)
             # CACHE_AGE is in days, so get it to seconds
             expire_older_than = CONFIG.get_int('CACHE_AGE') * 24 * 60 * 60
-            valid_cache = self.is_in_cache(expire_older_than, hashfilename, myhash)
+            valid_cache = is_in_cache(expire_older_than, hashfilename, myhash)
             refresh = False
             if valid_cache and not refresh:
                 lazylibrarian.CACHE_HIT += 1
                 self.logger.debug(f"CacheHandler: Returning CACHED response {hashfilename}")
-                source, ok = self._read_from_cache(hashfilename)
+                source, ok = read_from_cache(hashfilename)
                 if ok:
                     xml_data = etree.XML(source)
                 else:
@@ -234,7 +231,7 @@ class DNB:
                 if BLOCKHANDLER.is_blocked('DNB'):
                     return [], False
 
-                response = requests.get(query_url, headers=headers, timeout=timeout)
+                response = requests.get(query_url, headers=headers, timeout=timeout, impersonate='chrome')
                 response.raise_for_status()
 
                 self.logger.debug(f"CacheHandler: Storing xml {hashfilename}")
@@ -263,34 +260,6 @@ class DNB:
             self.logger.error(f'DNB query error: {e}')
             self.logger.error(f'{traceback.format_exc()}')
             return [], False  # Return empty list, not None
-
-    def is_in_cache(self, expiry: int, hashfilename: str, myhash: str) -> bool:
-        """Check if a cache file is valid."""
-        if path_isfile(hashfilename):
-            cache_modified_time = os.stat(hashfilename).st_mtime
-            time_now = time.time()
-            if expiry and cache_modified_time < time_now - expiry:
-                # Cache entry is too old, delete it
-                self.logger.debug(f"Expiring {myhash}")
-                os.remove(syspath(hashfilename))
-                return False
-            return True
-        return False
-
-    @staticmethod
-    def _read_from_cache(hashfilename: str) -> (str, bool):
-        """Read a cached API response from disk."""
-        source = ''
-        with open(syspath(hashfilename), "rb") as cachefile:
-            source = cachefile.read()
-        return source, True
-
-    @staticmethod
-    def _get_hashed_filename(cache_location: str, url: str) -> (str, str):
-        """Generate a hashed filename for caching."""
-        myhash = md5_utf8(url)
-        hashfilename = os.path.join(cache_location, myhash[0], myhash[1], f"{myhash}.xml")
-        return hashfilename, myhash
 
     def _parse_marc21_record(self, record):
         """Parse MARC21 XML record into book data"""
@@ -512,8 +481,8 @@ class DNB:
             isodata = None
             if Lang:
                 isodata = Lang(lang_code)
-            elif languages:
-                isodata = languages.get(alpha2=lang_code[:2])
+            elif iso_langs:
+                isodata = iso_langs.get(alpha2=lang_code[:2])
 
             if isodata and isodata.name:
                 language_name = isodata.name
@@ -535,7 +504,7 @@ class DNB:
             url = url_elem.text.strip()
             if url.startswith(("http://deposit.dnb.de/", "https://deposit.dnb.de/")):
                 try:
-                    response = requests.get(url, timeout=30)
+                    response = requests.get(url, timeout=30, impersonate='chrome')
                     response.raise_for_status()
 
                     comments_text = response.text
@@ -567,7 +536,7 @@ class DNB:
 
         try:
             # Test the actual response from DNB
-            response = requests.head(cover_url, timeout=10)
+            response = requests.head(cover_url, timeout=10, impersonate='chrome')
             # self.logger.info(f"DNB cover response status: {response.status_code}")
             # self.logger.info(f"DNB cover content-type: {response.headers.get('content-type')}")
 
@@ -608,7 +577,7 @@ class DNB:
         cover_url = self.COVERURL % book_data['isbn']
 
         try:
-            response = requests.get(cover_url, timeout=10)
+            response = requests.get(cover_url, timeout=10, impersonate='chrome')
             response.raise_for_status()
 
             content_type = response.headers.get('content-type').lower()
@@ -832,7 +801,7 @@ class DNB:
         if not CONFIG['DNB_API']:
             self.logger.warning('DNB API not enabled, check config')
             return
-        if not etree or (not Lang and not languages):
+        if not etree or (not Lang and not iso_langs):
             self.logger.warning('Required modules missing, lxml and/or iso639')
             return
 
@@ -867,11 +836,11 @@ class DNB:
             db.close()
 
     def get_bookdict_for_bookid(self, bookid=None):
-        results, in_cache = self.search(f"dnb-idn:{bookid}", start=0, limit=5)
+        results, in_cache = self._search(f"dnb-idn:{bookid}", start=0, limit=5)
         # shouldn't need many results as based on bookid
         bookdict = None
         for bk in results:
-            bookdict = self.dnb_book_dict(bk)
+            bookdict = self._book_dict(bk)
             if bookdict and bookdict['bookid'] == bookid:
                 break
         return bookdict, in_cache
@@ -882,7 +851,7 @@ class DNB:
         if not CONFIG['DNB_API']:
             self.logger.warning('DNB API not enabled, check config')
             return False
-        if not etree or (not Lang and not languages):
+        if not etree or (not Lang and not iso_langs):
             self.logger.warning('Required modules missing, lxml and/or iso639')
             return False
         if not bookstatus:
@@ -941,9 +910,11 @@ class DNB:
     def find_results(self, searchterm=None, queue=None):
         if not CONFIG['DNB_API']:
             self.logger.warning('DNB API not enabled, check config')
+            queue.put([])
             return False
-        if not etree or (not Lang and not languages):
+        if not etree or (not Lang and not iso_langs):
             self.logger.warning('Required modules missing, lxml and/or iso639')
+            queue.put([])
             return False
         try:
             resultlist = []
@@ -969,10 +940,10 @@ class DNB:
             limit = 100
             next_page = True
             while next_page:
-                results, in_cache = self.search(searchterm, start=start, limit=limit)
+                results, in_cache = self._search(searchterm, start=start, limit=limit)
                 self.logger.debug(f"Search {start}:{limit} returned {len(results)}")
                 for item in results:
-                    book = self.dnb_book_dict(item)
+                    book = self._book_dict(item)
                     if not book['authorname']:
                         self.logger.debug('Skipped a result without authorfield.')
                         no_author_count += 1
@@ -1003,20 +974,20 @@ class DNB:
                             continue
 
                     if authorname:
-                        author_fuzz = fuzz.token_sort_ratio(book['authorname'], authorname)
+                        author_fuzz = fuzz.token_sort_ratio(book['authorname'], authorname, processor=default_process)
                     else:
-                        author_fuzz = fuzz.token_sort_ratio(book['authorname'], fullterm)
+                        author_fuzz = fuzz.token_sort_ratio(book['authorname'], fullterm, processor=default_process)
 
                     if title:
                         if title.endswith(')'):
                             title = title.rsplit('(', 1)[0]
-                        book_fuzz = fuzz.token_set_ratio(book['bookname'].lower(), title.lower())
+                        book_fuzz = fuzz.token_set_ratio(book['bookname'].lower(), title, processor=default_process)
                         # lose a point for each extra word in the fuzzy matches so we get the closest match
                         words = len(get_list(book['bookname']))
                         words -= len(get_list(title))
                         book_fuzz -= abs(words)
                     else:
-                        book_fuzz = fuzz.token_set_ratio(book['bookname'].lower(), fullterm.lower())
+                        book_fuzz = fuzz.token_set_ratio(book['bookname'].lower(), fullterm, processor=default_process)
                     isbn_fuzz = 0
                     if is_valid_isbn(fullterm):
                         isbn_fuzz = 100
@@ -1044,7 +1015,7 @@ class DNB:
                         'bookisbn': book['bookisbn'],
                         'bookpub': book['bookpub'],
                         'bookdate': book['bookdate'],
-                        'booklang': ', '.join(set(book['booklang'])),
+                        'booklang': book['booklang'],
                         'booklink': book['booklink'],
                         'bookrate': float(book['bookrate']),
                         'bookrate_count': book['bookrate_count'],
@@ -1074,12 +1045,15 @@ class DNB:
             self.logger.debug(f"Removed {ignored} unwanted language {plural(ignored, 'result')}")
             self.logger.debug(f"Removed {no_author_count} {plural(no_author_count, 'book')} with no author")
             queue.put(resultlist)
+            return resultcount > 0
 
         except Exception:
             self.logger.error(f'Unhandled exception in DNB.find_results: {traceback.format_exc()}')
+            queue.put([])
+            return False
 
     @staticmethod
-    def dnb_book_dict(item):
+    def _book_dict(item):
         """ Return all the book info we need as a dictionary or default value if no key """
         mydict = {}
         for val, idx, default in [

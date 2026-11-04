@@ -15,12 +15,11 @@ import re
 import traceback
 from urllib.parse import quote, quote_plus, urlencode
 
-import requests
 from bs4 import BeautifulSoup
+from curl_cffi import requests
 
 import lib.feedparser as feedparser
 from lazylibrarian.cache import fetch_url
-from lazylibrarian.common import get_user_agent
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
     make_unicode,
@@ -113,7 +112,7 @@ def torrent_abb(book=None, test=False):
 def extract_magnet_link(details_url):
     logger = logging.getLogger(__name__)
     try:
-        response = requests.get(details_url, headers={'User-Agent': f'{get_user_agent()}'})
+        response = requests.get(details_url, impersonate='chrome')
         if response.status_code != 200:
             logger.error(f"Failed to fetch details page. Status Code: {response.status_code}")
             return None

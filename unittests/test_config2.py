@@ -307,18 +307,18 @@ class Config2Test(LLTestCaseWithConfigandDIRS):
                 canruncount += 1
 
         self.assertListEqual(keynames, [
-            'TELEMETRY_INTERVAL', 'SEARCH_BOOKINTERVAL', 'SEARCH_MAGINTERVAL',  # Disabled by default
+            'OL_DUMP_INTERVAL', 'TELEMETRY_INTERVAL', 'TOTALS_INTERVAL', 'SEARCH_BOOKINTERVAL', 'SEARCH_MAGINTERVAL',  # Disabled by default
             'SCAN_INTERVAL', 'SEARCHRSS_INTERVAL', 'WISHLIST_INTERVAL',
             'SEARCH_COMICINTERVAL',  # Disabled by default
             'VERSIONCHECK_INTERVAL',
             'GOODREADS_INTERVAL', 'HARDCOVER_INTERVAL', # Disabled by default
             'CLEAN_CACHE_INTERVAL', 'BACKUP_INTERVAL', 'AUTHORUPDATE_INTERVAL', 'SERIESUPDATE_INTERVAL'])
         self.assertEqual(schednames,
-                         ['telemetry_send', 'search_book', 'search_magazines', 'PostProcessor', 'search_rss_book',
-                          'search_wishlist', 'search_comics', 'check_for_updates', 'sync_to_gr', 'hc_sync',
-                          'clean_cache', 'backup', 'author_update', 'series_update'])
-        self.assertEqual(persistcount, 10)
-        self.assertEqual(canruncount, 7)
+                         ['update_openlibrary_dump', 'telemetry_send', 'update_all_totals', 'search_book', 'search_magazines', 
+                          'PostProcessor', 'search_rss_book', 'search_wishlist', 'search_comics', 'check_for_updates', 
+                          'sync_to_gr', 'hc_sync', 'clean_cache', 'backup', 'author_update', 'series_update'])
+        self.assertEqual(persistcount, 11)
+        self.assertEqual(canruncount, 9)
 
     def test_force_lower(self):
         """ Test various string configss that have force_lower and make sure they are. """

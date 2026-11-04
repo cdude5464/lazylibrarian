@@ -60,10 +60,57 @@ from lazylibrarian import (
     utorrent,
 )
 from lazylibrarian.config2 import CONFIG
+from lazylibrarian.box_helper_handoff import helper_owns_qbittorrent_lifecycle
 from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.filesystem import path_isfile
 from lazylibrarian.formatter import check_int, get_list, unaccented
+from lazylibrarian.processcontrol import get_info_on_caller
 from lazylibrarian.telemetry import TELEMETRY
+
+# A release that ships its content inside an archive says nothing about the
+# format until it is unpacked, so we cannot judge it from the file list.
+ARCHIVE_EXTENSIONS = ('7z', 'bz2', 'gz', 'rar', 'tar', 'tgz', 'xz', 'zip')
+# multipart archives: name.r00, name.z01, name.7z.001
+ARCHIVE_PART_RE = re.compile(r'^(r\d{2}|z\d{2}|\d{3})$')
+
+
+def is_archive_file(fname):
+    """Return True if a file needs unpacking before we know what is in it."""
+    extn = os.path.splitext(fname)[1].lstrip(".").lower()
+    if not extn:
+        return False
+    return extn in ARCHIVE_EXTENSIONS or bool(ARCHIVE_PART_RE.match(extn))
+
+
+def _identify_other_library_types(seen_extensions, booktype):
+    """If every recognised extension belongs to a different library type, return
+    that type name so the caller can reject with a clear message. Returns empty
+    string when the extensions are ambiguous or unrecognised.
+
+    Archive extensions and extensions that belong to multiple library types
+    (like pdf, which can be an ebook or a magazine) are skipped: they are
+    commonly bundled as companions and do not indicate a format mismatch."""
+    type_map = {
+        "ebook": [e.lower() for e in get_list(CONFIG["EBOOK_TYPE"])],
+        "audiobook": [e.lower() for e in get_list(CONFIG["AUDIOBOOK_TYPE"])],
+        "magazine": [e.lower() for e in get_list(CONFIG["MAG_TYPE"])],
+        "comic": [e.lower() for e in get_list(CONFIG["COMIC_TYPE"])],
+    }
+    found_types = set()
+    for extn in seen_extensions:
+        if is_archive_file(f"dummy.{extn}"):
+            continue
+        matching_types = set()
+        for tname, tlist in type_map.items():
+            if tlist and extn in tlist:
+                matching_types.add(tname)
+        if len(matching_types) != 1:
+            continue
+        other = matching_types - {booktype.lower()}
+        found_types.update(other)
+    if found_types and len(found_types) <= 2:
+        return ", ".join(sorted(found_types))
+    return ""
 
 
 def _reject_word_tokens(value):
@@ -138,6 +185,9 @@ def check_contents(source, downloadid, booktype, title, requested_author='', req
     if booktype.lower() == "ebook" and source == "QBITTORRENT":
         banlist = filter_edition_reject_words(banlist, downloadid, requested_author, requested_title)
 
+    wanted_types = get_list(filetypes)
+    unknown_contents = False  # an archive we cannot see inside
+    seen_extensions = []
     downloadfiles = get_download_files(source, downloadid)
 
     # Downloaders return varying amounts of info using varying names
@@ -171,7 +221,16 @@ def check_contents(source, downloadid, booktype, title, requested_author='', req
                 logger.warning(f"{rejected}. Rejecting download")
                 break
 
-            if not rejected and banlist:
+            if extn and extn not in seen_extensions:
+                seen_extensions.append(extn)
+            is_wanted = extn in wanted_types
+            is_archive = not is_wanted and is_archive_file(fname)
+            if is_wanted:
+                matched = True
+            elif is_archive:
+                unknown_contents = True
+
+            if not rejected and banlist and (is_wanted or is_archive):
                 for word in banlist:
                     if _reject_word_matches(word, fname, requested_author, requested_title):
                         rejected = f"{fname} contains {word}"
@@ -185,17 +244,18 @@ def check_contents(source, downloadid, booktype, title, requested_author='', req
             # e.g. don't reject cos jpg is smaller than min file size for a book
             # need to check if we have a size in K M G or just a number. If K M G could be a float.
             unit = ""
-            if not rejected and filetypes and extn in filetypes and fsize:
+            if not rejected and is_wanted and fsize:
                 try:
                     if "G" in str(fsize):
                         fsize = int(float(fsize.split("G")[0].strip()) * 1073741824)
                     elif "M" in str(fsize):
                         fsize = int(float(fsize.split("M")[0].strip()) * 1048576)
                     elif "K" in str(fsize):
-                        fsize = int(float(fsize.split("K")[0].strip() * 1024))
-                    fsize = round(
-                        check_int(fsize, 0) / 1048576.0, 2
-                    )  # float to 2dp in Mb
+                        fsize = int(float(fsize.split("K")[0].strip()) * 1024)
+                    mb_size = check_int(fsize, 0) / 1048576.0
+                    fsize = round(mb_size, 2)  # float to 2dp in Mb
+                    if mb_size and not fsize:  # small file, don't round to zero
+                        fsize = 0.01
                     unit = "Mb"
                 except ValueError:
                     fsize = 0
@@ -210,7 +270,19 @@ def check_contents(source, downloadid, booktype, title, requested_author='', req
                         break
                 if not rejected:
                     logger.debug(f"{fname}: ({fsize}{unit}) is wanted")
-                    matched = True
+
+        if not rejected and not matched and wanted_types and not unknown_contents:
+            # the downloader gave us a full file list and nothing in it is a
+            # file we could process for this library. Catching it here keeps a
+            # wrong format release out of the library instead of leaving it to
+            # fail at postprocessing time.
+            rejected = f"{title} has no {booktype} files"
+            other_types = _identify_other_library_types(seen_extensions, booktype)
+            if other_types:
+                rejected = f"{title} contains {other_types} files instead of {booktype}"
+            elif seen_extensions:
+                rejected = f"{rejected} ({', '.join(seen_extensions[:5])})"
+            logger.warning(f"{rejected}. Rejecting download")
     if matched and not rejected:
         logger.debug(f"{title} accepted")
     else:
@@ -477,11 +549,30 @@ def get_download_folder(source, downloadid):
         return None
 
 
+def get_download_content_path(source, downloadid):
+    """Actual on-disk content path from the download client, where it differs from
+    save_path + torrent name. Currently only qBittorrent reports this; other clients
+    return '' so the caller keeps its existing behavior."""
+    # noinspection PyBroadException
+    try:
+        if source == "QBITTORRENT":
+            return qbittorrent.get_content_path(downloadid)
+    except Exception:
+        return ''
+    return ''
+
+
 def get_download_progress(source, downloadid):
     logger = logging.getLogger(__name__)
     dlcommslogger = logging.getLogger("special.dlcomms")
     progress = 0
     finished = False
+    if not source or not downloadid:
+        program, method, lineno = get_info_on_caller(depth=1)
+        logger.error(
+            f"Unable to get download progress from {source} for {downloadid}: {program}:{method}:{lineno}"
+        )
+        return progress, finished
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
@@ -490,7 +581,7 @@ def get_download_progress(source, downloadid):
                 downloadid
             )
             if errorstring and progress == -1:
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(cmd, (errorstring, downloadid, source))
 
         elif source == "DIRECT" or str(source).startswith("IRC"):
@@ -505,8 +596,8 @@ def get_download_progress(source, downloadid):
         elif source == "SABNZBD":
             data = {}
             if not lazylibrarian.SAB_VER[0]:
-                res = sabnzbd.check_link()
-                if 'successful' not in res:
+                _, ok = sabnzbd.check_link()
+                if not ok:
                     progress = -2  # connection error
             if lazylibrarian.SAB_VER > (3, 2, 0):
                 res, _ = sabnzbd.sab_nzbd(nzburl="queue", nzo_ids=downloadid)
@@ -557,7 +648,7 @@ def get_download_progress(source, downloadid):
                             elif item["status"] in ["Extracting", "Fetching"]:
                                 progress = 99
                             elif item["status"] == "Failed" or item["fail_message"]:
-                                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status<>'Failed'"
                                 db.action(
                                     cmd, (item["fail_message"], downloadid, source)
                                 )
@@ -567,7 +658,7 @@ def get_download_progress(source, downloadid):
                 errorstring = f"{downloadid} not found at {source}"
                 logger.debug(errorstring)
                 if progress == -1:
-                    cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                    cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status<>'Failed'"
                     db.action(cmd, (errorstring, downloadid, source))
 
         elif source == "NZBGET":
@@ -609,7 +700,7 @@ def get_download_progress(source, downloadid):
                                 or "FAILURE" in item["Status"]
                             ):
                                 cmd = (
-                                    "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? "
+                                    "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Status<>'Failed'"
                                     "and Source=?"
                                 )
                                 db.action(cmd, (item["Status"], downloadid, source))
@@ -618,7 +709,7 @@ def get_download_progress(source, downloadid):
             if not found:
                 errorstring = f"{downloadid} not found at {source}"
                 logger.debug(errorstring)
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status<>'Failed'"
                 db.action(cmd, (errorstring, downloadid, source))
                 progress = -1
 
@@ -631,7 +722,8 @@ def get_download_progress(source, downloadid):
                     msg += f" Status: {status} Progress: {progress}"
                 logger.debug(msg)
             if status == "error" or progress == -1:
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                # for torrents, only mark Aborted if Snatched or Seeding, don't update if already Failed (#3113)
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(cmd, (f"QBITTORRENT returned {status}:{progress}", downloadid, source))
 
         elif source == "UTORRENT":
@@ -640,7 +732,7 @@ def get_download_progress(source, downloadid):
                 logger.debug(f"{downloadid} not found at {source}")
                 # Keep progress as -1 to signal "not found" rather than "0% progress"
             if status & 16:  # Error
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(
                     cmd,
                     (f"UTORRENT returned error status {status}", downloadid, source),
@@ -655,21 +747,21 @@ def get_download_progress(source, downloadid):
                 progress = 100
                 finished = True
             if progress == -1:
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(cmd, (f"rTorrent returned {status}", downloadid, source))
 
-        elif source.startswith("SYNOLOGY"):
+        elif source and source.startswith("SYNOLOGY"):
             progress, status, finished = synology.get_progress(downloadid)
             if status == "finished":
                 progress = 100
             elif progress == -1:
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(cmd, (f"Synology returned {status}", downloadid, source))
 
         elif source == "DELUGEWEBUI":
             progress, message, finished = deluge.get_torrent_progress(downloadid)
             if message and message != "OK":
-                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                 db.action(cmd, (message, downloadid, source))
                 progress = -1
 
@@ -701,7 +793,7 @@ def get_download_progress(source, downloadid):
                     progress = -1
                     finished = False
                 if "message" in result and result["message"] != "OK":
-                    cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=?"
+                    cmd = "UPDATE wanted SET Status='Aborted',DLResult=? WHERE DownloadID=? and Source=? and Status IN ('Snatched','Seeding')"
                     db.action(cmd, (result["message"], downloadid, source))
                     progress = -1
             except Exception as e:
@@ -743,9 +835,205 @@ def get_download_progress(source, downloadid):
     return progress, finished
 
 
-def delete_task(source, download_id, remove_data):
-    logger = logging.getLogger(__name__)
+# Only a torrent can turn out to be someone else's already: it is found by
+# infohash in a client that may hold anything. A usenet or direct download is
+# created by the request that asked for it and by nothing else.
+ADOPTABLE_SOURCES = ("QBITTORRENT", "TRANSMISSION", "UTORRENT", "RTORRENT",
+                     "DELUGEWEBUI", "DELUGERPC", "SYNOLOGY_TOR")
+
+
+def download_ownership(source, download_id):
+    """What we know about a downloader task, as (owned, category).
+
+    owned is True only where a record says we created the task ourselves.
+    Anything else counts as not ours: a task we took on from the client, a row
+    from before we recorded this, or no row at all. Removing a torrent someone
+    else added takes their seed with it and cannot be undone, so an absent
+    record has to mean no rather than yes.
+
+    One torrent can serve an ebook and an audiobook request at once, so a single
+    adopted row settles it for every row that shares the id.
+
+    category is the downloader category recorded when the request was snatched,
+    or None where we have no record of it. It is not proof of anything on its
+    own, it is what the torrent's current category gets compared against.
+    """
+    if not download_id:
+        return False, None
+    db = database.DBConnection()
     try:
+        entries = db.select(
+            "SELECT Origin, Category from wanted WHERE DownloadID=? and Source=?",
+            (download_id, source),
+        )
+    finally:
+        db.close()
+    if not entries:
+        return False, None
+    if any(entry["Origin"] != "new" for entry in entries):
+        return False, None
+    # A row that recorded no category does not get a vote on what the category
+    # is. Rows written before the column existed have None here, and an install
+    # with no label of its own records an empty string, which is a different
+    # thing: one means we cannot check, the other means expect no category.
+    categories = {entry["Category"] for entry in entries if entry["Category"] is not None}
+    if len(categories) > 1:
+        # two requests recorded different categories for one torrent, so we
+        # cannot say which one it is filed under
+        return False, None
+    return True, categories.pop() if categories else None
+
+
+def may_delete_data(source, download_id):
+    """ Whether the files under a download are ours to delete, or None if the
+    client could not be asked.
+
+    Ownership comes from our own record, and for qBittorrent the torrent also
+    has to still be in the category we filed it under: someone can move a
+    torrent we added into a category they are keeping, and the files under it
+    then belong to that, not to us. Ask this before deleting anything, while
+    the torrent is still there to be asked about.
+    """
+    if source not in ADOPTABLE_SOURCES:
+        return True
+    owned, category = download_ownership(source, download_id)
+    if not owned:
+        return False
+    if source == "QBITTORRENT":
+        matches = qbittorrent.category_matches(download_id, category)
+        if matches is None:
+            # No answer is not the same as no. Returning None leaves the caller
+            # free to come back to it, and reads as false to anything that only
+            # cares whether it may go ahead.
+            logging.getLogger(__name__).warning(
+                f"Cannot reach qBittorrent to check {download_id}, will try again")
+            return None
+        if not matches:
+            logging.getLogger(__name__).warning(
+                f"Leaving the files for {download_id}: qBittorrent does not have it "
+                f"in category [{category}]")
+        return matches
+    return True
+
+
+def seed_requirement(provider):
+    """ What a provider asks us to seed to, as (ratio, minutes).
+
+    Zero for either means the provider does not ask for it. Both the torznab
+    and the rss provider groups can be a private tracker's, so both carry it.
+    """
+    if not provider:
+        return 0, 0
+    for group in ("TORZNAB", "RSS"):
+        for item in CONFIG.providers(group):
+            if provider in (item["NAME"], item["DISPNAME"], item["HOST"]):
+                return (item.get_item("SEED_RATIO").value,
+                        item.get_item("SEED_DURATION").value)
+    return 0, 0
+
+
+def seed_state(source, download_id):
+    """ What a download has seeded so far, as (ratio, seconds), or None where the
+    client cannot tell us. """
+    if source == "QBITTORRENT":
+        return qbittorrent.seed_state(download_id)
+    if source == "TRANSMISSION":
+        return transmission.seed_state(download_id)
+    return None
+
+
+def seeding_incomplete(source, download_id, providers):
+    """ Say why a torrent still owes its tracker some seeding, or return ''.
+
+    Setting a ratio or a time on the client only asks the client to stop at that
+    point, it does not stop us removing the torrent before it gets there, which
+    on a private tracker is how an account collects a hit and run. Nothing is
+    enforced unless the provider asks for something, so this is inert until
+    somebody fills the fields in.
+
+    A client that cannot report what it has seeded is not held up: refusing
+    forever on a client we cannot ask would leave downloads in place with no way
+    for the user to see why.
+    """
+    # one torrent can serve two requests from different providers, so it owes
+    # whatever the strictest of them asks for
+    want_ratio = want_minutes = 0
+    for provider in providers:
+        ratio, minutes = seed_requirement(provider)
+        want_ratio = max(want_ratio, ratio)
+        want_minutes = max(want_minutes, minutes)
+    if not want_ratio and not want_minutes:
+        return ''
+    state = seed_state(source, download_id)
+    if state is None:
+        return ''
+    ratio, seconds = state
+    # Either limit satisfies it. A tracker asking for both normally means one or
+    # the other will do, and more to the point the clients stop seeding at the
+    # first limit they reach, so waiting for both would hold a torrent forever
+    # that the client has already stopped: the second limit would never arrive.
+    if want_ratio and ratio >= want_ratio:
+        return ''
+    if want_minutes and seconds >= want_minutes * 60:
+        return ''
+    owing = []
+    if want_ratio:
+        owing.append(f"ratio {ratio:.2f} of {want_ratio:.2f}")
+    if want_minutes:
+        owing.append(f"{int(seconds / 60)} of {want_minutes} minutes seeded")
+    return ', '.join(owing)
+
+
+def download_providers(source, download_id):
+    """ Every provider that asked for this download, as recorded when snatched. """
+    if not download_id:
+        return []
+    db = database.DBConnection()
+    try:
+        entries = db.select(
+            "SELECT NZBprov from wanted WHERE DownloadID=? and Source=?",
+            (download_id, source),
+        )
+    finally:
+        db.close()
+    return [entry["NZBprov"] for entry in entries if entry["NZBprov"]]
+
+
+def delete_task(source, download_id, remove_data, abandoned=False):
+    """ Remove a task from its downloader.
+
+    abandoned means we gave up on it before it completed. A provider's seeding
+    requirement is for data that was downloaded, so a task that stalled, or that
+    the client dropped, owes nothing and is not held for it. Holding it would
+    wait for seeding that can never happen and leave the dead task in the client
+    for ever while its request is marked failed. Box-owned qBittorrent is
+    delegated to its durable helper before this generic policy: neither an
+    abandoned flag nor a row status authorizes LL to remove that torrent.
+    """
+    logger = logging.getLogger(__name__)
+    if source == "QBITTORRENT" and helper_owns_qbittorrent_lifecycle():
+        logger.info("Retaining qBittorrent task for the durable helper lifecycle owner")
+        # Match the prior local contract: LL cleanup is delegated/handled, not
+        # proof of a remote deletion. The helper still requires its own proof.
+        return True
+    owned, category = download_ownership(source, download_id)
+    if source in ADOPTABLE_SOURCES and not owned:
+        # Removing the torrent would stop someone else's seed and removing the
+        # data would take files we never downloaded, so this needs a record
+        # saying the task is ours before it goes anywhere near the client. Our
+        # own request has already been marked failed or processed by the caller.
+        logger.info(
+            f"Not deleting {download_id} from {source}: nothing on record says we added it"
+        )
+        return True
+    try:
+        if source in ADOPTABLE_SOURCES and not abandoned:
+            owing = seeding_incomplete(source, download_id,
+                                       download_providers(source, download_id))
+            if owing:
+                logger.info(f"Not deleting {download_id} from {source} yet: {owing}")
+                return False
+
         if source == "BLACKHOLE":
             logger.warning(
                 f"Download {download_id} has not been processed from blackhole"
@@ -761,7 +1049,9 @@ def delete_task(source, download_id, remove_data):
         elif source == "RTORRENT":
             rtorrent.remove_torrent(download_id, remove_data)
         elif source == "QBITTORRENT":
-            qbittorrent.remove_torrent(download_id, remove_data)
+            # qBittorrent finds a torrent by hash whatever category it sits in,
+            # so it gets the category we recorded to check against as well
+            qbittorrent.remove_torrent(download_id, remove_data, expect_category=category)
         elif source == "TRANSMISSION":
             transmission.remove_torrent(download_id, remove_data)
         elif source.startswith("SYNOLOGY"):

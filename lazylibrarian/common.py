@@ -59,29 +59,34 @@ from lazylibrarian.filesystem import (
 from lazylibrarian.formatter import get_list, make_unicode
 from lazylibrarian.logconfig import LOGCONFIG
 
+reading_status = {'toread': 1, 'reading': 2, 'haveread': 3, 'read': 3, 'owned': 4, 'abandoned': 5, 'dnf': 5, }
 
-def get_user_agent() -> str:
-    # Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36
-    if CONFIG['USER_AGENT']:
-        return CONFIG['USER_AGENT']
-    return f"LazyLibrarian ({platform.system()} {platform.release()})"
+
+def is_valid_language(book_lang: str, valid_langs: list | set | None) -> bool:
+    """ Check if book_lang matches the user's preferred languages.
+    Treats 'Unknown' and empty as acceptable (never rejects unconfirmed language).
+    Also accepts English dialects (e.g. en-CA, en-US, en-GB, eng) if English is in valid_langs. """
+    if not book_lang or book_lang == 'Unknown':
+        return True
+    if not valid_langs or 'All' in valid_langs:
+        return True
+    if book_lang in valid_langs:
+        return True
+    bl = book_lang.lower()
+    en_codes = {'en', 'eng', 'english', 'en-us', 'en-gb', 'en-ca', 'en-au', 'en-nz'}
+    valid_lower = {v.lower() for v in valid_langs}
+    return bool((bl.startswith('en-') or bl in en_codes) and valid_lower.intersection(en_codes))
 
 
 def get_readinglist(table, user):
     # return a set of all bookids in a readinglist
     db = database.DBConnection()
     readinglist = []
-    # status_id = 1 want-to-read, 2 currently_reading, 3 read, 4 owned, 5 dnf
-    if table.lower() == 'toread':
-        status = 1
-    elif table.lower() == 'reading':
-        status = 2
-    elif table.lower() in ['haveread', 'read']:
-        status = 3
-    elif table.lower() in ['abandoned', 'dnf']:
-        status = 5
+    if table.lower() in reading_status:
+        status = reading_status[table.lower()]
     else:
-        status = 4
+        status = reading_status['owned']
+
     cmd = "SELECT bookid from readinglists WHERE userid=? and status=?"
     res = db.select(cmd, (user, status))
     if res:
@@ -94,16 +99,11 @@ def get_readinglist(table, user):
 def set_readinglist(table, user, booklist):
     # set the readinglist for a user
     db = database.DBConnection()
-    if table.lower() == 'toread':
-        status = 1
-    elif table.lower() == 'reading':
-        status = 2
-    elif table.lower() in ['haveread', 'read']:
-        status = 3
-    elif table.lower() in ['abandoned', 'dnf']:
-        status = 5
+    if table.lower() in reading_status:
+        status = reading_status[table.lower()]
     else:
-        status = 4
+        status = reading_status['owned']
+
     try:
         readinglist = set(booklist)
         for book in readinglist:
@@ -150,6 +150,19 @@ def proxy_list():
     return proxies
 
 
+def fallback_proxy():
+    """ Return proxies dict for the configured fallback/bypass proxy, or None if not configured.
+        Used as a secondary fallback (e.g. Tor socks5, Byparr, FlareSolverr) when direct requests
+        receive a WAF / anti-bot challenge (HTTP 403, 429, 503). """
+    proxy = (CONFIG['FALLBACK_PROXY'] or '').strip()
+    if not proxy:
+        return None
+    if not re.match(r'^[a-zA-Z0-9+.-]+://', proxy):
+        proxy = f"http://{proxy}"
+    return {'http': proxy, 'https': proxy}
+
+
+
 def is_valid_email(emails):
     if not emails:
         return False
@@ -183,32 +196,32 @@ def pwd_check(password):
 
 
 def mime_type(filename):
-    name = make_unicode(filename).lower()
-    if name.endswith('.epub'):
-        return 'application/epub+zip'
-    if name.endswith(('.mobi', '.azw')):
-        return 'application/x-mobipocket-ebook'
-    if name.endswith('.azw3'):
-        return 'application/x-mobi8-ebook'
-    if name.endswith('.pdf'):
-        return 'application/pdf'
-    if name.endswith('.mp3'):
-        return 'audio/mpeg3'
-    if name.endswith(('.m4a', '.m4b')):
-        return 'audio/mp4'
-    if name.endswith('.flac'):
-        return 'audio/flac'
-    if name.endswith('.ogg'):
-        return 'audio/ogg'
-    if name.endswith('.zip'):
-        return 'application/x-zip-compressed'
-    if name.endswith('.xml'):
-        return 'application/rss+xml'
-    if name.endswith('.cbz'):
-        return 'application/x-cbz'
-    if name.endswith('.cbr'):
-        return 'application/x-cbr'
-    return "application/x-download"
+    # Mapping table for extensions
+    extensions = {
+        '.epub': 'application/epub+zip',
+        '.mobi': 'application/x-mobipocket-ebook',
+        '.azw':  'application/x-mobipocket-ebook',
+        '.azw3': 'application/x-mobi8-ebook',
+        '.pdf':  'application/pdf',
+        '.fb2':  'application/x-fictionbook+xml',
+        '.md':   'text/markdown',
+        '.mp3':  'audio/mpeg3',
+        '.m4a':  'audio/mp4',
+        '.m4b':  'audio/mp4',
+        '.flac': 'audio/flac',
+        '.ogg':  'audio/ogg',
+        '.zip':  'application/x-zip-compressed',
+        '.xml':  'application/rss+xml',
+        '.cbt':  'application/x-cbt',
+        '.cb7':  'application/x-cb7',
+        '.cbz':  'application/x-cbz',
+        '.cbr':  'application/x-cbr'
+    }
+    # not splitext, callers also pass a bare extension like '.epub'
+    ext = '.' + make_unicode(filename).lower().rsplit('.', 1)[-1]
+
+    # Return the match or the default fallback
+    return extensions.get(ext, "application/x-download")
 
 
 def module_available(module_name):
@@ -462,7 +475,17 @@ def log_header(online=True) -> str:
     except Exception:
         vers = "not found"
     header += f"iso639: {vers}\n"
-
+    try:
+        import curl_cffi
+        vers = getattr(curl_cffi, "__version__", None)
+    except Exception:
+        vers = "not found"
+    header += f"curl_cffi: {vers}\n"
+    if vers:
+        vers = getattr(curl_cffi, "__curl_version__", "")
+        vers = vers.split(' ')[0]
+        if vers:
+            header += f"curl: {vers}\n"
     return header
 
 
@@ -589,7 +612,9 @@ def dbbackup(source='lazylibrarian'):
         with tarfile.open(backup_file, mode='w:gz') as zf:
             zf.add(fname, arcname=DIRS.DBFILENAME)
             remove_file(fname)
-            for f in ['config.ini', 'dicts.json', 'genres.json', 'filetemplate.text', 'logintemplate.text']:
+            for f in ['config.ini', 'dicts.json', 'genres.json'] + [
+                    n for n in os.listdir(DIRS.DATADIR) if n.startswith(('filetemplate.', 'logintemplate.'))
+                    and n.endswith('.text')]:
                 target = os.path.join(DIRS.DATADIR, f)
                 if path_isfile(target):
                     zf.add(target, arcname=f)
@@ -612,3 +637,18 @@ def delete_empty_folders(root):
             deleted.append(current_dir)
 
     logger.debug(f"Deleted {len(deleted)} empty folders: {deleted}")
+
+def validate_monthtable(table):
+    logger = logging.getLogger(__name__)
+    if len(table) != 13:
+        logger.error('monthnames.json does not have enough months')
+        return False
+    length = len(table[0]) if table else 0
+    if length % 2:
+        logger.error('monthnames.json should have an even number of entries per month')
+        return False
+    for item in table:
+        if len(item) != length:
+            logger.error('monthnames.json lengths are not consistent')
+            return False
+    return True

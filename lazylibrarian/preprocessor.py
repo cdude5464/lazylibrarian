@@ -39,7 +39,7 @@ from lazylibrarian.formatter import (
     now,
     plural,
 )
-from lazylibrarian.images import coverswap, shrink_mag, valid_pdf, write_pdf_tags
+from lazylibrarian.images import coverswap, pdf_pagecount, shrink_mag, write_pdf_tags
 
 
 def preprocess_ebook(bookfolder):
@@ -575,8 +575,8 @@ def preprocess_magazine(bookfolder, cover=0, tag=False, title='', issue='', genr
                 logger.debug(f"No preprocessing required for {source_extn} magazine archive")
             return True, ''
 
-        if not valid_pdf(os.path.join(bookfolder, sourcefile)):
-            msg = f"Invalid pdf {sourcefile} in {bookfolder}"
+        if not pdf_pagecount(os.path.join(bookfolder, sourcefile)):
+            msg = f"Invalid or empty pdf {sourcefile} in {bookfolder}"
             return False, msg
 
         if not dpi and not (CONFIG.get_bool('SWAP_COVERPAGE') and cover > 1) and not tag:

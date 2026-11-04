@@ -38,16 +38,48 @@ from lazylibrarian.scheduling import SchedulerCommand, restart_jobs
 
 
 def _latest_wanted_media(db, bookid, media_type):
-    return db.match(
-        "SELECT rowid,Source,Status,DownloadID,DLResult FROM wanted "
+    latest = db.match(
+        "SELECT rowid,Source,Status,DownloadID,DLResult,Completed FROM wanted "
         "WHERE BookID=? AND AuxInfo=? ORDER BY rowid DESC LIMIT 1",
         (bookid, media_type),
     )
+    # Direct retries reuse an existing MD5 row; its fresh attempt timestamp can
+    # be newer than later-rowid historical failures. Explicit non-failed newer
+    # rows remain authoritative, as do manual states on the book itself.
+    if media_type == "eBook" and latest and latest["Status"] == "Failed":
+        retained = db.match(
+            "SELECT rowid,Source,Status,DownloadID,DLResult,Completed FROM wanted "
+            "WHERE BookID=? AND AuxInfo=? AND Status='Failed' "
+            "AND coalesce(Completed,0)>coalesce(?,0) ORDER BY Completed DESC,rowid DESC LIMIT 1",
+            (bookid, media_type, latest["Completed"]),
+        )
+        if _calibre_reconciliation_hold(retained):
+            return retained
+    return latest
+
+
+def _calibre_reconciliation_hold(row):
+    if not row or row["Status"] != "Failed":
+        return False
+    from lazylibrarian.calibre_integration import CALIBRE_DUPLICATE_UNVERIFIED
+    reason = str(row["DLResult"] or "")
+    if reason.startswith("destination: "):
+        reason = reason[len("destination: "):]
+    if not reason.startswith(CALIBRE_DUPLICATE_UNVERIFIED + "; source retained for reconciliation"):
+        return False
+    source, identifier = str(row["Source"] or "").upper(), str(row["DownloadID"] or "")
+    if source == "DIRECT":
+        return bool(re.fullmatch(r"[0-9a-fA-F]{32}", identifier))
+    return bool(source == "QBITTORRENT" and re.fullmatch(r"[0-9a-fA-F]{40}|[0-9a-fA-F]{64}", identifier)
+                and configured_handoff_protocol() == BOX_HELPER_HANDOFF_PROTOCOL
+                and configured_qbittorrent_lifecycle_owner() == "helper")
 
 
 def _helper_rejection_row(row, media_type):
     if media_type not in {"eBook", "AudioBook"}:
         raise ValueError("Unsupported startup rejection media type")
+    if media_type == "eBook" and _calibre_reconciliation_hold(row):
+        return True
     if (configured_handoff_protocol() != BOX_HELPER_HANDOFF_PROTOCOL
             or configured_qbittorrent_lifecycle_owner() != "helper" or not row):
         return False
@@ -86,7 +118,7 @@ def _reconcile_orphan_status(db, logger, media_type="AudioBook"):
         if _helper_rejection_row(latest, media_type):
             logger.warning(
                 "Deferring orphan %s cleanup for BookID %s: "
-                "latest rejected download remains owned by the paired box helper",
+                "latest download remains retained for owned processing or reconciliation",
                 label, orphan[0],
             )
             continue
@@ -211,8 +243,15 @@ def _reconcile_orphan_status(db, logger, media_type="AudioBook"):
 # 87 add hc_token to users table
 # 88 add bookauthors table
 # 89 add dnb_id to book table
+# 90 add Origin to wanted table
+# 91 add Category to wanted table
+# 92 add ran_id to author and books table
+# 98 add bn_id to book table
+# 99 add ui_lang to users table
+# 100 add dbk_id to books and authors tables, dbk_link to authors table
+# 101 add OtherTitles to books table, titles of other translations to search for
 
-db_current_version = 89
+db_current_version = 101
 
 
 def upgrade_needed():
@@ -270,7 +309,9 @@ def db_upgrade(current_version: int, restartjobs: bool = False):
                     logger.debug(f'Database integrity check: {result}')
                 else:
                     logger.error(f'Database integrity check: {result}')
-                    # should probably abort now if result is not "ok"
+                    logger.error('Aborting database upgrade on corrupt database')
+                    db.close()
+                    return
 
             if db_version < current_version:
                 if db_version:
@@ -330,9 +371,11 @@ def db_upgrade(current_version: int, restartjobs: bool = False):
                               'ON DELETE CASCADE, BookName TEXT, BookSub TEXT, BookDesc TEXT, ' +
                               'BookGenre TEXT, BookIsbn TEXT, BookPub TEXT, BookRate INTEGER DEFAULT 0, ' +
                               'BookImg TEXT, BookPages INTEGER DEFAULT 0, BookLink TEXT, BookID TEXT UNIQUE, ' +
-                              'BookFile TEXT, BookDate TEXT, BookLang TEXT, BookAdded TEXT, Status TEXT, ' +
+                              'BookFile TEXT, BookDate TEXT, BookLang TEXT, BookAdded TEXT, ' +
+                              'Status TEXT DEFAULT "Skipped", ' +
                               'WorkPage TEXT, Manual TEXT, SeriesDisplay TEXT, BookLibrary TEXT, ' +
-                              'AudioFile TEXT, AudioLibrary TEXT, AudioStatus TEXT, WorkID TEXT, ' +
+                              'AudioFile TEXT, AudioLibrary TEXT, ' +
+                              'AudioStatus TEXT DEFAULT "Skipped", WorkID TEXT, ' +
                               'ScanResult TEXT, OriginalPubDate TEXT, Requester TEXT, AudioRequester TEXT, ' +
                               'LT_WorkID TEXT, Narrator TEXT)')
                     db.action(
@@ -460,6 +503,8 @@ def check_db(upgradelog=None):
                 source = 'gr_id'
             elif info == 'HardCover':
                 source = 'hc_id'
+            elif info == 'RanobeDB':
+                source = 'ran_id'
             else:
                 source = ''
             if source:
@@ -641,6 +686,15 @@ def check_db(upgradelog=None):
                     for table in ['books', 'wanted', 'readinglists']:
                         db.action(f"DELETE from {table} WHERE BookID=?", (book['BookID'],))
 
+            # add any missing bookauthors rows
+            books = db.select("SELECT * FROM books b WHERE NOT EXISTS (SELECT 1 FROM bookauthors ba WHERE ba.BookID = b.BookID)")
+            if books:
+                cnt += len(books)
+                msg = f"Adding bookauthors rows for {len(books)} {plural(len(books), 'book')} "
+                logger.warning(msg)
+                db.action("INSERT OR IGNORE INTO bookauthors (AuthorID, BookID, Role) SELECT b.AuthorID, b.BookID, 1"
+                          " FROM books b WHERE NOT EXISTS (SELECT 1 FROM bookauthors ba WHERE ba.BookID = b.BookID);")
+
             # remove authors with no authorid
             lazylibrarian.UPDATE_MSG = 'Removing authors with no authorid'
             authors = db.select("SELECT * FROM authors WHERE AuthorID IS NULL or AuthorID=''")
@@ -692,8 +746,7 @@ def check_db(upgradelog=None):
             lazylibrarian.UPDATE_MSG = 'Removing authors with no listed books'
             authors = db.select('SELECT AuthorID FROM authors WHERE TotalBooks=0')
             if authors:
-                for author in authors:  # check we haven't mis-counted
-                    update_totals(author['authorid'])
+                # update_all_totals()  # shouldn't be needed now as update_all_totals task runs periodically
                 authors = db.select('SELECT AuthorID FROM authors WHERE TotalBooks=0')
                 if authors:
                     cnt += len(authors)
@@ -914,32 +967,27 @@ def check_db(upgradelog=None):
                 bookids.append(bookid[0])
             bookids = set(bookids)
             read_ids = []
-            reading_lists = ['readinglists']
-            for table in reading_lists:
-                exists = db.select(f'PRAGMA table_info({table})')
-                if exists:
-                    res = db.select(f'SELECT BookID from {table}')
-                    for bookid in res:
-                        read_ids.append(bookid[0])
-
+            exists = db.select('PRAGMA table_info(readinglists)')
+            if exists:
+                res = db.select('SELECT DISTINCT BookID from readinglists')
+                for bookid in res:
+                    read_ids.append(bookid[0])
             read_ids = set(read_ids)
             no_bookid = read_ids.difference(bookids)
             if len(no_bookid):
-                logger.warning(f"Found {len(no_bookid)} unknown bookids in reading lists")
+                logger.warning(f"Found {len(no_bookid)} unknown bookids in readinglists")
             for item in no_bookid:
                 cmd = ('SELECT BookID from books WHERE ol_id=? OR gr_id=? OR lt_workid=? OR gb_id=?'
-                       ' or hc_id=? or dnb_id=?')
-                res = db.match(cmd, (item, item, item, item, item, item))
+                       ' or hc_id=? or dnb_id=? or ran_id=? or bn_id=? or dbk_id=?')
+                res = db.match(cmd, (item, item, item, item, item, item, item, item, item))
                 if res:
-                    logger.debug(f"Bookid {item} is now {res[0]}")
-                    for table in reading_lists:
-                        cmd = f"UPDATE {table} SET BookID=? WHERE BookID=?"
-                        db.action(cmd, (res[0], item), suppress='UNIQUE')
+                    logger.debug(f"readinglists bookid {item} is now {res[0]}")
+                    cmd = "UPDATE readinglists SET BookID=? WHERE BookID=?"
+                    db.action(cmd, (res[0], item), suppress='UNIQUE')
                 else:
                     logger.debug(f"Bookid {item} is unknown, deleting it")
-                    for table in reading_lists:
-                        cmd = f'DELETE FROM {table} WHERE BookID=?'
-                        db.action(cmd, (item,))
+                    cmd = 'DELETE FROM readinglists WHERE BookID=?'
+                    db.action(cmd, (item,))
         except Exception as e:
             msg = f'Error: {type(e).__name__} {str(e)}'
             logger.error(msg)
@@ -1581,6 +1629,120 @@ def update_schema(db, upgradelog):
         lazylibrarian.UPDATE_MSG = 'Adding dnb_id column to books table'
         upgradelog.write(f"{time.ctime()} v89: {lazylibrarian.UPDATE_MSG}\n")
         db.action('ALTER TABLE books ADD COLUMN dnb_id TEXT')
+
+    if not has_column(db, "wanted", "Origin"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding Origin column to wanted table'
+        upgradelog.write(f"{time.ctime()} v90: {lazylibrarian.UPDATE_MSG}\n")
+        # 'new' or 'adopted', empty for anything snatched before we recorded it
+        db.action('ALTER TABLE wanted ADD COLUMN Origin TEXT')
+
+    if not has_column(db, "wanted", "Category"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding Category column to wanted table'
+        upgradelog.write(f"{time.ctime()} v91: {lazylibrarian.UPDATE_MSG}\n")
+        # the downloader category we asked for, to compare against later. Left
+        # empty for existing rows: we cannot know what was sent at the time, and
+        # guessing would put someone else's torrent at risk
+        db.action('ALTER TABLE wanted ADD COLUMN Category TEXT')
+
+    if not has_column(db, "books", "ran_id"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding ran_id column to books table'
+        upgradelog.write(f"{time.ctime()} v92: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE books ADD COLUMN ran_id TEXT')
+    if not has_column(db, "authors", "ran_id"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding ran_id column to authors table'
+        upgradelog.write(f"{time.ctime()} v92: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE authors ADD COLUMN ran_id TEXT')
+
+    if not has_column(db, "authors", "PrimarySource"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding PrimarySource column to authors table'
+        upgradelog.write(f"{time.ctime()} v93: {lazylibrarian.UPDATE_MSG}\n")
+        # Which of gr_id/ol_id/hc_id/ran_id the user has explicitly chosen as this
+        # author's canonical page (drives the author-page name link and source
+        # badge). Empty/null means "not chosen yet", not "none available".
+        db.action('ALTER TABLE authors ADD COLUMN PrimarySource TEXT')
+
+    # Per-source author page links, one column per linkable source, so the author
+    # page can list every linked source as its own clickable link instead of only
+    # ever showing the single (formerly "primary") AuthorLink. Populated by
+    # get_all_author_details() during normal author refresh (it already calls
+    # get_author_info() on every linked source) and immediately on link_author_source().
+    for col in ('gr_link', 'ol_link', 'hc_link', 'ran_link'):
+        if not has_column(db, "authors", col):
+            changes += 1
+            lazylibrarian.UPDATE_MSG = f'Adding {col} column to authors table'
+            upgradelog.write(f"{time.ctime()} v94: {lazylibrarian.UPDATE_MSG}\n")
+            db.action(f'ALTER TABLE authors ADD COLUMN {col} TEXT')
+
+    if not has_column(db, "books", "ASIN"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding ASIN column to books table'
+        upgradelog.write(f"{time.ctime()} v95: {lazylibrarian.UPDATE_MSG}\n")
+        # Referenced by author_detail's per-source book-count/overlap query below -
+        # needs to exist regardless of whether the ASIN-capture feature itself
+        # (add_bookid_to_db) has landed yet, so this page doesn't hard-fail on a
+        # fresh install that only has this branch. GoodReads' book/show/{id}.xml
+        # response has asin/kindle_asin fields sitting right alongside isbn/link/etc
+        # that were never read - only add_bookid_to_db's single-book fetch has them,
+        # not the bulk author/show book list, so this only backfills as books get
+        # individually (re)added rather than during bulk refresh.
+        db.action('ALTER TABLE books ADD COLUMN ASIN TEXT')
+
+    if not has_column(db, "authors", "AmazonAuthorURL"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding AmazonAuthorURL column to authors table'
+        upgradelog.write(f"{time.ctime()} v96: {lazylibrarian.UPDATE_MSG}\n")
+        # Amazon Author Central pages (amazon.com/stores/{slug}/author/{AuthorASIN}) use a
+        # separate ID system from book ASINs, with no free lookup for it anywhere - GR/OL/
+        # HC/GB APIs don't expose it. Manual-entry only, same pattern as the gr_id/ol_id/
+        # hc_id/ran_id manual-link field on the edit-author screen. Stores the whole pasted
+        # URL rather than trying to parse out just the ID, since the slug portion isn't
+        # reliably derivable and the full URL works as-is.
+        db.action('ALTER TABLE authors ADD COLUMN AmazonAuthorURL TEXT')
+
+    if db_version < 97:
+        changes += 1
+        nulls = db.match("SELECT COUNT(*) as cnt FROM books WHERE Status IS NULL OR AudioStatus IS NULL")
+        if nulls and nulls['cnt']:
+            lazylibrarian.UPDATE_MSG = f"Setting {nulls['cnt']} NULL Status/AudioStatus rows to Skipped"
+            upgradelog.write(f"{time.ctime()} v97: {lazylibrarian.UPDATE_MSG}\n")
+            db.action("UPDATE books SET Status='Skipped' WHERE Status IS NULL")
+            db.action("UPDATE books SET AudioStatus='Skipped' WHERE AudioStatus IS NULL")
+
+    if not has_column(db, "books", "bn_id"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding bn_id column to books table'
+        upgradelog.write(f"{time.ctime()} v98: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE books ADD COLUMN bn_id TEXT')
+
+    if not has_column(db, "users", "ui_lang"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding ui_lang column to users table'
+        upgradelog.write(f"{time.ctime()} v99: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE users ADD COLUMN ui_lang TEXT')
+
+    for table in ('books', 'authors'):
+        if not has_column(db, table, "dbk_id"):
+            changes += 1
+            lazylibrarian.UPDATE_MSG = f'Adding dbk_id column to {table} table'
+            upgradelog.write(f"{time.ctime()} v100: {lazylibrarian.UPDATE_MSG}\n")
+            db.action(f'ALTER TABLE {table} ADD COLUMN dbk_id TEXT')
+
+    if not has_column(db, "authors", "dbk_link"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding dbk_link column to authors table'
+        upgradelog.write(f"{time.ctime()} v100: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE authors ADD COLUMN dbk_link TEXT')
+
+    if not has_column(db, "books", "OtherTitles"):
+        changes += 1
+        lazylibrarian.UPDATE_MSG = 'Adding OtherTitles column to books table'
+        upgradelog.write(f"{time.ctime()} v101: {lazylibrarian.UPDATE_MSG}\n")
+        db.action('ALTER TABLE books ADD COLUMN OtherTitles TEXT')
 
     if changes:
         upgradelog.write(f"{time.ctime()} Changed: {changes}\n")

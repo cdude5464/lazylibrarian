@@ -20,6 +20,7 @@ from bs4 import BeautifulSoup
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.blockhandler import BLOCKHANDLER
+from lazylibrarian.booklanguages import zlib_search_languages
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
@@ -86,7 +87,7 @@ def session_get(sess, url, headers):
                             verify=CONFIG['SSL_CERTS'] if CONFIG['SSL_CERTS'] else True)
     else:
         response = sess.get(url, headers=headers, timeout=90, verify=False)
-    if not str(response.status_code).startswith('2'):
+    if response.status_code != 200:
         logger.debug(f"b-ok response: {response.status_code}")
     return response
 
@@ -110,9 +111,13 @@ def bok_login():
         logger.error(str(e))
         return None
 
+    if not zlib.isLoggedIn():
+        logger.error("Zlibrary login error")
+        return None
+
     profile = zlib.getProfile()
     if not profile:
-        logger.error("Zlibrary invalid credentials")
+        logger.error("Zlibrary profile error")
         return None
     if not CONFIG['BOK_REMIX_USERID'] or not CONFIG['BOK_REMIX_USERKEY']:
         CONFIG['BOK_REMIX_USERID'] = profile["user"]["id"]
@@ -144,9 +149,12 @@ def direct_bok(book=None, prov=None, test=False):
         limit = 10
 
     try:
-        langs = CONFIG['BOK_SEARCH_LANG']
-        if not langs:  # full language names, lower case, eg spanish, german
+        # full language names, lower case, eg spanish, german, or ANY
+        langs = zlib_search_languages(CONFIG['BOK_SEARCH_LANG'], CONFIG['IMP_PREFLANG'],
+                                      book.get('searchtype', ''))
+        if langs.strip().upper() == 'ANY':
             langs = None
+        lazylibrarian.test_data = f"Searching {provider}"
         searchresults = zlib.search(book['searchterm'], limit=limit, languages=langs)
     except Exception as e:
         logger.debug(f"Error getting results from zlibrary ({e})")
@@ -156,7 +164,9 @@ def direct_bok(book=None, prov=None, test=False):
             return False
         return [], "No results from zlibrary"
 
-    logger.debug(f"{provider} returned {len(searchresults['books'])}")
+    msg = f"{provider} returned {len(searchresults['books'])}"
+    logger.debug(msg)
+    lazylibrarian.test_data = msg
     results = []
     removed = 0
     for item in searchresults['books']:
@@ -184,6 +194,7 @@ def direct_bok(book=None, prov=None, test=False):
             })
             logger.debug(f'Found {title}, Size {size}')
 
+    lazylibrarian.test_data = ''
     if test:
         logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} ({removed} removed)")
         return len(results)
@@ -231,6 +242,7 @@ def direct_gen(book=None, prov=None, test=False):
         book['bookid'] = '0'
         maxresults = 25
 
+    lazylibrarian.test_data = f"Searching {provider}"
     while next_page:
         if 'index.php' in search:
             params = {
@@ -277,7 +289,7 @@ def direct_gen(book=None, prov=None, test=False):
         providerurl = url_fix(f"{host}/{search}")
         search_url = f"{providerurl}?{urlencode(params)}"
         next_page = False
-        result, success = fetch_url(search_url)
+        result, success = fetch_url(search_url, impersonate='chrome')
         if not success:
             # may return 404 if no results, not really an error
             if '404' in result:
@@ -325,7 +337,9 @@ def direct_gen(book=None, prov=None, test=False):
                 if len(rows) > 1:  # skip table headers
                     rows = rows[1:]
 
-                logger.debug(f"libgen returned {len(rows)} {plural(len(rows), 'row')}")
+                msg = f"libgen returned {len(rows)} {plural(len(rows), 'row')}"
+                logger.debug(msg)
+                lazylibrarian.test_data = msg
                 for row in rows:
                     author = ''
                     title = ''
@@ -334,6 +348,7 @@ def direct_gen(book=None, prov=None, test=False):
                     td = row.find_all('td')
                     links = []
                     prov_page = ''
+                    lazylibrarian.test_data = f"libgen processing {len(results)} from {len(rows)}"
                     if td and tabletype == 'comic':
                         try:
                             if 'FILE' in str(td[-1]):
@@ -471,7 +486,7 @@ def direct_gen(book=None, prov=None, test=False):
                                     url = url_fix(f"{host}/ads.php?{link}")
 
                             # redirect page for other sources [libgen.me, libgen.li, library1.org, booksdl.org]
-                            bookresult, success = fetch_url(url)
+                            bookresult, success = fetch_url(url, impersonate='chrome')
                             if not success:
                                 logger.debug(f'Error fetching link data from {provider}: {bookresult}')
                                 logger.debug(url)
@@ -485,11 +500,16 @@ def direct_gen(book=None, prov=None, test=False):
                                     output = link.get('href')
                                     if output:
                                         if ('/get.php' in output or '/download/' in output
-                                                or '/book/' in output or '/fiction/' in output
-                                                or '/main/' in output) and output.startswith('http'):
+                                            or '/book/' in output or '/fiction/' in output
+                                            or '/main/' in output) and output.startswith('http'):
                                             url = output
                                             break
                                         nhost = urlparse(url)
+                                        # fix for libgen.li where the first anchor on the page is not the link
+                                        # issue #3088
+                                        if 'get.php' not in output and nhost.netloc == 'libgen.li':
+                                            continue
+
                                         nurl = urlparse(output)
                                         # noinspection PyProtectedMember
                                         nurl = nurl._replace(scheme=nhost.scheme)
@@ -531,6 +551,7 @@ def direct_gen(book=None, prov=None, test=False):
 
             if test:
                 logger.debug(f"Test found {len(results)} {plural(len(results), 'result')}")
+                lazylibrarian.test_data = ''
                 return len(results)
 
         page += 1
@@ -555,6 +576,7 @@ def direct_gen(book=None, prov=None, test=False):
             next_page = False
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider} for {sterm}")
+    lazylibrarian.test_data = ''
     return results, errmsg
 
 

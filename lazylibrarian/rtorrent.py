@@ -17,6 +17,7 @@ import ssl
 from time import sleep
 from xmlrpc.client import Binary, ServerProxy
 
+from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.filesystem import get_directory
 from lazylibrarian.formatter import versiontuple
@@ -214,5 +215,5 @@ def remove_torrent(hash_id, remove_data=False):
 def check_link():
     server, version = get_server()
     if not server:
-        return "rTorrent login FAILED\nCheck debug log"
-    return f"rTorrent login successful: rTorrent {version}"
+        return i18n.gettext('%(name)s login FAILED\nCheck debug log') % {'name': 'rTorrent'}, False
+    return i18n.gettext('%(name)s login successful: %(name)s %(version)s') % {'name': 'rTorrent', 'version': version}, True

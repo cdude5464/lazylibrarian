@@ -24,7 +24,9 @@ ISBN, publication date, and other bibliographic information.
 import datetime
 import logging
 import os
+import re
 import subprocess
+from xml.sax.saxutils import escape
 
 import lazylibrarian
 from lazylibrarian import database
@@ -36,6 +38,7 @@ from lazylibrarian.formatter import (
     get_list,
     make_unicode,
     replace_all,
+    sanitize,
     surname_first,
 )
 
@@ -141,7 +144,15 @@ def create_mag_opf(
 
 def create_opf(dest_path, data_row, global_name=None, overwrite=False):
     logger = logging.getLogger(__name__)
-    opfpath = os.path.join(dest_path, f"{global_name}.opf")
+
+    def _xesc(value):
+        # XML-escape for opf element text and double-quoted attribute values
+        return escape('' if value is None else str(value), {'"': '&quot;'})
+    # titles can legitimately contain a "/" (eg an omnibus title like "Broken Angels /
+    # Woken Furies / Altered Carbon"); sanitize() only collapses doubled separators, so
+    # replace real ones first or they get read as path separators
+    safe_name = (global_name or '').replace('/', '-').replace('\\', '-')
+    opfpath = os.path.join(dest_path, f"{sanitize(safe_name, is_folder_or_file=True)}.opf")
     if not overwrite and path_exists(opfpath):
         logger.debug(f"{opfpath} already exists. Did not create one.")
         setperm(opfpath)
@@ -159,10 +170,14 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
     elif bookid.isdigit():
         # TODO could be goodreads or hardcover, can't be sure
         scheme = "goodreads"
-        if CONFIG["BOOK_API"] == "HardCover":
+        if data_dict.get("dbk_id") == bookid or CONFIG["BOOK_API"] == "DBK":
+            scheme = "DATABAZEKNIH"
+        elif CONFIG["BOOK_API"] == "HardCover":
             scheme = "HardCover"
     elif bookid.startswith("OL"):
         scheme = "OpenLibrary"
+    elif re.match(r"^b\d{12,}$", bookid):
+        scheme = "BN"
     else:
         scheme = "GoogleBooks"
 
@@ -212,12 +227,12 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
         f'<?xml version="1.0"  encoding="UTF-8"?>\n\
 <package version="2.0" xmlns="http://www.idpf.org/2007/opf" >\n\
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">\n\
-        <dc:title>{data_dict.get("BookName", "")}</dc:title>\n\
-        <dc:language>{data_dict.get("BookLang", "")}</dc:language>\n'
+        <dc:title>{_xesc(data_dict.get("BookName", ""))}</dc:title>\n\
+        <dc:language>{_xesc(data_dict.get("BookLang", ""))}</dc:language>\n'
     )
 
     opfinfo += (
-        f'        <dc:identifier opf:scheme="{scheme}">{bookid}</dc:identifier>\n'
+        f'        <dc:identifier opf:scheme="{scheme}">{_xesc(bookid)}</dc:identifier>\n'
     )
 
     if "Contributors" in data_dict:
@@ -241,38 +256,38 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
                 entries.append([name.strip(), role.strip()])
                 if names:
                     names += " &amp; "
-                names += surname_first(
+                names += _xesc(surname_first(
                     name, postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX"))
-                )
+                ))
         for entry in entries:
-            opfinfo += f'        <dc:creator opf:file-as="{names}" opf:role="{entry[1]}">{entry[0]}</dc:creator>\n'
+            opfinfo += f'        <dc:creator opf:file-as="{names}" opf:role="{_xesc(entry[1])}">{_xesc(entry[0])}</dc:creator>\n'
     elif data_dict.get("FileAs", ""):
         opfinfo += (
-            f'        <dc:creator opf:file-as="{data_dict.get("FileAs")}" opf:role="aut">'
-            f"{data_dict.get('FileAs')}</dc:creator>\n"
+            f'        <dc:creator opf:file-as="{_xesc(data_dict.get("FileAs"))}" opf:role="aut">'
+            f"{_xesc(data_dict.get('FileAs'))}</dc:creator>\n"
         )
     else:
         aname = surname_first(data_dict.get("AuthorName", ""), postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX")))
         opfinfo += (
-            f'        <dc:creator opf:file-as="{aname}" opf:role="aut">{data_dict.get("AuthorName")}</dc:creator>\n'
+            f'        <dc:creator opf:file-as="{_xesc(aname)}" opf:role="aut">{_xesc(data_dict.get("AuthorName"))}</dc:creator>\n'
         )
     if data_dict.get("BookIsbn", ""):
-        opfinfo += f'        <dc:identifier opf:scheme="ISBN">{data_dict.get("BookIsbn")}</dc:identifier>\n'
+        opfinfo += f'        <dc:identifier opf:scheme="ISBN">{_xesc(data_dict.get("BookIsbn"))}</dc:identifier>\n'
 
     if data_dict.get("BookPub", ""):
-        opfinfo += f"        <dc:publisher>{data_dict.get('BookPub')}</dc:publisher>\n"
+        opfinfo += f"        <dc:publisher>{_xesc(data_dict.get('BookPub'))}</dc:publisher>\n"
 
     if data_dict.get("BookDate", ""):
-        opfinfo += f"        <dc:date>{data_dict.get('BookDate')}</dc:date>\n"
+        opfinfo += f"        <dc:date>{_xesc(data_dict.get('BookDate'))}</dc:date>\n"
 
     if data_dict.get("BookDesc", ""):
         opfinfo += (
-            f"        <dc:description>{data_dict.get('BookDesc')}</dc:description>\n"
+            f"        <dc:description>{_xesc(data_dict.get('BookDesc'))}</dc:description>\n"
         )
 
     if CONFIG.get_bool("GENRE_TAGS") and data_dict.get("BookGenre", ""):
         for genre in get_list(data_dict["BookGenre"], ","):
-            opfinfo += f"        <dc:subject>{genre}</dc:subject>\n"
+            opfinfo += f"        <dc:subject>{_xesc(genre)}</dc:subject>\n"
 
     if data_dict.get("BookRate", ""):
         rate = check_int(data_dict.get("BookRate", 0), 0)
@@ -280,18 +295,18 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
         opfinfo += f'        <meta content="{rate}" name="calibre:rating"/>\n'
 
     if seriesname:
-        opfinfo += f'        <meta content="{seriesname}" name="calibre:series"/>\n'
+        opfinfo += f'        <meta content="{_xesc(seriesname)}" name="calibre:series"/>\n'
     elif "Series" in data_dict:
-        opfinfo += f'        <meta content="{data_dict.get("Series")}" name="calibre:series"/>\n'
+        opfinfo += f'        <meta content="{_xesc(data_dict.get("Series"))}" name="calibre:series"/>\n'
 
     if seriesnum:
         opfinfo += (
-            f'        <meta content="{seriesnum}" name="calibre:series_index"/>\n'
+            f'        <meta content="{_xesc(seriesnum)}" name="calibre:series_index"/>\n'
         )
     elif "Series_index" in data_dict:
-        opfinfo += f'        <meta content="{data_dict.get("Series_index")}" name="calibre:series_index"/>\n'
+        opfinfo += f'        <meta content="{_xesc(data_dict.get("Series_index"))}" name="calibre:series_index"/>\n'
     if data_dict.get("Narrator", ""):
-        opfinfo += f'        <meta content="{data_dict.get("Narrator")}" name="lazylibrarian:narrator"/>\n'
+        opfinfo += f'        <meta content="{_xesc(data_dict.get("Narrator"))}" name="lazylibrarian:narrator"/>\n'
 
     coverfile = jpg_file(dest_path)
     if coverfile:
@@ -301,7 +316,7 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
 
     opfinfo += (
         f'        <guide>\n\
-                <reference href="{coverfile}" type="cover" title="Cover"/>\n\
+                <reference href="{_xesc(coverfile)}" type="cover" title="Cover"/>\n\
             </guide>\n\
         </metadata>\n\
     </package>'

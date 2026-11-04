@@ -6,6 +6,7 @@
 
 import lazylibrarian
 from lazylibrarian import formatter
+from lazylibrarian.config2 import CONFIG
 from unittests.unittesthelpers import LLTestCaseWithStartup
 
 
@@ -27,17 +28,17 @@ class FormatterTest(LLTestCaseWithStartup):
     def test_sanitize(self):
         import unicodedata
         strings = [
-            ("", ""),
-            ("C:\\My eBooks\\book.epub", 'C\\My eBooks\\book.epub'),
-            ("Stuff here " + chr(2) + ">< |&!?-\\$|+`~=*", 'Stuff here  &!-\\s+~='),
-            ("Not C:\\\\// usable [as a] file name.jpg", 'Not C\\__ usable [as a] file name.jpg'),
-            (u'\2160' + u'\0049', '\x8e09'),
-            ('Hello Über', 'Hello Über'),  # Unicode-string in NFKD->NFC format
-            ("\\\\Server\\Test An odd one:2131", '\\Server\\Test An odd one2131'),
+            ("", False, ""),
+            ("C:\\My eBooks\\book.epub", True, 'C\\My eBooks\\book.epub'),
+            ("Stuff here " + chr(2) + ">< |&!?-\\$|+`~=*", True, 'Stuff here  &!-\\s+~='),
+            ("Not C:\\\\// usable [as a] file name.jpg", True, 'Not C\\__ usable [as a] file name.jpg'),
+            (u'\2160' + u'\0049', False, '\x8e09'),
+            ('Hello Über', False, 'Hello Über'),  # Unicode-string in NFKD->NFC format
+            ("\\\\Server\\Test An odd one:2131", True, '\\Server\\Test An odd one2131'),
         ]
         for s in strings:
-            sn = str(formatter.sanitize(s[0]))
-            self.assertEqual(sn, s[1])
+            sn = str(formatter.sanitize(s[0], s[1]))
+            self.assertEqual(sn, s[2])
             try:
                 self.assertTrue(unicodedata.is_normalized("NFC", sn))
             except AttributeError:
@@ -64,6 +65,16 @@ class FormatterTest(LLTestCaseWithStartup):
         ]
         for d in data:
             self.assertEqual(formatter.make_bytestr(d[0]), d[1])
+
+    def test_make_bytestr_falls_back_when_sys_encoding_cannot_encode(self):
+        # windows cp1250 can't encode "ō", make_bytestr should fall back to utf-8, not raise
+        saved = formatter._encodings[:]
+        try:
+            formatter._encodings[:] = ['cp1250', 'utf-8', 'iso-8859-15', 'cp850']
+            self.assertEqual(formatter.make_bytestr("Karel Čapek"), "Karel Čapek".encode('cp1250'))
+            self.assertEqual(formatter.make_bytestr("Marie Kondō"), b'Marie Kond\xc5\x8d')
+        finally:
+            formatter._encodings[:] = saved
 
     def test_safe_unicode(self):
         strings = [
@@ -313,6 +324,25 @@ class FormatterTest(LLTestCaseWithStartup):
         for d in dates:
             self.assertEqual(formatter.date_format(d[0]), d[1])
 
+    def test_date_format_picker(self):
+        picker = formatter.date_format_picker('$d.$m.$Y', formatter.DISPLAY_DATE_FORMATS)
+        self.assertEqual(picker['selected'], '$d.$m.$Y')
+        self.assertIsNone(picker['other'])
+        self.assertEqual(len(picker['formats']), len(formatter.DISPLAY_DATE_FORMATS))
+        examples = {fmt['format']: fmt['example'] for fmt in picker['formats']}
+        self.assertEqual(examples['$d.$m.$Y'], '31.12.2026')
+        self.assertEqual(examples['$m/$d/$Y'], '12/31/2026')
+
+    def test_date_format_picker_keeps_unknown_format(self):
+        # A hand written format must survive saving the config page unchanged
+        picker = formatter.date_format_picker('$y$m$d', formatter.DISPLAY_DATE_FORMATS)
+        self.assertEqual(picker['other'], {'format': '$y$m$d', 'example': '261231'})
+        self.assertEqual(picker['selected'], '$y$m$d')
+
+    def test_issue_formats_include_display_formats(self):
+        for fmt in formatter.DISPLAY_DATE_FORMATS:
+            self.assertIn(fmt, formatter.ISSUE_DATE_FORMATS)
+
     def test_versiontuple(self):
         versions = [
             ("1.2", (1, 2, 0)),
@@ -358,16 +388,71 @@ class FormatterTest(LLTestCaseWithStartup):
             self.assertEqual(formatter.md5_utf8(teststr[0]), teststr[1])
 
     def test_make_utf8bytes(self):
+        # Inputs are plain strings (encoded via make_bytestr internally) except where a
+        # test needs an exact, otherwise-unreachable byte sequence -- those pass bytes
+        # directly, which make_bytestr also accepts unchanged.
         strings = [
             ("", b'', ""),
             ("This is a test", b'This is a test', ''),
+            # This string's UTF-8 encoding is genuinely detected as UTF-8 (every lead byte
+            # here is 0xC3 or 0xC2, both always-recognised even before the 2026-09 fix
+            # below) -- kept as the original coverage for the "already worked" lead bytes.
+            # Its expected value changed with that fix: the un-fixed code returned this
+            # same UTF-8 byte string double-encoded as if it were ISO-8859-15 mojibake
+            # (b'\xc3\x83\xc2\x86...', label 'ISO-8859-15') -- itself an instance of the
+            # bug being fixed, just not one anybody had noticed. See test_make_utf8bytes_*
+            # below for the case that was actually reported (a lead byte the un-fixed code
+            # never recognised at all, e.g. 0xC5).
             ("ÆØÅ, æøå and ½é",
-             b'\xc3\x83\xc2\x86\xc3\x83\xc2\x98\xc3\x83\xc2\x85, \xc3\x83\xc5\xa0\xc3\x83\xc5\xbe\xc3\x83\xc2\xa5'
-             b' and \xc3\x82\xc5\x93\xc3\x83\xc2\xa9', 'ISO-8859-15'),
+             "ÆØÅ, æøå and ½é".encode('utf-8'), 'UTF-8'),
         ]
         for teststr in strings:
             encoded, name = formatter.make_utf8bytes(teststr[0])
             self.assertEqual((encoded, name), (teststr[1], teststr[2]))
+
+    def test_make_utf8bytes_multibyte_lead_bytes(self):
+        # Regression coverage for the 2026-09 fix: make_utf8bytes() used to chr()-wrap each
+        # raw byte before comparing it against the UTF-8 lead-byte range, which -- because
+        # Python compares those chr() code points as Unicode text, not raw byte values --
+        # only ever matched the two lead bytes 0xC2/0xC3 (U+0080-U+00FF, Latin-1
+        # supplement). Any other valid two-byte UTF-8 lead byte (0xC4-0xDF) fell through to
+        # the ISO-8859-15 branch and got double-encoded into mojibake. Real-world trigger:
+        # an author name containing "Kondō" (macron-o, U+014D -> UTF-8 lead byte 0xC5)
+        # turned into a permanent import-failure loop because the corrupted name got
+        # re-processed on every later pass.
+        strings = [
+            # The actual reported case.
+            ("Kondō", "Kondō".encode('utf-8'), 'UTF-8'),
+            # Two more lead bytes from within the widened 0xC2-0xDF range, to confirm the
+            # fix isn't a one-off special case for 0xC5 specifically.
+            ("Ā", "Ā".encode('utf-8'), 'UTF-8'),  # U+0100, lead byte 0xC4
+            ("ڠ", "ڠ".encode('utf-8'), 'UTF-8'),  # U+06A0, lead byte 0xDA
+            # Upper boundary of the widened range: U+07FF is the last code point encodable
+            # in two UTF-8 bytes, lead byte 0xDF.
+            ("߿", "߿".encode('utf-8'), 'UTF-8'),
+        ]
+        for teststr in strings:
+            encoded, name = formatter.make_utf8bytes(teststr[0])
+            self.assertEqual((encoded, name), (teststr[1], teststr[2]))
+
+    def test_make_utf8bytes_invalid_continuation_byte(self):
+        # A lead byte in the widened 0xC2-0xDF range is only a genuine UTF-8 sequence if
+        # followed by a valid continuation byte (0x80-0xBF). This wasn't reachable via a
+        # real encoded string (encode() never produces an invalid pairing), so it's built
+        # directly as bytes -- make_bytestr() passes bytes input through unchanged. Confirms
+        # the fix checks the continuation byte too, not just the lead byte: 0xC5 followed
+        # by 'A' (0x41, not a continuation byte) must fall through to the ISO-8859-15
+        # branch exactly as it did before the fix, not be misdetected as UTF-8.
+        encoded, name = formatter.make_utf8bytes(b'\xc5A')
+        self.assertEqual((encoded, name), (b'\xc3\x85A', 'ISO-8859-15'))
+
+    def test_make_utf8bytes_cp850_unaffected(self):
+        # The fix changed chr()-wrapped code-point comparisons to raw byte comparisons
+        # throughout the function, including in the CP850 branch -- mathematically a no-op
+        # there (single byte vs single code point, same numeric range), but worth locking
+        # in explicitly rather than relying on that reasoning alone.
+        encoded, name = formatter.make_utf8bytes(b'\x81A')
+        self.assertEqual((encoded, name), (b'\xc3\xbcA', 'CP850'))
 
     def test_make_unicode(self):
         strings = [
@@ -427,8 +512,8 @@ class FormatterTest(LLTestCaseWithStartup):
         types = ["book", "mag", "audio", "comic"]
         filenames_ok = [
             # Books: 'epub, mobi, pdf'
-            ("A volume.pdf", ("book", "mag")),
-            ("TEST.EPUB", "book"),
+            ("A volume.pdf", ("book", "mag", "comic")),
+            ("TEST.EPUB", ("book""comic")),
             ("Book 2.mobi", "book"),
             # Audiobooks: mp3, m4b
             ("Audio.mp3", "audio"),
@@ -437,7 +522,7 @@ class FormatterTest(LLTestCaseWithStartup):
             ("Marvel.Cbr", "comic"),
             ("DC.cbZ", "comic"),
             # Magazines: .pdf
-            ("My mag.pdf", ("mag", "book"))
+            ("My mag.pdf", ("mag", "book", "comic"))
         ]
         for name in filenames_ok:
             fn = name[0]
@@ -516,7 +601,7 @@ class FormatterTest(LLTestCaseWithStartup):
             ("A. Pedersen", "A. Pedersen"),
         ]
         testnames_withsuffix = [
-            ("Allan Pedersen, Jr.", "Allan Pedersen Jr."),
+            ("Allan Pedersen, Jr.", "Allan Pedersen Jr"),
             ("Allan Pedersen PhD", "Allan Pedersen PhD"),
             ("Allan Pedersen, General", "General Allan Pedersen"),
         ]
@@ -538,6 +623,13 @@ class FormatterTest(LLTestCaseWithStartup):
             with self.subTest(msg=f'Testing "{name}" with ini file postfix "{postfix}"'):
                 authorname = formatter.format_author_name(name[0], postfix=postfix)
                 self.assertEqual(authorname, name[1], f"{name[0]} -> {authorname} instead of {name[1]}")
+
+    def test_unaccented(self):
+        self.assertEqual(formatter.unaccented('Stefan Żeromski'), 'Stefan Zeromski')
+        # 'ł' has no separate accent to strip, it must not be dropped
+        self.assertEqual(formatter.unaccented('Łukasz Orbitowski'), 'Lukasz Orbitowski')
+        self.assertEqual(formatter.unaccented('Stanisław Lem'), 'Stanislaw Lem')
+        self.assertEqual(formatter.unaccented('Łódź', only_ascii=False), 'Łódź')
 
     def test_disp_name(self):
         # Add some dummy data to test on
@@ -688,3 +780,61 @@ class FormatterTest(LLTestCaseWithStartup):
         # Should restore to WEBSERVER (default)
 
         self.assertEqual(thread_name(), 'WEBSERVER')
+
+    def test_redact_url(self):
+        data = [
+            ("", ""),
+            (None, ""),
+            ("https://indexer.example/api?t=get&id=42",
+             "https://indexer.example/api?t=get&id=42"),
+            ("https://indexer.example/api?t=get&apikey=deadbeef&id=42",
+             "https://indexer.example/api?t=get&apikey=[redacted]&id=42"),
+            ("https://tracker.example/download/123/book.torrent?passkey=s3cr3t",
+             "https://tracker.example/download/123/book.torrent?passkey=[redacted]"),
+            ("https://tracker.example/get?TOKEN=s3cr3t&title=book",
+             "https://tracker.example/get?TOKEN=[redacted]&title=book"),
+            ("https://user:hunter2@tracker.example/get?id=1",
+             "https://[redacted]@tracker.example/get?id=1"),
+            ("https://tracker.example/get?monkeykey=notasecret",
+             "https://tracker.example/get?monkeykey=notasecret"),
+            # a private tracker's announce url arrives percent encoded inside a magnet
+            ("magnet:?xt=urn:btih:aaaa&tr=http%3A%2F%2Ftr.example%2Fannounce%3Fpasskey%3Ds3cr3t",
+             "magnet:?xt=urn:btih:aaaa&tr=http%3A%2F%2Ftr.example%2Fannounce%3Fpasskey%3D[redacted]"),
+            # and a downloader can hand back a bare fragment rather than a url
+            ("passkey=s3cr3t", "passkey=[redacted]"),
+            ("Unable to add torrent from http://tr.example/get?passkey=s3cr3t",
+             "Unable to add torrent from http://tr.example/get?passkey=[redacted]"),
+        ]
+        for url, expected in data:
+            self.assertEqual(formatter.redact_url(url), expected)
+
+    def test_redact_url_config_params(self):
+        """REDACT_PARAMS extends the built-in credential list."""
+        CONFIG['REDACT_PARAMS'] = 'jackett_apikey, custom_token'
+        formatter._credential_re_cache['params'] = None
+        try:
+            url = "http://indexer/dl?jackett_apikey=deadbeef&id=42"
+            result = formatter.redact_url(url)
+            self.assertNotIn('deadbeef', result)
+            self.assertIn('jackett_apikey=[redacted]', result)
+
+            url2 = "http://indexer/dl?custom_token=s3cr3t&t=get"
+            result2 = formatter.redact_url(url2)
+            self.assertNotIn('s3cr3t', result2)
+            self.assertIn('custom_token=[redacted]', result2)
+        finally:
+            CONFIG['REDACT_PARAMS'] = ''
+            formatter._credential_re_cache['params'] = None
+
+    def test_redact_url_path_secrets(self):
+        """Secrets from REDACTLIST are redacted in URL paths."""
+        original = getattr(CONFIG, 'REDACTLIST', [])
+        CONFIG.REDACTLIST = ['pkl4u83iz41up73m4zsigqsd4zyie50r']
+        try:
+            url = "http://192.168.1.10:9117/dl/strike/pkl4u83iz41up73m4zsigqsd4zyie50r/t.torrent"
+            result = formatter.redact_url(url)
+            self.assertNotIn('pkl4u83iz41up73m4zsigqsd4zyie50r', result)
+            self.assertIn('[redacted]', result)
+            self.assertIn('/dl/strike/', result)
+        finally:
+            CONFIG.REDACTLIST = original

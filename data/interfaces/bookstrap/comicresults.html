@@ -15,12 +15,12 @@
     <table class="display table table-striped table-hover table-bordered" id="book_table">
       <thead>
         <tr>
-          <th class="bookid">Match</th>
-          <th class="filename">Title</th>
-          <th class="provider">Publisher</th>
-          <th class="date">Date</th>
-          <th class="size">Description</th>
-          <th class="status">Status</th>
+          <th class="bookid">${_('Match')}</th>
+          <th class="filename">${_('Title')}</th>
+          <th class="provider">${_('Publisher')}</th>
+          <th class="date">${_('Date')}</th>
+          <th class="size">${_('Description')}</th>
+          <th class="status">${_('Status')}</th>
         </tr>
       </thead>
       <tbody>
@@ -62,18 +62,13 @@
                 "order": [[ 0, 'desc' ]],
                 "columnDefs":[{ type: 'natural', targets: 3 },
                 ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"Show _MENU_ rows per page",
-                    "sEmptyTable": "No results found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No results found')}}),
                 "sPaginationType": "full_numbers",
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
             });
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
     });
   </script>
 </%def>

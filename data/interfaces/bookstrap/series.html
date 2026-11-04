@@ -8,31 +8,31 @@
       <form action="search" method="get">
         <div id="subhead_menu"  class="col-xs-12 col-md-8">
         %if authorid != None:
-          <a href="author_page?authorid=${authorid}" class="btn btn-sm btn-primary"><i class="fa fa-chevron-left"></i> Return to Author</a>
+          <a href="author_page?authorid=${authorid}" class="btn btn-sm btn-primary"><i class="fa fa-chevron-left"></i> ${_('Return to Author')}</a>
         %else:
           <label class="control-label"> </label>
         %endif
             %if CONFIG['USER_ACCOUNTS']:
             %if authorid == None:
               %if pref&lazylibrarian.pref_myseries:
-                <a href="toggle_my_series" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-user-circle"></i></a>
+                <a href="toggle_my_series" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-user-circle"></i></a>
               %else:
-                <a href="toggle_my_series" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="All, or just mine"><i class="fa fa-users"></i></a>
+                <a href="toggle_my_series" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('All, or just mine') | h}"><i class="fa fa-users"></i></a>
               %endif
             %endif
             %endif
             %if authorid == None:
             %if active == 'True':
               %if whichStatus != None:
-                <a href="series?active=False&which_status=${whichStatus}" class="btn btn-sm btn-primary" data-toggle="tooltip" title="Show all authors"><i class="fa fa-user-friends"></i> Show All</a>
+                <a href="series?active=False&which_status=${whichStatus}" class="btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Show all authors') | h}"><i class="fa fa-user-friends"></i> ${_('Show All')}</a>
               %else:
-                <a href="series?active=False" class="btn btn-sm btn-primary" data-toggle="tooltip" title="Show all authors"><i class="fa fa-user-friends"></i> Show All</a>
+                <a href="series?active=False" class="btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Show all authors') | h}"><i class="fa fa-user-friends"></i> ${_('Show All')}</a>
               %endif
             %else:
               %if whichStatus != None:
-                <a href="series?active=True&which_status=${whichStatus}" class="btn btn-sm btn-primary" data-toggle="tooltip" title="Only active/wanted authors"><i class="fa fa-user-check"></i> Show Active</a>
+                <a href="series?active=True&which_status=${whichStatus}" class="btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Only active/wanted authors') | h}"><i class="fa fa-user-check"></i> ${_('Show Active')}</a>
               %else:
-                <a href="series?active=True" class="btn btn-sm btn-primary" data-toggle="tooltip" title="Only active/wanted authors"><i class="fa fa-user-check"></i> Show Active</a>
+                <a href="series?active=True" class="btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Only active/wanted authors') | h}"><i class="fa fa-user-check"></i> ${_('Show Active')}</a>
               %endif
             %endif
             %endif
@@ -41,11 +41,11 @@
         %if perm&lazylibrarian.perm_search:
         <div class="col-xs-12 col-md-4">
         <div class="form-group">
-          <label class="sr-only">Search</label>
+          <label class="sr-only">${_('Search')}</label>
           <div class="input-group">
-            <input type="text" class="form-control deletable input-sm col-xs-12" value="" onfocus="if(this.value==this.defaultValue) this.value='';" placeholder="Title / Author / ISBN" id="searchfor" name="searchfor">
+            <input type="text" class="form-control deletable input-sm col-xs-12" value="" onfocus="if(this.value==this.defaultValue) this.value='';" placeholder="${_('Title / Author / ISBN') | h}" id="searchfor" name="searchfor">
             <span class="input-group-btn">
-              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="Series" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="Search for book"><i class="fa fa-search"></i></button>
+              <button type="submit" id="btnsearch" name="btnsearch" onclick="reveal();" value="Series" class="btn btn-sm btn-primary" data-toggle="tooltip" data-placement="bottom" title="${_('Search for book') | h}"><i class="fa fa-search"></i></button>
             </span>
           </div>
         </div>
@@ -59,35 +59,39 @@
   <h1>${title}</h1>
     %if lazylibrarian.SEARCHING == 1:
       <p>
-      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %else:
       <p>
-      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Search in progress ...</button>
+      <button onclick="" class="hidden" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
       </p>
     %endif
   <form action="series" method="get" class="form-inline">
     <div class="row">
       <div class="col-xs-12 col-sm-5">
         <div class="form-group">
-          <label for="whichStatus" class="control-label">Status:</label>
+          <label for="whichStatus" class="control-label">${_('Status:')}</label>
           <select name="whichStatus" id="whichStatus" class="form-control input-sm">
-            %for item in ['All', 'Complete', 'Partial', 'Empty', 'Paused', 'Wanted', 'Active', 'Ignored']:
+            <% status_options = [('All', _('All')), ('Complete', pgettext('series status', 'Complete')),
+                                 ('Partial', pgettext('series status', 'Partial')),
+                                 ('Empty', pgettext('series status', 'Empty')), ('Paused', _('Paused')),
+                                 ('Wanted', _('Wanted')), ('Active', _('Active')), ('Ignored', _('Ignored'))] %>
+            %for item, label in status_options:
             <option value="${item}"
                 %if whichStatus == item:
                     selected = "selected"
                 %endif
-            >${item}</option>
+            >${label}</option>
             %endfor
           </select>
         </div>
       </div>
       %if CONFIG['TOGGLES']:
         <div class="toggles col-xs-12 col-sm-7 text-right">
-          Toggle: <a class="toggle-vis" data-column="1"> Author</a>
-          <a class="toggle-vis" data-column="2"> Series</a>
-          <a class="toggle-vis" data-column="3"> Have</a>
-          <a class="toggle-vis" data-column="4"> Status</a>
+          ${_('Toggle:')} <a class="toggle-vis" data-column="1"> ${_('Author')}</a>
+          <a class="toggle-vis" data-column="2"> ${_('Series')}</a>
+          <a class="toggle-vis" data-column="3"> ${_('Have')}</a>
+          <a class="toggle-vis" data-column="4"> ${_('Status')}</a>
         </div>
       %endif
     </div>
@@ -103,38 +107,40 @@
             %else:
             <td class="hidden"></td>
             %endif
-            <th class="authorname">Author</th>
-            <th class="series">Series Name</th>
-            <th class="number text-center">Have</th>
-            <th class="status text-center">Status</th>
+            <th class="authorname">${_('Author')}</th>
+            <th class="series">${_('Series Name')}</th>
+            <th class="number text-center">${_('Have')}</th>
+            <th class="status text-center">${_('Status')}</th>
           </tr>
         </thead>
       </table>
     </div>
     %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
     <div class="form-group">
-      <label for="series" class="control-label">Change selected series to: </label>
+      <label for="series" class="control-label">${_('Change selected series to:')} </label>
       <select id="series" class="mark_series form-control input-sm" name="action">
         %if perm&lazylibrarian.perm_status:
-        %for item in ['Paused', 'Wanted', 'Active', 'Ignored']:
-        <option value="${item}">${item}</option>
+        <% change_options = [('Paused', _('Paused')), ('Wanted', _('Wanted')), ('Active', _('Active')),
+                             ('Ignored', _('Ignored'))] %>
+        %for item, label in change_options:
+        <option value="${item}">${label}</option>
         %endfor
         %endif
         %if CONFIG['USER_ACCOUNTS']:
-        <option value="Unread">Unread</option>
-        <option value="Read">Read</option>
-        <option value="ToRead">To Read</option>
-        <option value="Reading">Reading</option>
-        <option value="Abandoned">Abandoned</option>
-        <option value="Subscribe">Subscribe</option>
-        <option value="Unsubscribe">Unsubscribe</option>
+        <option value="Unread">${_('Unread')}</option>
+        <option value="Read">${_('Read')}</option>
+        <option value="ToRead">${_('To Read')}</option>
+        <option value="Reading">${_('Reading')}</option>
+        <option value="Abandoned">${_('Abandoned')}</option>
+        <option value="Subscribe">${_('Subscribe')}</option>
+        <option value="Unsubscribe">${_('Unsubscribe')}</option>
         %endif
       </select>
     </div>
     %if authorid != None:
     <input type="hidden" name="redirect" value="${authorid}">
     %endif
-    <input type="submit" class="mark_series btn btn-sm btn-default" onclick="submitFormAjax()" value="Go">
+    <input type="submit" class="mark_series btn btn-sm btn-default" onclick="submitFormAjax()" value="${_('Go') | h}">
     %endif
   </form>
   <p>&nbsp;</p>
@@ -177,7 +183,10 @@
                 "dom": "<'row'<'col-xs-6'l><'col-xs-6'f>><'row'<'col-sm-12'tr>><'row'<'col-sm-5'i><'col-sm-7'p>>",
                 "order": [[3, 'desc']],
                 "bAutoWidth": false,
-                "stateSave": true,
+                "stateSave": true, 
+                "stateDuration": 0,
+                "stateSaveParams": function (settings, data) { data.perm = ${perm}; },
+                "stateLoadParams": function (settings, data) { return data.perm === ${perm}; },
                 "rowId": 0,
                 "columnDefs":
                     [{ targets: 'no-sort', orderable: false },
@@ -224,27 +233,22 @@
                         'render': function(data, type, row) {
                           %if perm&lazylibrarian.perm_status:
                             bar = '<button onclick="reason(\'' + row[8] +
-                            '\')" class="button btn btn-xs btn-primary" type="button">' + row[3] +
+                            '\')" class="button btn btn-xs btn-primary" type="button">' + llStatus(row[3]) +
                             '</button>';
                           %else:
-                            bar = row[3];
+                            bar = llStatus(row[3]);
                           %endif
                           return bar;}
                     }
                     ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"_MENU_ rows per page",
-                    "sEmptyTable": "No series found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No series found')}}),
                 "sPaginationType": "full_numbers",
                 "aaSorting": [[3, 'desc']],
                 "bServerSide": true,
                 "sAjaxSource": 'get_series?whichStatus=${whichStatus}&AuthorID=${authorid}&active=${active}',
                 "bFilter": true,
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
                 "fnRowCallback": function (nRow, aData, iDisplayIndex, iDisplayIndexFull) {
                     %if perm&lazylibrarian.perm_status == 0:
@@ -268,7 +272,7 @@
               $(this).toggleClass('selected');
           } );
 
-        $('.dataTables_filter input').attr("placeholder", "Results filter");
+        $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
         //$(window).resize(function() {oTable.draw(false)});
         $('a.toggle-vis').click(function (e) {
             e.preventDefault();
@@ -283,7 +287,7 @@
 
         // Show loading modal
         bootbox.dialog({
-            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>Processing...</div>',
+            message: '<div class="text-center"><i class="fa fa-spinner fa-spin fa-2x"></i><br><br>' + ${_js('Processing...')} + '</div>',
             size: 'small',
             backdrop: false,
             closeButton: false
@@ -310,21 +314,21 @@
             bootbox.hideAll();
 
             // Show result modal
-            var message = '<div class="alert alert-info"><strong>Summary:</strong><br>' + data.summary + '</div>';
+            var message = '<div class="alert alert-info"><strong>' + ${_js('Summary:')} + '</strong><br>' + data.summary + '</div>';
             if (data.passed > 0 || data.failed > 0) {
                 message += '<div class="row">';
-                message += '<div class="col-md-6"><span class="label label-success">Successful: ' + data.passed + '</span></div>';
+                message += '<div class="col-md-6"><span class="label label-success">' + ${_js('Successful:')} + ' ' + data.passed + '</span></div>';
                 if (data.failed > 0) {
-                    message += '<div class="col-md-6"><span class="label label-danger">Failed: ' + data.failed + '</span></div>';
+                    message += '<div class="col-md-6"><span class="label label-danger">' + ${_js('Failed:')} + ' ' + data.failed + '</span></div>';
                 }
                 message += '</div>';
             }
             bootbox.dialog({
-                title: 'Operation Complete',
+                title: ${_js('Operation Complete')},
                 message: message,
                 buttons: {
                     ok: {
-                        label: 'OK',
+                        label: ${_js('OK')},
                         className: 'btn-primary',
                         callback: function() {
                             window.location = data.redirect
@@ -339,11 +343,11 @@
 
             // Show error modal
             bootbox.dialog({
-                title: 'Error',
-                message: '<div class="alert alert-danger">An error occurred: ' + error.message + '</div>',
+                title: ${_js('Error')},
+                message: '<div class="alert alert-danger">' + ${_js('An error occurred:')} + ' ' + error.message + '</div>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload('series'); }
                         },

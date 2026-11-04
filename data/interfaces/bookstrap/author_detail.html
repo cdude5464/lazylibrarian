@@ -1,0 +1,354 @@
+<%inherit file="base.html"/>
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.startup import prioritized_infosources
+%>
+<%def name="headerIncludes()">
+    <div id="subhead_container">
+        <form id="subhead_menu" class="form-inline">
+        <a href="author_page?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Books')}</a>
+        %if perm&lazylibrarian.perm_edit:
+        <a href="edit_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-pencil-alt"></i> ${_('Edit')}</a>
+        %endif
+        %if perm&lazylibrarian.perm_status:
+            %if author['Status'] == 'Paused':
+                <a href="resume_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-pause"></i> ${_('Paused')}</a>
+            %else:
+              %if author['Status'] == 'Active':
+                <a href="want_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-play"></i> ${_('Active')}</a>
+              %else:
+                %if author['Status'] == 'Wanted':
+                  <a href="ignore_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-plus"></i> ${_('Wanted')}</a>
+                %else:
+                  <a href="pause_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-ban"></i> ${_('Ignored')}</a>
+                %endif
+              %endif
+            %endif
+        %endif
+        %if perm&lazylibrarian.perm_force:
+            <a href="refresh_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('Refresh Author')}</a>
+            <a href="library_scan_author?authorid=${author['AuthorID']}&library=eBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('eBook Scan')}</a>
+            %if CONFIG.get_int('AUDIO_TAB') > 0:
+                <a href="library_scan_author?authorid=${author['AuthorID']}&library=AudioBook" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('AudioBook Scan')}</a>
+            %endif
+        %endif
+        %if perm&lazylibrarian.perm_edit:
+            <button class="button btn btn-sm btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> ${_('Remove Author')}</button>
+        %endif
+        %if showseries >= 1:
+            %if perm&lazylibrarian.perm_series:
+              <a href="series?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-book"></i> ${_('Series')}</a>
+              %endif
+        %endif
+        %if CONFIG['GR_FOLLOW']:
+            %if author['GRfollow']:
+              %if author['GRfollow'] != '0':
+                <a href="unfollow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-check"></i> ${_('Following')}</a>
+              %else:
+                <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
+              %endif
+            %else:
+              <a href="follow_author?authorid=${author['AuthorID']}" class="btn btn-sm btn-primary"><i class="fa fa-times"></i> ${_('Not Following')}</a>
+            %endif
+        %endif
+        %if lazylibrarian.PRIMARY_AUTHORS == True:
+            <a href="toggle_primary?page=author_detail&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-star"></i></a>
+        %else:
+            <a href="toggle_primary?page=author_detail&authorid=${author['AuthorID']}" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('Primary Author, or Contributor') | h}"><i class="fa fa-handshake"></i></a>
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+          %if CONFIG['RSS_ENABLED']:
+            %if CONFIG.get_int('EBOOK_TAB') > 0:
+            <a href="rss_feed?user=${user}&type=eBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent ebooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-book"></i></a>
+            %endif
+            %if CONFIG.get_int('AUDIO_TAB') > 0:
+            <a href="rss_feed?user=${user}&type=AudioBook&authorid=${author['AuthorID']}&limit=10.xml" class="button btn btn-sm btn-primary" data-toggle="tooltip" title="${_('rss feed of recent audiobooks') | h}"><i class="fa fa-rss"></i>&nbsp;<i class="fa fa-headphones"></i></a>
+            %endif
+          %endif
+        %endif
+        </form>
+    </div>
+</%def>
+<%def name="javascriptIncludes()">
+  <script type="text/javascript">
+    $(document).ready(function() {
+        $('#removeme').click(function () {
+            bootbox.confirm({
+                message: ${_js('Are you sure you want to permanently delete the author?')},
+                buttons: {
+                    confirm: { label: ${_js('Yes')}, className: 'btn-success' },
+                    cancel: { label: ${_js('No')}, className: 'btn-danger' }
+                },
+                callback: function (result) {
+                  if (result) {
+                      $.get("remove_author", {'authorid': '${author['AuthorID']}' });
+                      window.location = "authors";
+                  }
+                }
+            });
+        });
+    });
+  </script>
+</%def>
+<%def name="body()">
+<%
+    linkable_sources = [(name, src['author_key'], src['author_link'])
+                        for name, src in prioritized_infosources() if src.get('author_link')]
+    linked_sources = [(name, id_col, author.get(id_col), author.get(link_col))
+                      for name, id_col, link_col in linkable_sources if author.get(id_col)]
+
+    reasonstring = None
+    if author.get('Reason'):
+        reasonlist = author['Reason'].split()
+        match reasonlist[0].lower().strip(":"):
+            case 'webserver':
+                reasonstring = _('Manual search')
+            case 'wishlist':
+                reasonstring = _('Wishlist search %(name)s') % {'name': ' '.join(reasonlist[1:])}
+            case 'process_alternate':
+                reasonstring = _('Import %(name)s from alternate folder') % {'name': ' '.join(reasonlist[1:])}
+            case 'ol.find_book' | 'ol_get_author_books':
+                reasonstring = _('%(source)s search') % {'source': 'OpenLibrary'}
+            case 'gr.find_book' | 'gr_get_author_books':
+                reasonstring = _('%(source)s search') % {'source': 'GoodReads'}
+            case 'hc.find_book' | 'hc_get_author_books':
+                reasonstring = _('%(source)s search') % {'source': 'HardCover'}
+            case 'gb.find_book' | 'gb_get_author_books':
+                reasonstring = _('%(source)s search') % {'source': 'GoogleBooks'}
+            case 'import_csv':
+                reasonstring = _('CSV import')
+            case 'sync_calibre_list':
+                reasonstring = _('Calibre Sync')
+            case 'api':
+                reasonstring = "API"
+            case 'add':
+                reasonstring = _('Import author of %(title)s') % {'title': ' '.join(reasonlist[3:])}
+            case 'contributor':
+                reasonstring = ' '.join(reasonlist)
+            case 'series':
+                reasonstring = _('Search for series %(name)s') % {'name': ' '.join(reasonlist[1:])}
+            case _:
+                reasonstring = author['Reason']
+%>
+<div class="row">
+    <div id="authorart_container" class="col-md-3">
+        <div id="authorart_menu">
+            <button onclick="bookinfo('A_${author['AuthorID']}')" class="button btn-link text-left" type="button" title=""><img src="${author['AuthorImg']}" class="box-shadow img-responsive" alt="${author['AuthorName']}" title="${author['AuthorName']}"></button>
+        </div>
+    </div>
+    <div id="authorhead_container" class="col-md-9">
+        <h1>${author['AuthorName']}</h1>
+
+        %if author.get('AKA'):
+        <%
+            # Stored as a single comma-delimited string (see get_list() usage
+            # throughout importer.py) - split for display as a real list.
+            akas = [a.strip() for a in author['AKA'].split(',') if a.strip()]
+        %>
+        <p><b>${_('Also known as:')}</b>
+        %for aka in akas:
+        <span class="label label-default">${aka}</span>
+        %endfor
+        </p>
+        %endif
+
+        <div class="row">
+          %if author.get('AuthorDeath'):
+          <div class="col-sm-4"><p><b>${_('Born:')}</b> ${author['AuthorBorn']}</p></div>
+          <div class="col-sm-4"><p><b>${_('Died:')}</b> ${author['AuthorDeath']}</p></div>
+          %if author_age is not None:
+          <div class="col-sm-4"><p><b>${_('Age at death:')}</b> ${author_age}</p></div>
+          %endif
+          %elif author.get('AuthorBorn'):
+          <div class="col-sm-4"><p><b>${_('Born:')}</b> ${author['AuthorBorn']}</p></div>
+          %if author_age is not None:
+          <div class="col-sm-4"><p><b>${_('Age:')}</b> ${author_age}</p></div>
+          %endif
+          %endif
+        </div>
+
+        <p><b>${_('Status:')}</b> ${status_label(author['Status'])}</p>
+        <p><b>${_('Books:')}</b> ${_('%(have)s / %(total)s total (%(unignored)s not ignored)') % {'have': author['HaveBooks'] or 0, 'total': author['TotalBooks'] or 0, 'unignored': author['UnignoredBooks'] or 0}} &mdash;
+          ${ngettext('%(count)s eBook', '%(count)s eBooks', author.get('HaveEBooks') or 0) % {'count': author.get('HaveEBooks') or 0}},
+          ${ngettext('%(count)s AudioBook', '%(count)s AudioBooks', author.get('HaveAudioBooks') or 0) % {'count': author.get('HaveAudioBooks') or 0}}</p>
+
+        %if ebook_status_counts:
+        <p><b>${_('eBook status:')}</b>
+        %for status_name, status_count in sorted(ebook_status_counts.items()):
+        <span class="label label-default">${status_label(status_name)}: ${status_count}</span>
+        %endfor
+        </p>
+        %endif
+        %if audio_status_counts and CONFIG.get_int('AUDIO_TAB') > 0:
+        <p><b>${_('AudioBook status:')}</b>
+        %for status_name, status_count in sorted(audio_status_counts.items()):
+        <span class="label label-default">${status_label(status_name)}: ${status_count}</span>
+        %endfor
+        </p>
+        %endif
+
+        %if reasonstring:
+        <p><b>${_('Added by:')}</b> ${reasonstring}</p>
+        %endif
+        %if author.get('DateAdded'):
+        <p><b>${_('Added:')}</b> ${author['DateAdded']}</p>
+        %endif
+        %if author.get('Updated'):
+        <p><b>${_('Last updated:')}</b> ${author['Updated']}</p>
+        %endif
+        %if author.get('GRfollow') and author['GRfollow'] != '0':
+        <p><b>${_('GoodReads:')}</b> ${_('Following')}</p>
+        %endif
+        %if author.get('Manual') == '1':
+        <p><b>${_('Locked:')}</b> ${_('settings are manually locked and won\'t be overwritten by refresh')}</p>
+        %endif
+    </div>
+</div>
+
+<div class="row">
+  <div class="col-md-12">
+    <h3>${_('Sources')}</h3>
+    <table class="table table-condensed table-bordered">
+      <thead><tr><th>${_('Source')}</th><th>${_('ID')}</th><th>${_('Link')}</th><th>${_('Books')}</th><th>${_('Overlap')}</th></tr></thead>
+      <tbody>
+        %for name, id_col, sourceid, link in linked_sources:
+        <%
+            count, overlap = source_book_counts.get(id_col, (0, 0))
+        %>
+        <tr>
+          <td>${name}
+            %if author.get('PrimarySource') == name:
+            <i class="fa fa-star text-warning" title="${_('Preferred for metadata merge') | h}"></i>
+            %endif
+          </td>
+          <td>${sourceid}</td>
+          <td>
+            %if link:
+            <a href="${link}" target="_blank" rel="noreferrer">${link}</a>
+            %else:
+            <span class="text-muted">${_('not fetched yet')}</span>
+            %endif
+          </td>
+          <td title="${_('Books by this author with a %(source)s id') % {'source': name} | h}">${count}</td>
+          <td title="${_('Of those, how many also have an id from at least one other source') | h}">
+            %if count:
+            ${overlap} (${round(100 * overlap / count)}%)
+            %else:
+            0
+            %endif
+          </td>
+        </tr>
+        %endfor
+        %if gb_search_link:
+        <tr>
+          <td>GoogleBooks</td>
+          <td class="text-muted"><small>${_('no author ID (search by name)')}</small></td>
+          <td><a href="${gb_search_link}" target="_blank" rel="noreferrer">${gb_search_link}</a></td>
+          <% gb_count, gb_overlap = source_book_counts.get('gb_id', (0, 0)) %>
+          <td title="${_('Books by this author with a GoogleBooks id') | h}">${gb_count}</td>
+          <td title="${_('Of those, how many also have an id from at least one other source') | h}">
+            %if gb_count:
+            ${gb_overlap} (${round(100 * gb_overlap / gb_count)}%)
+            %else:
+            0
+            %endif
+          </td>
+        </tr>
+        %endif
+        %if amazon_search_link or author.get('AmazonAuthorURL'):
+        <tr>
+          <td>Amazon
+            %if author.get('AmazonAuthorURL'):
+            <i class="fa fa-check text-success" title="${_('Manually linked Author Central page') | h}"></i>
+            %endif
+          </td>
+          <td class="text-muted"><small>${_('manually linked') if author.get('AmazonAuthorURL') else _('no author ID (search by name)')}</small></td>
+          <td>
+            %if author.get('AmazonAuthorURL'):
+            <a href="${author['AmazonAuthorURL']}" target="_blank" rel="noreferrer">${author['AmazonAuthorURL']}</a>
+            %else:
+            <a href="${amazon_search_link}" target="_blank" rel="noreferrer">${amazon_search_link}</a>
+            %endif
+          </td>
+          <% amzn_count, amzn_overlap = source_book_counts.get('ASIN', (0, 0)) %>
+          <td title="${_('Books by this author with a captured ASIN') | h}">${amzn_count}</td>
+          <td title="${_('Of those, how many also have an id from at least one other source') | h}">
+            %if amzn_count:
+            ${amzn_overlap} (${round(100 * amzn_overlap / amzn_count)}%)
+            %else:
+            0
+            %endif
+          </td>
+        </tr>
+        %endif
+        %if not linked_sources and not gb_search_link and not amazon_search_link and not author.get('AmazonAuthorURL'):
+        <tr><td colspan="5" class="text-muted">${_('No sources linked yet')}</td></tr>
+        %endif
+      </tbody>
+    </table>
+  </div>
+</div>
+
+%if author.get('LastBook'):
+<div class="row">
+  <div class="col-md-12">
+    <h3>${_('Most recent book on record')}</h3>
+    <div class="row">
+      %if author.get('LastBookImg'):
+      <div class="col-xs-2">
+        <img src="${author['LastBookImg']}" class="box-shadow img-responsive" alt="${author['LastBook']}">
+      </div>
+      %endif
+      <div class="col-xs-10">
+        %if author.get('LastBookID'):
+        <p><a href="book_detail?bookid=${author['LastBookID']}">${author['LastBook']}</a>
+        %if author.get('LastLink'):
+        <a href="${author['LastLink']}" target="_blank" rel="noreferrer" title="${_('View on source') | h}"><i class="fa fa-external-link-alt"></i></a>
+        %endif
+        </p>
+        %elif author.get('LastLink'):
+        <p><a href="${author['LastLink']}" target="_blank" rel="noreferrer">${author['LastBook']}</a></p>
+        %else:
+        <p>${author['LastBook']}</p>
+        %endif
+        %if author.get('LastDate'):
+        <p><b>${_('Date:')}</b> ${author['LastDate']}</p>
+        %endif
+      </div>
+    </div>
+  </div>
+</div>
+%endif
+
+%if librarian_note:
+<div class="row">
+    <div class="col-md-12">
+        <div class="alert alert-warning"><i class="fa fa-exclamation-triangle"></i> <b>${_('Librarian Note:')}</b> ${librarian_note}</div>
+    </div>
+</div>
+%endif
+%if author.get('About'):
+<div class="row">
+    <div class="col-md-12">
+        <h3>${_('About')}</h3>
+        <div>${author['About']}</div>
+    </div>
+</div>
+%endif
+
+%if about_by_source:
+<div class="row">
+    <div class="col-md-12">
+        <h3>${_('About')} &mdash; ${_('by source')}</h3>
+        <p class="text-muted"><small>${_('Each linked source\'s own text, shown as-is, one after another - not intelligently merged.')}</small></p>
+        %for source_name, source_about in about_by_source:
+        <p><b>${source_name}:</b></p>
+        <div>${source_about}</div>
+        %endfor
+    </div>
+</div>
+%endif
+<p>&nbsp;</p>
+</%def>
+<html><head></head><body></body></html>

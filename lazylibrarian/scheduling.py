@@ -26,21 +26,32 @@ from apscheduler.schedulers import SchedulerNotRunningError
 from apscheduler.schedulers.background import BackgroundScheduler
 
 import lazylibrarian
-from lazylibrarian import database
+from lazylibrarian import database, i18n
 from lazylibrarian.bookwork import add_series_members
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.configtypes import ConfigScheduler
 from lazylibrarian.formatter import check_int, plural
 from lazylibrarian.importer import add_author_to_db
+from lazylibrarian.oldump import update_openlibrary_dump
+
+# This is to suppress ruff warning about unused import
+# If you remove it, the scheduler complains about missing ref
+_ = update_openlibrary_dump
 
 # Notification Types
 NOTIFY_SNATCH = 1
 NOTIFY_DOWNLOAD = 2
 NOTIFY_FAIL = 3
 
-notify_strings = {NOTIFY_SNATCH: "Started Download",
-                  NOTIFY_DOWNLOAD: "Added to Library",
-                  NOTIFY_FAIL: "Download failed"}
+# custom notification scripts get these in English, other notifiers translated by notify_event()
+notify_strings = {NOTIFY_SNATCH: i18n.N_("Started Download"),
+                  NOTIFY_DOWNLOAD: i18n.N_("Added to Library"),
+                  NOTIFY_FAIL: i18n.N_("Download failed")}
+
+
+def notify_event(event):
+    """ The name of a notification event, in the current language """
+    return i18n.gettext(notify_strings[event])
 
 # Scheduler
 SCHED: BackgroundScheduler
@@ -294,6 +305,7 @@ def author_update(restart=True, only_overdue=True):
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
+        logger.debug("Storing start time for AUTHORUPDATE")
         db.upsert("jobs", {"Start": time.time()}, {"Name": "AUTHORUPDATE"})
         if CONFIG.get_int('CACHE_AGE'):
             overdue, total, name, ident, days = is_overdue('author')
@@ -316,6 +328,7 @@ def author_update(restart=True, only_overdue=True):
         return "Unhandled exception in AuthorUpdate"
 
     finally:
+        logger.debug("Storing finish time for AUTHORUPDATE")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": "AUTHORUPDATE"})
         db.close()
 
@@ -327,6 +340,7 @@ def series_update(restart=True, only_overdue=True):
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
+        logger.debug("Storing start time for SERIESUPDATE")
         db.upsert("jobs", {"Start": time.time()}, {"Name": "SERIESUPDATE"})
         if CONFIG.get_int('CACHE_AGE'):
             overdue, total, name, ident, days = is_overdue('series')
@@ -348,6 +362,7 @@ def series_update(restart=True, only_overdue=True):
         return "Unhandled exception in series_update"
 
     finally:
+        logger.debug("Storing finish time for SERIESUPDATE")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": "SERIESUPDATE"})
         db.close()
 
@@ -481,8 +496,8 @@ def is_overdue(which="author") -> (int, int, str, str, int):
         logger = logging.getLogger(__name__)
         try:
             if which == 'author':
-                cmd = "SELECT AuthorName,AuthorID,Updated from authors WHERE Status='Active' or Status='Loading'"
-                cmd += " or Status='Wanted' and AuthorID !='' order by Updated ASC"
+                cmd = ("SELECT AuthorName,AuthorID,Updated from authors WHERE Status='Active' or Status='Loading'"
+                        " or Status='Wanted' and AuthorID !='' order by Updated ASC")
                 res = db.select(cmd)
                 total = len(res)
                 if total:
@@ -737,12 +752,18 @@ def show_stats(json=False):
         author_stats.append(['Blank', res['counter']])
         overdue = is_overdue('author')[0]
         author_stats.append(['Overdue', overdue])
+        res = db.select('select distinct authorid from bookauthors except select authorid from books')
+        author_stats.append(['Secondary', len(res)])
         authorstats = {}
         for item in author_stats:
             authorstats[item[0]] = item[1]
         resultdict['author_stats'] = authorstats
     finally:
         db.close()
+
+    oldump_stats = []
+    oldump_stats.append(['OL Authors', lazylibrarian.OL_AUTHORS])
+    oldump_stats.append(['OL Works', lazylibrarian.OL_WORKS])
 
     if json:
         return resultdict
@@ -757,4 +778,14 @@ def show_stats(json=False):
             result.append('')
             result.append(header)
             result.append(data)
+    if oldump_stats:
+        header = ''
+        data = ''
+        for item in oldump_stats:
+            header += f"{item[0]:<12s}"
+            data += f"{item[1]:<12d}"
+        result.append('')
+        result.append(header)
+        result.append(data)
+
     return result

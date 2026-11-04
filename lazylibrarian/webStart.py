@@ -194,7 +194,8 @@ def initialize(options=None):
                 })
             })
         # exempt api, login page and static elements from authentication requirements
-        for i in ('/api', '/auth/login', '/css', '/images', '/js', 'favicon.ico', '/rss_feed', '/nzbfile.nzb'):
+        for i in ('/api', '/auth/login', '/css', '/images', '/js', 'favicon.ico', '/rss_feed', '/nzbfile.nzb',
+                    '/serve_img', '/serve_issue', '/serve_book', '/serve_audio', '/serve_comic'):
             if i in conf:
                 conf[i].update({'tools.auth.on': False, 'tools.auth_basic.on': False})
             else:

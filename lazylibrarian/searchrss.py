@@ -24,7 +24,6 @@ from lazylibrarian.downloadmethods import tor_dl_method
 from lazylibrarian.formatter import (
     format_author_name,
     get_list,
-    now,
     plural,
     split_author_names,
     split_title,
@@ -34,7 +33,7 @@ from lazylibrarian.formatter import (
 from lazylibrarian.images import get_book_cover
 from lazylibrarian.importer import add_author_name_to_db, import_book, search_for
 from lazylibrarian.librarysync import find_book_in_db
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import iterate_over_rss_sites, iterate_over_wishlists
 from lazylibrarian.resultlist import process_result_list
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
@@ -134,7 +133,8 @@ def search_wishlist():
     search_start = time.time()
     db = database.DBConnection()
     try:
-        db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
+        logger.debug("Storing start time for SEARCHWISHLIST")
+        db.upsert("jobs", {"Start": time.time()}, {"Name": "SEARCHWISHLIST"})
         try:
             resultlist, wishproviders = iterate_over_wishlists()
             if not wishproviders:
@@ -181,6 +181,10 @@ def search_wishlist():
                 want_book = want_audio = False
                 if bookid:  # it's in the database
                     bookmatch = db.match('SELECT * from books WHERE bookid=?', (bookid,))
+                    if not bookmatch:
+                        logger.debug(f"BookID {bookid} not found in books table")
+                        bookid = ''
+                if bookid:
                     authorid = bookmatch['AuthorID']
                     authormatch = db.match('SELECT AuthorName from authors WHERE AuthorID=?', (authorid, ))
                     bookmatch = dict(bookmatch)
@@ -369,7 +373,8 @@ def search_wishlist():
         except Exception:
             logger.error(f'Unhandled exception in search_wishlist: {traceback.format_exc()}')
         finally:
-            db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
+            logger.debug("Storing finish time for SEARCHWISHLIST")
+            db.upsert("jobs", {"Finish": time.time()}, {"Name": "SEARCHWISHLIST"})
 
         logger.debug(f"Wishlist found eBook:{len(new_books)}, Audio:{len(new_audio)}")
 
@@ -412,7 +417,7 @@ def search_wishlist():
                                          tor_url=item['link'], library='eBook', provider='mam')
             if success:
                 custom_notify_snatch(f"{item['BookID']} eBook")
-                notify_snatch(f"eBook {item['Title']} from mam at {now()}")
+                notify_snatch(notify_text(item['Title'], 'mam', 'eBook'))
                 schedule_job(SchedulerCommand.START, target='PostProcessor')
             else:
                 logger.error(f"Failed to download {item['Title']}: {msg}")
@@ -423,7 +428,7 @@ def search_wishlist():
                                          tor_url=item['link'], library='AudioBook', provider='mam')
             if success:
                 custom_notify_snatch(f"{item['BookID']} AudioBook")
-                notify_snatch(f"AudioBook {item['Title']} from mam at {now()}")
+                notify_snatch(notify_text(item['Title'], 'mam', 'AudioBook'))
                 schedule_job(SchedulerCommand.START, target='PostProcessor')
             else:
                 logger.error(f"Failed to download {item['Title']}: {msg}")
@@ -457,8 +462,8 @@ def search_rss_book(books=None, library=None):
         logger.warning('rss search is disabled')
         schedule_job(action=SchedulerCommand.STOP, target='search_rss_book')
         return
-    threadname = thread_name()
-    if "Thread" in threadname:
+
+    if "SEARCH" not in thread_name():
         if not books:
             thread_name("SEARCHALLRSS")
         else:
@@ -498,8 +503,8 @@ def search_rss_book(books=None, library=None):
 
         searchlist = []
         for searchbook in searchbooks:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLRSS":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLRSS":
+                logger.debug("Aborting SEARCHALLRSS")
                 break
 
             # searchterm is only used for display purposes
@@ -541,8 +546,8 @@ def search_rss_book(books=None, library=None):
 
         rss_count = 0
         for book in searchlist:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLRSS":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLRSS":
+                logger.debug("Aborting SEARCHALLRSS")
                 break
             if book['library'] == 'AudioBook':
                 searchtype = 'audio'
@@ -561,6 +566,7 @@ def search_rss_book(books=None, library=None):
                 rss_count += 1
 
         logger.info(f"rss Search for Wanted items complete, found {rss_count} {plural(rss_count, 'book')}")
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
 
     except Exception:

@@ -61,6 +61,7 @@
             toggleElement("#opds_authentication", "#opdscredentials");
 
             // Importing
+            toggleElement("#ol_use_dump", "#ol_dump_options");
             toggleElement("#hc_api", "#hc_options");
             toggleElement("#hc_sync", "#hcsync_options");
             toggleElement("#hc_syncreadonly", "#hc_sync_limit_group", true);
@@ -159,16 +160,16 @@
         $('#showblocked').on('click', function() {
             $.get('showblocked', function(data) {
                 bootbox.dialog({
-                    title: 'Provider Status',
+                    title: ${_js('Provider Status')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         prompt: {
-                            label: "Clear Blocklist",
+                            label: ${_js('Clear Blocklist')},
                             className: 'btn-danger',
                             callback: function(){ $.get("clearblocked", function(e) {}); }
                         },
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -193,6 +194,11 @@
                 let pass = $("#" + prov.toLowerCase() + "_pass").val();
                 let langs = $("#" + prov.toLowerCase() + "_search_lang").val();
                 api = email + ' : ' + pass + ' : ' + langs
+            }
+            if ( prov === 'WEBSHARE' ) {
+                let user = $("#webshare_user").val();
+                let pass = $("#webshare_pass").val();
+                api = user + ' : ' + pass
             }
             if ( prov.indexOf('gen_') === 0 ) {
                 host = $("#" + prov.toLowerCase() + "_host").val();
@@ -230,11 +236,11 @@
             function(data) {
                 $("#myAlert").addClass('hidden');
                 bootbox.dialog({
-                    title: 'Test Result',
+                    title: ${_js('Test Result')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -245,11 +251,11 @@
         $('#show_stats').on('click', function() {
             $.get('show_stats', function(data) {
                 bootbox.dialog({
-                    title: 'Database Stats',
+                    title: ${_js('Database Stats')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -260,21 +266,21 @@
         $('#show_jobs').on('click', function() {
             $.get('show_jobs', function(data) {
                 bootbox.dialog({
-                    title: 'Job Status',
+                    title: ${_js('Job Status')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         stopit: {
-                            label: "<i class=\"fa fa-ban\"></i> Stop Jobs",
+                            label: '<i class="fa fa-ban"></i> ' + ${_js('Stop Jobs')},
                             className: 'btn-warning',
                             callback: function(){ $.get("stop_jobs", function(e) {}); }
                         },
                         restart: {
-                            label: "<i class=\"fa fa-sync\"></i> Restart Jobs",
+                            label: '<i class="fa fa-sync"></i> ' + ${_js('Restart Jobs')},
                             className: 'btn-info',
                             callback: function(){ $.get("restart_jobs", function(e) {}); }
                         },
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -285,11 +291,27 @@
         $('#show_apprise').on('click', function() {
             $.get('show_apprise', function(data) {
                 bootbox.dialog({
-                    title: 'Supported Types',
+                    title: ${_js('Supported Types')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
+                            className: 'btn-primary'
+                        }
+                    }
+                });
+            });
+        });
+
+        $('#ol_dump_sync_now').on('click', function() {
+            $.get("force_openlibrary_dump", function(data) {
+                let msg = data.success ? ${_js('OpenLibrary bulk-dump sync started - check the log for progress.')} : (data.error || ${_js('Failed to start sync.')});
+                bootbox.dialog({
+                    title: ${_js('OpenLibrary Dump Sync')},
+                    message: msg,
+                    buttons: {
+                        primary: {
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -308,11 +330,11 @@
             $.get("test_sabnzbd", {'host': host, 'port': port, 'user': user, 'pwd': pwd, 'api': api, 'cat': cat, 'subdir': subdir},
             function(data) {
                 bootbox.dialog({
-                    title: 'SABnzbd Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'SABnzbd'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -330,15 +352,52 @@
             $.get('test_nzbget', {'host': host, 'port': port, 'user': user, 'pwd': pwd, 'cat': cat, 'pri': pri},
                 function(data) {
                 bootbox.dialog({
-                    title: 'NZBget Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'NZBget'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
                 });
+            });
+        });
+
+        function pollConfigLangRefreshStatus() {
+            $.get('language_refresh_status', function(data) {
+                if (data && data.running) {
+                    $('#config_langrefreshstatus').text(${_js('Running: checked %(checked)s of %(total)s (%(updated)s updated, %(restored)s restored)')}
+                        .replace('%(checked)s', data.checked).replace('%(total)s', data.total)
+                        .replace('%(updated)s', data.updated).replace('%(restored)s', data.unignored));
+                    setTimeout(pollConfigLangRefreshStatus, 2000);
+                } else if (data && data.total) {
+                    $('#config_langrefreshstatus').text(${_js('Done: checked %(total)s, %(updated)s updated, %(restored)s restored')}
+                        .replace('%(total)s', data.total).replace('%(updated)s', data.updated)
+                        .replace('%(restored)s', data.unignored));
+                }
+            }, 'json');
+        }
+        pollConfigLangRefreshStatus();
+
+        $('#lang_refresh_now').on('click', function() {
+            bootbox.confirm({
+                title: ${_js('Refresh Book Languages')},
+                message: ${_js('Re-evaluate languages across candidate books in the database using title, description, and smart language heuristics. This fixes short-title false positives (e.g. English books misclassified as German/French/Spanish), resolves Unknown languages, and restores books falsely marked Ignored due to invalid language. Runs safely as a background job.')},
+                buttons: {
+                    confirm: { label: ${_js('Start')}, className: "btn-primary" },
+                    cancel: { label: ${_js('Cancel')}, className: "btn-default" }
+                },
+                callback: function(result) {
+                    if (!result) return;
+                    $.get('force_language_refresh', function(data) {
+                        if (data.error) {
+                            bootbox.alert(data.error);
+                        } else {
+                            pollConfigLangRefreshStatus();
+                        }
+                    }, 'json');
+                }
             });
         });
 
@@ -351,11 +410,11 @@
             $.get('test_synology', {'host': host, 'port': port, 'user': user, 'pwd': pwd, 'dir': dir},
                 function(data) {
                 bootbox.dialog({
-                    title: 'Synology Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'Synology'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -374,11 +433,11 @@
             $.get("test_deluge", {'host': host, 'port': port, 'base': base, 'cert': cert, 'user': user, 'pwd': pwd, 'label': label},
                 function(data) {
                     bootbox.dialog({
-                    title: 'Deluge Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'Deluge'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -395,11 +454,11 @@
             $.get('test_transmission', {'host': host, 'port': port, 'base': base, 'user': user, 'pwd': pwd},
                 function(data) {
                 bootbox.dialog({
-                    title: 'Transmission Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'Transmission'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -418,11 +477,11 @@
             $.get('test_qbittorrent', {'host': host, 'port': port, 'base': base, 'user': user, 'pwd': pwd, 'label': label, 'ignore_ssl': ignore_ssl},
                 function(data) {
                 bootbox.dialog({
-                    title: 'qBittorrent Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'qBittorrent'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -440,11 +499,11 @@
             $.get('test_utorrent', {'host': host, 'port': port, 'base': base, 'user': user, 'pwd': pwd, 'label': label},
                 function(data) {
                 bootbox.dialog({
-                    title: 'uTorrent Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'uTorrent'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -461,11 +520,11 @@
             $.get('test_rtorrent', {'host': host, 'dir': dir, 'user': user, 'pwd': pwd, 'label': label},
                 function(data) {
                 bootbox.dialog({
-                    title: 'rTorrent Connection',
+                    title: ${_js('%(name)s Connection')}.replace('%(name)s', 'rTorrent'),
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -476,11 +535,11 @@
         $('#sysinfo').on('click', function() {
             $.get('log_header', function(data) {
                 bootbox.dialog({
-                    title: 'System Info',
+                    title: ${_js('System Info')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -491,11 +550,11 @@
         $('#savefilters').on('click', function() {
             $.get('save_filters', function(data) {
                 bootbox.dialog({
-                    title: 'Export Filters',
+                    title: ${_js('Export Filters')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -506,11 +565,11 @@
         $('#loadfilters').on('click', function() {
             $.get('load_filters', function(data) {
                 bootbox.dialog({
-                    title: 'Import Filters',
+                    title: ${_js('Import Filters')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -526,11 +585,11 @@
             $.get("test_grauth", {'gr_api': gr_api, 'gr_secret': gr_secret, 'oauth_token': oauth_token, 'oauth_secret': oauth_secret},
                 function (data) {
                     bootbox.dialog({
-                        title: 'GoodReads Auth',
+                        title: ${_js('GoodReads Auth')},
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -544,22 +603,23 @@
             $.get("grauth_step1", {'gr_api': gr_api, 'gr_secret': gr_secret},
                 function (data) {
                 if ( data.substr(0, 4) === 'http') { bootbox.dialog({
-                        title: 'GoodReads Auth',
-                        message: '<pre>A new tab or page should open at GoodReads to authorise lazylibrarian. Follow the prompts, then go back to LazyLibrarian and request oAuth2\nIf the page does not open, visit this link...\n'+data+'</pre>',
+                        title: ${_js('GoodReads Auth')},
+                        message: '<pre>' + ${_js('A new tab or page should open at GoodReads to authorise lazylibrarian. Follow the prompts, then go back to LazyLibrarian and request oAuth2')} + '\n' +
+                            ${_js('If the page does not open, visit this link...')} + '\n' + data + '</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
                     });  window.open(data);
                 }
                 else { bootbox.dialog({
-                        title: 'GoodReads Response',
+                        title: ${_js('GoodReads Response')},
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -571,11 +631,11 @@
         $('#grauth_step2').click(function () {
             $.get("grauth_step2", {},
                 function (data) { bootbox.dialog({
-                        title: 'GoodReads Confirm',
+                        title: ${_js('GoodReads Confirm')},
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary',
                                 callback: function(){ document.location.reload(); }
                             }
@@ -588,7 +648,7 @@
         $('#twitter_step1').click(function () {
             $('#testTwitter-result').html('');
             $.get("twitter_step1", function (data) {window.open(data); })
-                .done(function () { $('#testTwitter-result').html('<b>Step1:</b> Confirm Authorization'); });
+                .done(function () { $('#testTwitter-result').html('<b>' + ${_js('Step 1:')} + '</b> ' + ${_js('Confirm Authorization')}); });
         });
 
         $('#twitter_step2').click(function () {
@@ -602,11 +662,11 @@
             $.get("test_twitter", {},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Twitter Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Twitter'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -619,11 +679,11 @@
             $.get("test_boxcar", {'token': token},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Boxcar Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Boxcar'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -637,11 +697,11 @@
             $.get("test_pushbullet", {'token': token, 'device': device},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Pushbullet Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Pushbullet'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -657,11 +717,11 @@
             $.get("test_pushover", {'apitoken': token, 'keys': keys, 'priority': priority, 'device': device},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Pushover Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Pushover'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -675,11 +735,11 @@
             $.get("test_prowl", {'apikey': apikey, 'priority': priority},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Prowl Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Prowl'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -693,11 +753,11 @@
             $.get("test_growl", {'host': host, 'password': password},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Growl Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Growl'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -711,11 +771,11 @@
             $.get("test_telegram", {'token': token, 'userid': userid},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Telegram Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Telegram'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -729,11 +789,11 @@
             $.get("test_slack", {'token': token, 'url': url},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Slack Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Slack'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -746,11 +806,11 @@
             $.get("test_custom", {'script': script},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Custom Notifier',
+                        title: ${_js('Custom Notifier')},
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -771,11 +831,11 @@
             $.get("test_email", {'tls': tls, 'ssl': ssl, 'emailfrom': emailfrom, 'emailto': emailto, 'server': server, 'user': user, 'password': password, 'port': port, 'sendfile': sendfile},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Email Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Email'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -790,11 +850,11 @@
             $.get("test_androidpn", {'url': androidpn_url, 'username': androidpn_username, 'broadcast': androidpn_broadcast},
                 function (data) {
                     bootbox.dialog({
-                        title: 'Android Notifier',
+                        title: ${_js('%(name)s Notifier')}.replace('%(name)s', 'Android'),
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -811,7 +871,7 @@
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -827,7 +887,7 @@
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -844,7 +904,7 @@
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -861,7 +921,7 @@
                         message: '<pre>'+data+'</pre>',
                         buttons: {
                             primary: {
-                                label: "Close",
+                                label: ${_js('Close')},
                                 className: 'btn-primary'
                             }
                         }
@@ -883,11 +943,11 @@
             $.get('check_for_updates', function(data) {
                 $("#myAlert").addClass('hidden');
                 bootbox.dialog({
-                    title: 'Check Version',
+                    title: ${_js('Check Version')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(){ location.reload(); }
                         },
@@ -901,11 +961,11 @@
             $.get('generate_api', function(data) {
                 $("#myAlert").addClass('hidden');
                 bootbox.dialog({
-                    title: 'Generate API',
+                    title: ${_js('Generate API')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(){ location.reload(); }
                         },
@@ -919,11 +979,11 @@
             $.get('generate_ro_api', function(data) {
                 $("#myAlert").addClass('hidden');
                 bootbox.dialog({
-                    title: 'Generate Read-Only API',
+                    title: ${_js('Generate Read-Only API')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(){ location.reload(); }
                         },
@@ -966,11 +1026,11 @@
             $.get('test_telemetry_server', {'server': server},
                 function(data) {
                 bootbox.dialog({
-                    title: 'Telemetry server connection',
+                    title: ${_js('Telemetry server connection')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -985,11 +1045,11 @@
             $.get('submit_telemetry_data', {'server': server, 'send_config': send_config, 'send_usage': send_usage},
                 function(data) {
                 bootbox.dialog({
-                    title: 'Submitted telemetry data',
+                    title: ${_js('Submitted telemetry data')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                         },
                     }
@@ -1008,6 +1068,30 @@
         $('#dnb_api').on('click', function() {
             let status = $("#dnb_api").prop("checked") ? 'True' : ''
             $.get('dnb_api_changed', {'status': status},
+            function(data) {
+                location.reload();
+            });
+        });
+
+        $('#bn_api').on('click', function() {
+            let status = $("#bn_api").prop("checked") ? 'True' : ''
+            $.get('bn_api_changed', {'status': status},
+            function(data) {
+                location.reload();
+            });
+        });
+
+        $('#dbk_api').on('click', function() {
+            let status = $("#dbk_api").prop("checked") ? 'True' : ''
+            $.get('dbk_api_changed', {'status': status},
+            function(data) {
+                location.reload();
+            });
+        });
+
+        $('#ran_api').on('click', function() {
+            let status = $("#ran_api").prop("checked") ? 'True' : ''
+            $.get('ran_api_changed', {'status': status},
             function(data) {
                 location.reload();
             });
@@ -1037,8 +1121,335 @@
             });
         });
 
+        $('#book_api').on('change', function() {
+            let apikey = $.trim($("#book_api").val());
+            $.get('book_api_changed', {'book_api': apikey},
+            function(data) {
+                location.reload();
+            });
+        });
+
         $("form #bookstrap_theme").on("change", function() {
             $("head #theme").attr("href", "https://maxcdn.bootstrapcdn.com/bootswatch/3.3.7/" + $(this).val() + "/bootstrap.min.css");
+        });
+    }
+
+    function initLanguagePicker()
+    {
+        "use strict";
+        // selected languages are numbered in the order they are saved in
+        function numberLanguages() {
+            $("#langpicker .langchip").removeAttr("data-order");
+            $("#langpicker .langchip.btn-primary").each(function(index) {
+                $(this).attr("data-order", index + 1);
+            });
+        }
+        numberLanguages();
+
+        // imp_preflang keeps the saved value until the user changes the picker,
+        // so saving other settings doesn't rewrite the language list
+        function updatePreflang() {
+            numberLanguages();
+            const codes = [];
+            $("#langpicker .langchip.btn-primary").each(function() {
+                codes.push(...String($(this).data("codes")).split(","));
+            });
+            const seen = new Set();
+            const unique = codes.map(code => code.trim()).filter(code => {
+                const key = code.toLowerCase();
+                if (!code || seen.has(key)) {
+                    return false;
+                }
+                seen.add(key);
+                return true;
+            });
+            $("#imp_preflang").val(unique.join(", "));
+            $(".searchlang").each(function() { updateSearchSummary($(this)); });
+        }
+
+        // turn a chip on or off, selected chips stay first in the order they were picked
+        function toggleChip(chip) {
+            const selected = !chip.hasClass("btn-primary");
+            if (selected) {
+                const last = chip.siblings(".langchip.btn-primary").last();
+                if (last.length) {
+                    chip.insertAfter(last);
+                } else {
+                    chip.prependTo(chip.parent());
+                }
+            }
+            chip.toggleClass("btn-primary", selected).toggleClass("btn-default", !selected)
+                .attr("aria-pressed", selected ? "true" : "false");
+        }
+
+        // delegated, so codes added below work like the other chips
+        $("#langpicker").on("click", ".langchip", function() {
+            toggleChip($(this));
+            updatePreflang();
+        });
+
+        // What Annas Archive ('anna') or Z-Library ('zlib') search when they are automatic, as names,
+        // matching anna_search_languages() and zlib_search_languages(). Empty means all languages.
+        function autoLanguages(source) {
+            const chips = $("#langpicker .langchip.btn-primary");
+            const all = chips.filter(function() { return String($(this).data("codes")).toLowerCase() === "all"; });
+            // All, Unknown and codes the picker doesn't know have no Z-Library name, they aren't
+            // languages of either site
+            const languages = chips.filter(function() { return $(this).data("zlib"); });
+            // a language Annas Archive doesn't support searches all languages, so it isn't dropped
+            const unsupported = source === "anna" && languages.filter(function() { return !$(this).data("anna"); }).length;
+            if (all.length || unsupported) {
+                return [];
+            }
+            return languages.map(function() { return $(this).text().trim(); }).get();
+        }
+
+        // The Annas Archive and Z-Library fields keep the saved value until their picker changes.
+        // Empty is automatic (the Import languages), ANY is all languages, else what is picked.
+        function updateSearchSummary(group) {
+            const value = $(group.data("field")).val().trim();
+            let text;
+            if (!value) {
+                const langs = autoLanguages(group.data("source"));
+                text = group.data("auto").replace("%s", langs.length ? langs.join(", ") : group.data("all"));
+            } else if (value.split(",").some(item => item.trim().toUpperCase() === "ANY")) {
+                text = group.data("all");
+            } else {
+                const labels = group.find(".langchip.btn-primary").map(function() { return $(this).text().trim(); }).get();
+                text = group.data("custom").replace("%s", labels.length ? labels.join(", ") : value);
+            }
+            group.find(".searchlang-text").text(text);
+        }
+
+        $(".searchlang").each(function() {
+            const group = $(this);
+            const field = $(group.data("field"));
+            const chips = () => group.find(".langchip");
+            function setValue(value) {
+                field.val(value);
+                updateSearchSummary(group);
+            }
+            group.find(".searchlang-change").on("click", function(e) {
+                e.preventDefault();
+                const editor = group.find(".searchlang-editor");
+                editor.toggleClass("hidden");
+                $(this).attr("aria-expanded", editor.hasClass("hidden") ? "false" : "true");
+            });
+            group.find(".langpicker").on("click", ".langchip", function() {
+                toggleChip($(this));
+                // no language picked is automatic again
+                setValue(chips().filter(".btn-primary").map(function() { return $(this).data("value"); }).get().join(", "));
+            });
+            function clearChips() {
+                chips().filter(".btn-primary").each(function() { toggleChip($(this)); });
+            }
+            group.find(".searchlang-any").on("click", function() {
+                clearChips();
+                setValue("ANY");
+            });
+            group.find(".searchlang-auto").on("click", function() {
+                clearChips();
+                setValue("");
+                group.find(".searchlang-editor").addClass("hidden");
+                group.find(".searchlang-change").attr("aria-expanded", "false");
+            });
+            updateSearchSummary(group);
+        });
+
+        // a code the picker doesn't know becomes a chip of its own, Enter must not submit the form
+        $("#langpicker_add").on("keydown", function(e) {
+            if (e.key !== "Enter") {
+                return;
+            }
+            e.preventDefault();
+            const code = $(this).val().replace(/,/g, " ").trim();
+            $(this).val("");
+            if (!code) {
+                return;
+            }
+            const existing = $("#langpicker .langchip").filter(function() {
+                return String($(this).data("codes")).split(",").some(item => item.trim().toLowerCase() === code.toLowerCase());
+            });
+            if (existing.length) {
+                if (!existing.first().hasClass("btn-primary")) {
+                    existing.first().removeClass("hidden").trigger("click");
+                }
+                return;
+            }
+            $("<button>", {type: "button", "class": "btn btn-default langchip", title: code, "aria-pressed": "false"})
+                .attr({"data-codes": code, "data-anna": "", "data-zlib": ""}).text(code)
+                .insertBefore($(this).parent()).trigger("click");
+        });
+
+        // GoogleBooks countries are sent as codes, show their names in the UI language, sorted by name
+        try {
+            const regions = new Intl.DisplayNames([document.documentElement.lang, "en"], {type: "region"});
+            const select = $("#gb_country");
+            const options = select.find("option").filter(function() { return this.value; });
+            options.each(function() {
+                $(this).text(regions.of(this.value) + " (" + this.value + ")");
+            });
+            options.sort((a, b) => a.text.localeCompare(b.text, document.documentElement.lang)).appendTo(select);
+        } catch (e) {
+            // older browsers keep the codes
+        }
+
+        // used by the import, search and month name language pickers
+        $(".langpicker-more a").on("click", function(e) {
+            e.preventDefault();
+            const label = $(this).find("span");
+            const more = $($(this).data("picker")).find(".langchip-more");
+            const showing = $(this).find("i").hasClass("fa-chevron-down");
+            // languages selected while expanded stay visible
+            more.filter(showing ? "*" : ":not(.btn-primary)").toggleClass("hidden", !showing);
+            const text = label.text();
+            label.text($(this).data("less"));
+            $(this).data("less", text);
+            $(this).find("i").toggleClass("fa-chevron-down", !showing).toggleClass("fa-chevron-up", showing);
+        });
+    }
+
+    function initMonthLanguagePicker()
+    {
+        "use strict";
+        // Each language is in the month table twice, a column of long names then one of short names.
+        // The Languages field shows it once, config_update() doubles it again.
+        // The fields are read on every click, so hand edits to the table are kept.
+        function readTable() {
+            const table = [];
+            for (let row = 0; row <= 12; row++) {
+                table.push($("#month_" + row).val().split(",").map(item => item.trim()).filter(item => item));
+            }
+            if (table[0].length * 2 === table[1].length) {
+                table[0] = table[0].flatMap(lang => [lang, lang]);
+            }
+            return table;
+        }
+        function writeTable(table) {
+            const doubled = table[0].length === table[1].length;
+            table.forEach((items, row) => {
+                $("#month_" + row).val((row === 0 && doubled ? items.filter((item, idx) => idx % 2 === 0) : items).join(", "));
+            });
+        }
+        // data-seasons is "name:month,name:month", the season fields are season_<month>
+        function seasonNames(chip) {
+            return (chip.attr("data-seasons") || "").split(",").filter(item => item).map(item => {
+                const [name, month] = item.split(":");
+                return {name: name, month: month};
+            });
+        }
+        function seasonFields() {
+            return $("#monthlangpicker").closest("form").find("input[id^='season_']");
+        }
+        function addSeasons(chip) {
+            const present = new Set();
+            seasonFields().each(function() {
+                $(this).val().split(",").forEach(item => present.add(item.trim().toLowerCase()));
+            });
+            seasonNames(chip).forEach(season => {
+                const field = $("#season_" + season.month);
+                if (field.length && !present.has(season.name)) {
+                    const current = field.val().trim();
+                    field.val((current ? current + ", " : "") + season.name);
+                    present.add(season.name);
+                }
+            });
+        }
+        function removeSeasons(chip) {
+            // a name another switched on language uses too stays, e.g. winter is English, German and Dutch
+            const kept = new Set();
+            $("#monthlangpicker .langchip.btn-primary").not(chip).each(function() {
+                seasonNames($(this)).forEach(season => kept.add(season.name));
+            });
+            const removed = new Set(seasonNames(chip).map(season => season.name).filter(name => !kept.has(name)));
+            seasonFields().each(function() {
+                const items = $(this).val().split(",").map(item => item.trim()).filter(item => item);
+                $(this).val(items.filter(item => !removed.has(item.toLowerCase())).join(", "));
+            });
+        }
+
+        // Issue, volume and magazine title words, author name suffixes and articles,
+        // each chip has them in data-<field id>
+        const wordFields = ["issue_nouns", "volume_nouns", "mag_nouns", "name_postfix", "name_definite"];
+        function chipWords(chip, field) {
+            return (chip.attr("data-" + field) || "").split(",").filter(item => item);
+        }
+        function addWords(chip) {
+            wordFields.forEach(field => {
+                const input = $("#" + field);
+                const items = input.val().split(",").map(item => item.trim()).filter(item => item);
+                const present = new Set(items.map(item => item.toLowerCase()));
+                chipWords(chip, field).forEach(word => {
+                    if (!present.has(word)) {
+                        items.push(word);
+                        present.add(word);
+                    }
+                });
+                input.val(items.join(", "));
+            });
+        }
+        function removeWords(chip) {
+            // a word another switched on language uses too stays, e.g. nr is German, Dutch and Polish
+            wordFields.forEach(field => {
+                const kept = new Set();
+                $("#monthlangpicker .langchip.btn-primary").not(chip).each(function() {
+                    chipWords($(this), field).forEach(word => kept.add(word));
+                });
+                const removed = new Set(chipWords(chip, field).filter(word => !kept.has(word)));
+                const input = $("#" + field);
+                const items = input.val().split(",").map(item => item.trim()).filter(item => item);
+                input.val(items.filter(item => !removed.has(item.toLowerCase())).join(", "));
+            });
+        }
+
+        $("#monthlangpicker .langchip").on("click", function() {
+            const chip = $(this);
+            const locale = String(chip.data("locale"));
+            const selected = !chip.hasClass("btn-primary");
+            const table = readTable();
+            if (selected) {
+                const long = chip.attr("data-long").split(",");
+                const short = chip.attr("data-short").split(",");
+                table[0].push(locale, locale);
+                for (let month = 1; month <= 12; month++) {
+                    table[month].push(long[month - 1], short[month - 1]);
+                }
+                $("#date_lang").append($("<option>").val(locale).attr("title", locale).text(chip.text().trim()));
+                addSeasons(chip);
+                addWords(chip);
+                // keep selected languages in the order they are in the table
+                const last = $("#monthlangpicker .langchip.btn-primary").last();
+                if (last.length) {
+                    chip.insertAfter(last);
+                } else {
+                    chip.prependTo("#monthlangpicker");
+                }
+            } else {
+                if ($("#monthlangpicker .langchip.btn-primary").length < 2) {
+                    return;
+                }
+                const lower = locale.toLowerCase();
+                const keep = table[0].map((item, idx) => item.toLowerCase() === lower ? -1 : idx).filter(idx => idx >= 0);
+                // remember the names as they were in the table, so switching back on restores them
+                const first = table[0].findIndex(item => item.toLowerCase() === lower);
+                if (first >= 0 && first + 1 < table[0].length) {
+                    chip.attr("data-long", table.slice(1).map(items => items[first]).join(","));
+                    chip.attr("data-short", table.slice(1).map(items => items[first + 1]).join(","));
+                }
+                for (let row = 0; row <= 12; row++) {
+                    table[row] = keep.map(idx => table[row][idx]);
+                }
+                removeSeasons(chip);
+                removeWords(chip);
+                const dateLang = $("#date_lang");
+                dateLang.find("option").filter(function() { return this.value.toLowerCase() === lower; }).remove();
+                if (!dateLang.val()) {
+                    dateLang.val(dateLang.find("option").first().val());
+                }
+            }
+            writeTable(table);
+            chip.toggleClass("btn-primary", selected).toggleClass("btn-default", !selected)
+                .attr("aria-pressed", selected ? "true" : "false");
         });
     }
 </script>

@@ -4,31 +4,32 @@
     from lazylibrarian.config2 import CONFIG
 %>
 <%def name="headerIncludes()">
-    <button class="hidden" onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> Searching, please wait...</button>
+    <button class="hidden" onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Searching, please wait...')}</button>
     <div id="subhead_container" class="row">
+          <a href="book_detail?bookid=${config['BookID']}" class="btn btn-sm btn-primary"><i class="fa fa-info-circle"></i> ${_('Detail')}</a>
+          %if perm&lazylibrarian.perm_force:
+          <a href="refresh_book?bookid=${config['BookID']}" class="btn btn-sm btn-primary"><i class="fa fa-sync"></i> ${_('Refresh Book')}</a>
+          %endif
           <form action="booksearch" method="get" class="form-inline">
             <div class="indented">
             <input type="hidden" name="bookid" value=${config['BookID']}>
             <input type="hidden" name="title" value="${config['BookName']}">
             <input type="hidden" name="author" value="${config['AuthorName']}">
             <div class="form-group">
-              <label for="action" class="control-label">Searches: </label>
+              <label for="action" class="control-label">${_('Searches:')} </label>
               <select class="booksearch form-control input-sm" id="action" name="action">
-                // would be nice to use fontawesome icons here but options are not styleable
-                // and some browsers don't show them, eg linux firefox, android chrome
-                // They only show icons on closed select, not in dropdown
-                <option value="e_full">eBook Title/Author</option>
-                <option value="e_title">eBook Title</option>
-                <option value="e_author">eBook Author</option>
-                <option value="g_full">General Search</option>
+                <option value="e_full">${_('eBook Title/Author')}</option>
+                <option value="e_title">${_('eBook Title')}</option>
+                <option value="e_author">${_('eBook Author')}</option>
+                <option value="g_full">${_('General Search')}</option>
                 % if CONFIG.get_int('AUDIO_TAB') != 0:
-                  <option value="a_full">Audio Title/Author</option>
-                  <option value="a_title">Audio Title</option>
-                  <option value="a_author">Audio Author</option>
+                  <option value="a_full">${_('Audio Title/Author')}</option>
+                  <option value="a_title">${_('Audio Title')}</option>
+                  <option value="a_author">${_('Audio Author')}</option>
                 % endif
               </select>
             </div>
-            <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">Search</button>
+            <button type="submit" class="btn btn-sm btn-primary" onclick="validateForm()">${_('Search')}</button>
             </div>
           </form>
     </div>
@@ -43,7 +44,7 @@
         <input name="utf8" type="hidden" value="&#x2713;" />
         <legend>${title}</legend>
         <div class="form-group">
-            <label for="moveBook" class="control-label">Change author to: </label>
+            <label for="moveBook" class="control-label">${_('Change author to:')} </label>
             <select id="moveBook" class="moveBook form-control input" name="authorname">
             %for item in authors:
                 <option value="${item['AuthorName']}"
@@ -59,65 +60,65 @@
             <input type="text" id="bookid" name="bookid" value="${config['BookID']}" class="hidden">
         </div>
         <div class="form-group">
-            <label for="bookname" class="control-label">Book Title:</label>
+            <label for="bookname" class="control-label">${_('Book Title:')}</label>
             <input type="text" id="bookname" name="bookname" value="${config['BookName']}" class="form-control" placeholder="">
         </div>
         <div class="form-group">
-            <label for="booksub" class="control-label">Subtitle:</label>
+            <label for="booksub" class="control-label">${_('Subtitle:')}</label>
             <input type="text" id="booksub" name="booksub" value="${config['BookSub']}" class="form-control" placeholder="">
         </div>
         <div class="form-group">
-            <label for="bookgenre" class="control-label">Genre:</label>
-            <input type="text" id="bookgenre" name="bookgenre" value="${config['BookGenre']}" class="form-control" placeholder="Comma separated list of genres">
+            <label for="bookgenre" class="control-label">${_('Genre:')}</label>
+            <input type="text" id="bookgenre" name="bookgenre" value="${config['BookGenre']}" class="form-control" placeholder="${_('Comma separated list of genres') | h}">
         </div>
         %if 'narrator' in config:
         <div class="form-group">
-            <label for="narrator" class="control-label">Narrator:</label>
-            <input type="text" id="narrator" name="narrator" value="${config['narrator']}" class="form-control" placeholder="Audiobook narrator">
+            <label for="narrator" class="control-label">${_('Narrator:')}</label>
+            <input type="text" id="narrator" name="narrator" value="${config['narrator']}" class="form-control" placeholder="${_('Audiobook narrator') | h}">
         </div>
         %endif
         <div class="form-group">
-            <label for="scanresult">Added by</label>
-            <input id="scanresult" name="scanresult" class="form-control" placeholder="Reason for adding/rejecting"
+            <label for="scanresult">${_('Added by')}</label>
+            <input id="scanresult" name="scanresult" class="form-control" placeholder="${_('Reason for adding/rejecting') | h}"
                        value="${config['BookAdded']} ${config['ScanResult']}" readonly >
         </div>
         <div class="form-group">
-            <label for="importfrom" class="control-label">Import from</label>
-            <input type="text" id="importfrom" name="importfrom" value="" class="form-control" placeholder="Manual import folder">
+            <label for="importfrom" class="control-label">${_('Import from')}</label>
+            <input type="text" id="importfrom" name="importfrom" value="" class="form-control" placeholder="${_('Manual import folder') | h}">
         </div>
         <fieldset  class="form-group">
           <div class="form-group col-md-6">
-            <label for="booklang" class="control-label">Language:</label>
+            <label for="booklang" class="control-label">${_('Language:')}</label>
             <input type="text" id="booklang" name="booklang" value="${config['BookLang']}" class="form-control" placeholder="">
           </div>
           <div class="form-group col-md-6">
-            <label for="bookdate" class="control-label">Publication Date:</label>
-            <input type="text" id="bookdate" name="bookdate" value="${config['BookDate']}" class="form-control" placeholder="Publication Date (YYYY or YYYY-MM-DD)">
+            <label for="bookdate" class="control-label">${_('Publication Date:')}</label>
+            <input type="text" id="bookdate" name="bookdate" value="${config['BookDate']}" class="form-control" placeholder="${_('Publication Date (YYYY or YYYY-MM-DD)') | h}">
           </div>
         </fieldset>
         <fieldset  class="form-group">
           <div class="form-group col-md-6">
-              <label for="bookisbn" class="control-label">ISBN:</label>
-              <input type="text" id="bookisbn" name="bookisbn" value="${config['BookIsbn']}" class="form-control" placeholder="ISBN10 or ISBN13">
+              <label for="bookisbn" class="control-label">${_('ISBN:')}</label>
+              <input type="text" id="bookisbn" name="bookisbn" value="${config['BookIsbn']}" class="form-control" placeholder="${_('ISBN10 or ISBN13') | h}">
           </div>
           <div class="form-group col-md-6">
-              <label for="workid" class="control-label">WorkID:</label>
+              <label for="workid" class="control-label">${_('WorkID:')}</label>
               <input type="text" id="workid" name="workid" value="${config['WorkID']}" class="form-control" placeholder="">
           </div>
           <div class="form-group col-md-6">
-              <label for="grid" class="control-label">GoodReads:</label>
+              <label for="grid" class="control-label">${_('GoodReads:')}</label>
               <input type="text" id="grid" name="grid" value="${config['gr_id']}" class="form-control" placeholder="" readonly>
           </div>
           <div class="form-group col-md-6">
-              <label for="olid" class="control-label">OpenLibrary:</label>
+              <label for="olid" class="control-label">${_('OpenLibrary:')}</label>
               <input type="text" id="olid" name="olid" value="${config['ol_id']}" class="form-control" placeholder="" readonly>
           </div>
           <div class="form-group col-md-6">
-              <label for="gbid" class="control-label">GoogleBooks:</label>
+              <label for="gbid" class="control-label">${_('GoogleBooks:')}</label>
               <input type="text" id="gbid" name="gbid" value="${config['gb_id']}" class="form-control" placeholder="" readonly>
           </div>
           <div class="form-group col-md-6">
-              <label for="gbid" class="control-label">HardCover:</label>
+              <label for="gbid" class="control-label">${_('HardCover:')}</label>
               <input type="text" id="hcid" name="hcid" value="${config['hc_id']}" class="form-control" placeholder="" readonly>
           </div>
         </fieldset>
@@ -125,17 +126,17 @@
             %for item in seriesdict:
               <div class="form-group col-md-6">
                 <label for="series[${loop.index}][name]" class="control-label">
-                Book Series ${loop.index}</label>
-                <input type="text" id="series[${loop.index}][name]" name="series[${loop.index}][name]" value="${item['SeriesName']}" class="form-control" placeholder="Series Name">
+                ${_('Book Series %(number)s') % {'number': loop.index}}</label>
+                <input type="text" id="series[${loop.index}][name]" name="series[${loop.index}][name]" value="${item['SeriesName']}" class="form-control" placeholder="${_('Series Name') | h}">
               </div>
               <div class="form-group col-md-6">
                 <label for="series[${loop.index}][number]" class="control-label">&nbsp;</label>
-                <input type="text" id="series[${loop.index}][number]" name="series[${loop.index}][number]" value="${item['SeriesNum']}" class="form-control" placeholder="Number">
+                <input type="text" id="series[${loop.index}][number]" name="series[${loop.index}][number]" value="${item['SeriesNum']}" class="form-control" placeholder="${_('Number') | h}">
               </div>
             %endfor
             <body>
             <div class="form-group">
-                <label for="series" class="control-label">Add to Existing Author Series: </label>
+                <label for="series" class="control-label">${_('Add to Existing Author Series:')} </label>
                 <select id="series" class="form-control input" name="series">
                 %for item in series:
                     <option value="${item['SeriesName']}"
@@ -145,8 +146,8 @@
             </div>
             <div class="form-group col-md-6">
             <label for="series[new][name]" class="control-label">
-            New Series </label>
-            <input type="text" id="series[new][name]" name="series[new][name]" value="" class="form-control" placeholder="Series Name">
+            ${_('New Series')} </label>
+            <input type="text" id="series[new][name]" name="series[new][name]" value="" class="form-control" placeholder="${_('Series Name') | h}">
             </div>
             <script type="text/javascript">
                 $('#series').on('change', 'select', function() {
@@ -156,13 +157,13 @@
             </body>
             <div class="form-group col-md-6">
             <label for="series[new][name]" class="control-label">&nbsp;</label>
-            <input type="text" id="series[new][number]" name="series[new][number]" value="" class="form-control" placeholder="Number">
+            <input type="text" id="series[new][number]" name="series[new][number]" value="" class="form-control" placeholder="${_('Number') | h}">
             </div>
         </div>
         <div class="form-group">
           <!--div><p>${config['BookDesc']}</p></div-->
-          <label for="summernote" class="control-label">Book Description</label>
-          <textarea id="summernote" name="editordata" class="form-control" rows="10" placeholder="Nothing to see here...">${config['BookDesc']}</textarea>
+          <label for="summernote" class="control-label">${_('Book Description')}</label>
+          <textarea id="summernote" name="editordata" class="form-control" rows="10" placeholder="${_('Nothing to see here...') | h}">${config['BookDesc']}</textarea>
         </div>
         <div class="form-group">
             <table class="display table table-bordered" id="book_table">
@@ -176,7 +177,7 @@
               <tbody>
                 <tr>
                 %for item in covers:
-                  <td class="bookart text-center"><a href="${item[1]}" target="_blank" rel="noreferrer"><img src="${item[1]}" alt="cover" class="bookcover-sm"></a><br></td>
+                  <td class="bookart text-center"><a href="${item[1]}" target="_blank" rel="noreferrer"><img src="${item[1]}" alt="${_('cover') | h}" class="bookcover-sm"></a><br></td>
                 %endfor
                 </tr>
               </tbody>
@@ -184,7 +185,7 @@
         </div>
         <div class="form-group">
             %if len(covers) > 0:
-                <label for="changeCover" class="control-label">Change cover to: </label>
+                <label for="changeCover" class="control-label">${_('Change cover to:')} </label>
                 <select id="changeCover" class="changeCover form-control input" name="cover">
                 %for item in covers:
                     <option value="${item[0]}"
@@ -196,11 +197,11 @@
                 </select>
             %endif
             %if len(covers) == 0:
-                <a class="btn-success btn" onclick="$('#myAlert').removeClass('hidden')" href="edit_book?bookid=${config['BookID']}&images=True&library=${config['library']}">Find Images</a>
+                <a class="btn-success btn" onclick="$('#myAlert').removeClass('hidden')" href="edit_book?bookid=${config['BookID']}&images=True&library=${config['library']}">${_('Find Images')}</a>
             %endif
         </div>
         %if replaces:
-          <legend>OPF Fields</legend>
+          <legend>${_('OPF Fields')}</legend>
           %for item in replaces:
             <div class="input-group">
             <span class="input-group-addon">${item[0]}</span>
@@ -217,10 +218,10 @@
             %>
             <label for="manual" class="control-label">
             <input type="checkbox" id="manual" name="manual" value="1" ${checked} />
-            Lock settings</label>
+            ${_('Lock settings')}</label>
         </div>
         <div class="table_wrapper_button">
-          <input type="submit" value="Save changes" id="add" class="btn btn-primary">
+          <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
         </div>
         <p>&nbsp;</p>
     </div>

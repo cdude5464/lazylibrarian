@@ -13,7 +13,6 @@
 # Purpose:
 #   Contains global startup and initialization code for LL
 
-import calendar
 import contextlib
 import json
 import locale
@@ -23,6 +22,7 @@ import sqlite3
 import subprocess
 import sys
 import tarfile
+import threading
 import time
 import traceback
 from shutil import move, rmtree
@@ -33,18 +33,19 @@ import requests
 import urllib3
 
 import lazylibrarian
-from lazylibrarian import database, dnb, gb, gr, hc, ol, versioncheck
+from lazylibrarian import bn, database, dbk, dnb, gb, gr, hc, ol, ran, versioncheck
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url, init_hex_caches
 from lazylibrarian.cleanup import UNBUNDLER
-from lazylibrarian.common import docker, log_header
+from lazylibrarian.common import docker, log_header, validate_monthtable
 from lazylibrarian.config2 import CONFIG, LLConfigHandler
 from lazylibrarian.configtypes import ConfigDict
 from lazylibrarian.dbupgrade import check_db, db_current_version, db_upgrade, upgrade_needed
 from lazylibrarian.filesystem import DIRS, path_isdir, path_isfile, remove_file, syspath
-from lazylibrarian.formatter import check_int, get_list, make_unicode, unaccented
+from lazylibrarian.formatter import check_int, make_unicode, unaccented
 from lazylibrarian.logconfig import LOGCONFIG
 from lazylibrarian.notifiers import APPRISE_VER
+from lazylibrarian.oldump import set_global_ol_counters
 from lazylibrarian.providers import get_capabilities
 from lazylibrarian.scheduling import (
     SchedulerCommand,
@@ -53,6 +54,16 @@ from lazylibrarian.scheduling import (
     shutdownscheduler,
     startscheduler,
 )
+
+
+def prioritized_infosources():
+    """lazylibrarian.INFOSOURCES items with the user's configured primary metadata
+    source (CONFIG['BOOK_API']) moved to the front - the fallback priority order used
+    wherever no author has an explicit PrimarySource set (editauthor.html/author.html/
+    author_detail.html's linkable_sources, webServe.py's author-list badge). Preserves
+    INFOSOURCES' own relative order for everything else."""
+    book_api = CONFIG.get_str('BOOK_API')
+    return sorted(lazylibrarian.INFOSOURCES.items(), key=lambda kv: kv[0] != book_api)
 
 
 class StartupLazyLibrarian:
@@ -76,10 +87,11 @@ class StartupLazyLibrarian:
             pass
 
         # for OSes that are poorly configured I'll just force UTF-8
-        # windows cp1252 can't handle some accented author names,
-        # eg "Marie Kondō" U+014D: LATIN SMALL LETTER O WITH MACRON, but utf-8 does
+        # windows ansi codepages (cp1252, cp1250 etc.) can't handle some accented author names,
+        # eg "Marie Kondō" U+014D: LATIN SMALL LETTER O WITH MACRON, or "Karel Čapek" on cp1252,
+        # but utf-8 does, and python uses utf-8 for windows filenames anyway
         if not lazylibrarian.SYS_ENCODING or lazylibrarian.SYS_ENCODING in (
-                'ANSI_X3.4-1968', 'US-ASCII', 'ASCII') or '1252' in lazylibrarian.SYS_ENCODING:
+                'ANSI_X3.4-1968', 'US-ASCII', 'ASCII') or os.name == 'nt':
             lazylibrarian.SYS_ENCODING = 'UTF-8'
 
         # Set arguments
@@ -181,7 +193,7 @@ class StartupLazyLibrarian:
             # This is the "emergency recovery" update in case lazylibrarian won't start.
             # Set up some dummy values for the update as we have not read the config file yet
             CONFIG.reset_to_default([
-                'GIT_PROGRAM', 'GIT_USER', 'GIT_REPO', 'USER_AGENT', 'HTTP_TIMEOUT', 'PROXY_HOST',
+                'GIT_PROGRAM', 'GIT_USER', 'GIT_REPO', 'HTTP_TIMEOUT', 'PROXY_HOST',
                 'SSL_CERTS', 'SSL_VERIFY', 'LOGLIMIT', 'BACKUP_DB', 'GIT_PROJECT',
             ])
             DIRS.ensure_cache_dir()
@@ -238,6 +250,7 @@ class StartupLazyLibrarian:
         else:
             logger.warning("Did not find Apprise notifications library")
             CONFIG.set_bool('HIDE_OLD_NOTIFIERS', False)
+        threading.Thread(target=set_global_ol_counters, name='OL_COUNTERS').start()
 
     def init_caches(self, config: LLConfigHandler):
         # override detected encoding if required
@@ -271,6 +284,7 @@ class StartupLazyLibrarian:
         lazylibrarian.TIMERS['SLEEP_BOK'] = 0.0
         lazylibrarian.TIMERS['LAST_HC'] = time_now
         lazylibrarian.TIMERS['SLEEP_HC'] = 0.0
+        lazylibrarian.TIMERS['LAST_GLANG'] = 0
 
     def init_database(self):
         # Initialize the database
@@ -278,11 +292,13 @@ class StartupLazyLibrarian:
         try:
             result = db.match('PRAGMA user_version')
             check = db.match('PRAGMA integrity_check')
+            dbfile = db.match('PRAGMA database_list')
             if result:
                 version = result[0]
             else:
                 version = 0
             self.logger.info(f"Database is v{version}, integrity check: {check[0]}")
+            self.logger.info(f"Database {dict(dbfile)}")
         except Exception as e:
             self.logger.error(f"Can't connect to the database: {type(e).__name__} {str(e)}")
             sys.exit(0)
@@ -321,24 +337,50 @@ class StartupLazyLibrarian:
         lazylibrarian.GRGENRES = self.build_genres()
         lazylibrarian.DICTS = self.build_dicts()
         lazylibrarian.MONTHNAMES, lazylibrarian.SEASONS = self.build_monthtable(config)
-        lazylibrarian.NEWUSER_MSG = self.build_logintemplate()
-        lazylibrarian.NEWFILE_MSG = self.build_filetemplate()
         lazylibrarian.BOOKSTRAP_THEMELIST = self.build_bookstrap_themes(DIRS.PROG_DIR)
         lazylibrarian.INFOSOURCES = self.build_sources()
 
     @staticmethod
     def build_sources():
+        # Dict insertion order here is the fallback priority order wherever code walks
+        # INFOSOURCES looking for "the" source with no other guidance. Keep OpenLibrary
+        # first - it's the only source usable without an API key, so this is the one
+        # order that's sane for every install regardless of which sources a given user
+        # actually has configured/populated (a previous attempt hardcoded GoodReads
+        # first on the reasoning that "almost every author is GoodReads-imported" here -
+        # that doesn't generalise to other users' libraries, see upstream !1867 review).
         info_sources = {
                 'OpenLibrary': {'src': 'OL', 'author_key': 'ol_id', 'book_key': 'ol_id', 'enabled': 'OL_API',
-                                'api': ol.OpenLibrary, 'has_subs': 0},
+                                'api': ol.OpenLibrary, 'has_subs': 0,
+                                'author_link': 'ol_link', 'author_about': 'ol_about',
+                                'link_template': 'https://openlibrary.org/works/{}'},
                 'GoodReads': {'src': 'GR', 'author_key': 'gr_id', 'book_key': 'gr_id', 'enabled': 'GR_API',
-                              'api': gr.GoodReads, 'has_subs': 0},
+                              'api': gr.GoodReads, 'has_subs': 0,
+                              'author_link': 'gr_link', 'author_about': 'gr_about',
+                              'link_template': 'https://www.goodreads.com/book/show/{}'},
                 'HardCover': {'src': 'HC', 'author_key': 'hc_id', 'book_key': 'hc_id', 'enabled': 'HC_API',
-                              'api': hc.HardCover, 'has_subs': 1},
+                              'api': hc.HardCover, 'has_subs': 1,
+                              'author_link': 'hc_link', 'author_about': 'hc_about'},
                 'GoogleBooks': {'src': 'GB', 'author_key': 'authorid', 'book_key': 'gb_id', 'enabled': 'GB_API',
-                                'api': gb.GoogleBooks, 'has_subs': 1},
+                                'api': gb.GoogleBooks, 'has_subs': 1,
+                                'author_link': None, 'author_about': None,
+                                'link_template': 'https://books.google.com/books?id={}'},
                 'DNB': {'src': 'DN', 'author_key': 'authorid', 'book_key': 'dnb_id', 'enabled': 'DNB_API',
-                        'api': dnb.DNB, 'has_subs': 1},
+                        'api': dnb.DNB, 'has_subs': 1,
+                        'author_link': None, 'author_about': None,
+                        'link_template': 'https://d-nb.info/{}'},
+                'BN': {'src': 'BN', 'author_key': 'authorid', 'book_key': 'bn_id', 'enabled': 'BN_API',
+                       'api': bn.BN, 'has_subs': 1,
+                       'author_link': None, 'author_about': None,
+                       'link_template': 'https://katalogi.bn.org.pl/discovery/search?query=any,contains,{}'
+                                        '&vid=48OMNIS_NLOP:48OMNIS_NLOP'},
+                'DBK': {'src': 'DBK', 'author_key': 'dbk_id', 'book_key': 'dbk_id', 'enabled': 'DBK_API',
+                        'api': dbk.DBK, 'has_subs': 1,
+                        'author_link': 'dbk_link', 'author_about': 'dbk_about',
+                        'link_template': 'https://www.databazeknih.cz/prehled-knihy/kniha-{}'},
+                'RanobeDB': {'src': 'RA', 'author_key': 'ran_id', 'book_key': 'ran_id', 'enabled': 'RAN_API',
+                        'api': ran.RanobeDB, 'has_subs': 0,
+                        'author_link': 'ran_link', 'author_about': 'ran_about'},
                 }
         adminlogger = logging.getLogger('special.admin')
         adminlogger.debug(info_sources)
@@ -403,45 +445,6 @@ class StartupLazyLibrarian:
 
         self.logger.info(f"Bookstrap found {len(themelist)} themes")
         return themelist
-
-    def build_logintemplate(self):
-        default_msg = "Your lazylibrarian username is {username}\nYour password is {password}\n"
-        default_msg += "You can log in to lazylibrarian and change these to something more memorable\n"
-        default_msg += "You have been given {permission} access\n"
-        msg_file = os.path.join(DIRS.DATADIR, 'logintemplate.text')
-        if path_isfile(msg_file):
-            try:
-                # noinspection PyArgumentList
-                with open(syspath(msg_file), encoding='utf-8') as msg_data:
-                    res = msg_data.read()
-                for item in ["{username}", "{password}", "{permission}"]:
-                    if item not in res:
-                        self.logger.warning(f"Invalid login template in {msg_file}, no {item}")
-                        return default_msg
-                self.logger.info(f"Loaded login template from {msg_file}")
-                return res
-            except Exception as e:
-                self.logger.error(f'Failed to load {msg_file}, {type(e).__name__} {str(e)}')
-        self.logger.debug("Using default login template")
-        return default_msg
-
-    def build_filetemplate(self):
-        default_msg = "{name}{method}{link}"
-        msg_file = os.path.join(DIRS.DATADIR, 'filetemplate.text')
-        if path_isfile(msg_file):
-            try:
-                with open(syspath(msg_file), encoding='utf-8') as msg_data:
-                    res = msg_data.read()
-                for item in ["{name}", "{method}", "{link}"]:
-                    if item not in res:
-                        self.logger.warning(f"Invalid attachment template in {msg_file}, no {item}")
-                        return default_msg
-                self.logger.info(f"Loaded attachment template from {msg_file}")
-                return res
-            except Exception as e:
-                self.logger.error(f'Failed to load {msg_file}, {type(e).__name__} {str(e)}')
-        self.logger.debug("Using default attachment template")
-        return default_msg
 
     def build_genres(self):
         for json_file in [os.path.join(DIRS.DATADIR, 'genres.json'),
@@ -509,7 +512,7 @@ class StartupLazyLibrarian:
         self.logger.debug('No valid dicts.json file found, using defaults')
         return {"filename_dict": {'<': '', '>': '', '...': '', ' = ': ' ', '?': '', '$': 's', '|': '',
                                   ' + ': ' ', '"': '', ',': '', '*': '', ':': '', ';': '', '\'': '', '/': '_',
-                                  '\\\\': '\\'},
+                                  '\\': ''},
                 "apostrophe_dict": quotes
                 }
 
@@ -520,7 +523,7 @@ class StartupLazyLibrarian:
         json_file = os.path.join(DIRS.DATADIR, 'seasons.json')
         if path_isfile(json_file):
             try:
-                with open(syspath(json_file)) as json_data:
+                with open(syspath(json_file), encoding='utf-8') as json_data:
                     seasons = json.load(json_data)
                 self.logger.debug(f'Loaded seasons.json : {seasons}')
             except Exception as e:
@@ -533,19 +536,24 @@ class StartupLazyLibrarian:
         json_file = os.path.join(DIRS.DATADIR, 'monthnames.json')
         if path_isfile(json_file):
             try:
-                with open(syspath(json_file)) as json_data:
+                with open(syspath(json_file), encoding='utf-8') as json_data:
                     table = json.load(json_data)
                 mlist = ''
-                # only print alternate entries as each language is in twice (long and short month names)
-                for item in table[0][::2]:
-                    mlist += f"{item} "
-                self.logger.debug(f'Loaded monthnames.json : {mlist}')
+                if not validate_monthtable(table):
+                    self.logger.error("monthnames.json is invalid")
+                    table = []
+                if table:
+                    # only print alternate entries as each language is in twice (long and short month names)
+                    for item in table[0][::2]:
+                        mlist += f"{item} "
+                    self.logger.debug(f'Loaded monthnames.json : {mlist}')
             except Exception as e:
                 self.logger.error(f'Failed to load monthnames.json, {type(e).__name__} {str(e)}')
 
         if not table:
             # Default Month names table to hold long/short month names for multiple languages
             # which we can match against magazine issues
+            self.logger.debug('Using default monthnames')
             table = [
                 ['en_GB.UTF-8', 'en_GB.UTF-8'],
                 ['January', 'Jan'],
@@ -561,72 +569,9 @@ class StartupLazyLibrarian:
                 ['November', 'Nov'],
                 ['December', 'Dec']
             ]
-        if len(get_list(config['IMP_MONTHLANG'])) > 0:  # any extra languages wanted?
-            try:
-                current_locale = locale.setlocale(locale.LC_ALL, '')  # read current state.
-                if 'LC_CTYPE' in current_locale:
-                    current_locale = locale.setlocale(locale.LC_CTYPE, '')
-                # getdefaultlocale() doesnt seem to work as expected on windows, returns 'None'
-                self.logger.debug(f'Current locale is {current_locale}')
-            except locale.Error as e:
-                self.logger.debug(f"Error getting current locale : {str(e)}")
-                return [table, table]
 
-            lang = str(current_locale)
-            # check not already loaded, also all english variants and 'C' use the same month names
-            if lang in table[0] or ((lang.startswith('en_') or lang == 'C') and 'en_' in str(table[0])):
-                self.logger.debug(f'Month names for {lang} already loaded')
-            else:
-                self.logger.debug(f'Loading month names for {lang}')
-                table[0].append(lang)
-                for f in range(1, 13):
-                    table[f].append(calendar.month_name[f])
-                table[0].append(lang)
-                for f in range(1, 13):
-                    table[f].append(calendar.month_abbr[f])
-                self.logger.info(
-                    f"Added month names for locale [{lang}], {table[1][len(table[1]) - 2]}, "
-                    f"{table[1][len(table[1]) - 1]} ...")
-
-            for lang in get_list(config['IMP_MONTHLANG']):
-                try:
-                    if lang in table[0] or ((lang.startswith('en_') or lang == 'C') and 'en_' in str(table[0])):
-                        self.logger.debug(f'Month names for {lang} already loaded')
-                    else:
-                        locale.setlocale(locale.LC_ALL, lang)
-                        self.logger.debug(f'Loading month names for {lang}')
-                        table[0].append(lang)
-                        for f in range(1, 13):
-                            table[f].append(calendar.month_name[f])
-                        table[0].append(lang)
-                        for f in range(1, 13):
-                            table[f].append(calendar.month_abbr[f])
-                        locale.setlocale(locale.LC_ALL, current_locale)  # restore entry state
-                        self.logger.info(
-                            f"Added month names for locale [{lang}], {table[1][len(table[1]) - 2]}, "
-                            f"{table[1][len(table[1]) - 1]} ...")
-                except Exception as e:
-                    locale.setlocale(locale.LC_ALL, current_locale)  # restore entry state
-                    self.logger.warning(f"Unable to load requested locale [{lang}] {type(e).__name__} {str(e)}")
-                    try:
-                        wanted_lang = lang.split('_')[0]
-                        params = ['locale', '-a']
-                        res = subprocess.check_output(params, stderr=subprocess.STDOUT)
-                        all_locales = make_unicode(res).split()
-                        locale_list = []
-                        for a_locale in all_locales:
-                            if a_locale.startswith(wanted_lang):
-                                locale_list.append(a_locale)
-                        if locale_list:
-                            self.logger.warning(f"Found these alternatives: {str(locale_list)}")
-                        else:
-                            self.logger.warning("Unable to find an alternative")
-                    except Exception as e:
-                        self.logger.warning(f"Unable to get a list of alternatives, {type(e).__name__} {str(e)}")
-                    self.logger.debug(f"Set locale back to entry state {current_locale}")
-
-                with open(json_file, 'w', encoding='utf-8') as f:
-                    json.dump(table, f, ensure_ascii=False)
+            with open(json_file, 'w', encoding='utf-8') as f:
+                json.dump(table, f, ensure_ascii=False)
 
         adminlogger.debug(table)
         # Create a second copy of the monthnames without accents and lowercased to speed up matching
@@ -706,7 +651,7 @@ class StartupLazyLibrarian:
                 self.logger.warning(
                     f"Unrecognised version [{CONFIG['CURRENT_VERSION']}] to force upgrade delete {version_file}")
 
-        if not path_isfile(version_file) and CONFIG['INSTALL_TYPE'] == 'source':
+        if not path_isfile(version_file) and CONFIG['INSTALL_TYPE'] == 'source' and CONFIG.get_bool('AUTO_UPDATE'):
             # User may be running an old source zip, so try to force update
             CONFIG.set_int('COMMITS_BEHIND', 1)
             lazylibrarian.SIGNAL = 'update'
@@ -939,6 +884,6 @@ class StartupLazyLibrarian:
         if doquit and not testing:
             self.logger.info(f'Lazylibrarian (pid {os.getpid()}) is exiting')
             cherrypy.engine.stop()
-            # Do this as the last step before existing
+            # Do this as the last step before exiting
             UNBUNDLER.remove_bundled_modules()
             sys.exit(0)

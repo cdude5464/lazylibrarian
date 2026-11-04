@@ -17,15 +17,15 @@
         <fieldset>
             <legend>${title}</legend>
             <div class="form-group col-md6">
-                <label for="magtitle" class="control-label">Magazine Title:</label>
-                <input type="text" id="magtitle" name="magtitle" value="${config['Title']}" class="form-control" placeholder="Title">
+                <label for="magtitle" class="control-label">${_('Magazine Title:')}</label>
+                <input type="text" id="magtitle" name="magtitle" value="${config['Title']}" class="form-control" placeholder="${_('Title') | h}">
             </div>
             <div class="form-group col-md6">
-                <label for="issuenum" class="control-label">Issue Date/Num:</label>
-                <input type="text" id="issuenum" name="issuenum" value="${config['IssueDate']}" class="form-control" placeholder="Date/Num">
+                <label for="issuenum" class="control-label">${_('Issue Date/Num:')}</label>
+                <input type="text" id="issuenum" name="issuenum" value="${config['IssueDate']}" class="form-control" placeholder="${_('Date/Num') | h}">
             </div>
         %if tags:
-            <legend>PDF Tags</legend>
+            <legend>${_('PDF Tags')}</legend>
             %for item in tags:
                 <div class="form-group col-md6">
                     <label for="tags_${item}" class="control-label">${item}</label>
@@ -35,7 +35,7 @@
         %endif
         </fieldset>
         <div class="table_wrapper_button">
-            <input type="submit" value="Save changes" id="add" class="btn btn-primary">
+            <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
         </div>
         <p>&nbsp;</p>
     </div>

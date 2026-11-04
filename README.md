@@ -47,6 +47,13 @@ and a reddit at https://www.reddit.com/r/LazyLibrarian/
 Docker tutorial  http://sasquatters.com/lazylibrarian-docker/
 Config tutorial  http://sasquatters.com/lazylibrarian-configuration/
 
+## Translations:
+The web interface can be shown in other languages, choose one in Config > Interface > Appearance > Interface language.
+Translations are done on [Hosted Weblate](https://hosted.weblate.org/projects/lazylibrarian/), you can help translate there without any coding or git.
+Untranslated text is shown in English, so partial translations are welcome.
+
+[![Translation status](https://hosted.weblate.org/widget/lazylibrarian/webui/svg-badge.svg)](https://hosted.weblate.org/engage/lazylibrarian/)
+
 ## Update
 Auto update available via interface from master for git and source installs
 

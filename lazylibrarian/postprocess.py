@@ -31,23 +31,27 @@ from pathlib import Path
 from typing import Final
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
 from lazylibrarian.archive_utils import unpack_archive, unpack_multipart
 from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
-from lazylibrarian.box_helper_handoff import wanted_row_is_durable_helper_owned
+from lazylibrarian.box_helper_handoff import helper_owns_qbittorrent_lifecycle, wanted_row_is_durable_helper_owned
 from lazylibrarian.cache import ImageType, cache_img
-from lazylibrarian.calibre_integration import send_to_calibre
+from lazylibrarian.calibre_integration import CALIBRE_DUPLICATE_UNVERIFIED, send_to_calibre
 from lazylibrarian.common import multibook, run_script
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.download_client import (
+    ADOPTABLE_SOURCES,
     check_contents,
     delete_task,
+    get_download_content_path,
     get_download_folder,
     get_download_name,
     get_download_progress,
+    may_delete_data,
 )
 from lazylibrarian.filesystem import (
     DIRS,
@@ -92,6 +96,7 @@ from lazylibrarian.notifiers import (
     custom_notify_snatch,
     notify_download,
     notify_snatch,
+    notify_text,
 )
 from lazylibrarian.postprocess_metadata import (
     BookMetadata,
@@ -163,6 +168,7 @@ class BookState:
     candidate_ptr: str | None = None
     candidate_match_kind: str = ""
     candidate_matched_file: str = ""
+    matched_source_path: str = ""
     skipped_reason: str | None = None
 
     # Failure tracking - populated during processing
@@ -429,15 +435,42 @@ class BookState:
                     self.download_folder = os.path.join(general_folder, soulseek.get("name", '').rsplit('/', 1)[1])
                 except (KeyError, IndexError):
                     self.download_folder = general_folder
-            # For torrent clients, combine base folder with download name
+            elif res and (res['NZBprov'] in ['annas', 'zlibrary', 'webshare'] or res['NZBprov'].startswith('libgen')):
+                # these download into first download directory
+                self.download_folder = get_directory('Download')
+            elif self.source == "QBITTORRENT" and general_folder:
+                if os.path.isdir(general_folder):
+                    # root directory for multi-file torrents
+                    self.download_folder = general_folder
+                else:
+                    # absolute file path for single-file torrents
+                    self.download_folder = os.path.dirname(general_folder)
+                    self.download_title = os.path.basename(general_folder)
+            # For other torrent clients, combine base folder with download name
             elif general_folder and download_name:
                 self.download_folder = os.path.join(general_folder, download_name)
+                # qBittorrent (and some clients) rename the torrent 'name' independently of the
+                # on-disk content folder, so the name-based path may not exist. Fall back to the
+                # client's actual content path so we process the real files with the known BookID.
+                if not os.path.isdir(self.download_folder):
+                    # the client's own answer first, a file under the name may be another download
+                    content = get_download_content_path(self.source, self.download_id)
+                    if not content and os.path.isfile(self.download_folder):
+                        content = self.download_folder
+                    if content and os.path.isdir(content):
+                        self.download_folder = content
+                    elif content:
+                        self.download_folder = os.path.dirname(content)
+                        if os.path.isfile(content):
+                            # single-file torrent, the folder may hold other downloads, so keep
+                            # the file name to isolate just this file, as for qBittorrent
+                            self.download_title = os.path.basename(content)
             elif general_folder:
                 # Fallback: use general folder as-is
                 self.download_folder = general_folder
 
             logger.debug(f"General:{general_folder} DownloadName:{download_name} "
-                         f"DownloadFolder:{self.download_folder}")
+                          f"DownloadFolder:{self.download_folder} DownloadTitle:{self.download_title}")
         # Get actual book title for drill-down matching
         if self.book_id and self.is_book():
             result = db.match(
@@ -451,6 +484,8 @@ class BookState:
                 self.book_title = _normalize_title(
                     f"{data.get('AuthorName', '')} - {_work_title(data.get('BookName', ''))}"
                 )
+            else:
+                logger.error(f"BookID {self.book_id} not found in books/authors table")
         elif self.book_id and self.is_magazine():
             result = db.match(
                 "SELECT Title FROM magazines WHERE Title=?", (self.book_id,)
@@ -458,7 +493,10 @@ class BookState:
             if result:
                 data = dict(result)
                 self.book_title = _normalize_title(data.get("Title", ""))
-        logger.debug(f"IsBook:{self.is_book()} IsMag:{self.is_magazine()} Title:{self.book_title}")
+            else:
+                logger.debug(f"BookID {self.book_id} not found in magazines table, assume new")
+                self.book_title = _normalize_title(self.book_id)
+        logger.debug(f"IsBook:{self.is_book()} IsMag:{self.is_magazine()} Title:{self.book_title} BookID:{self.book_id}")
 
     def __repr__(self) -> str:
         """String representation for debugging."""
@@ -552,7 +590,7 @@ def _update_downloads_provider_count(provider: str = "manually added"):
 
 
 def _transfer_matching_files(
-    sourcedir: str, targetdir: str, fname_prefix: str, copy=False
+    sourcedir: str, targetdir: str, fname_prefix: str, copy=False, exact=False
 ):
     """
     Selectively transfer files matching a filename prefix from source to target directory.
@@ -569,6 +607,7 @@ def _transfer_matching_files(
         targetdir: Target directory to transfer to
         fname_prefix: Filename prefix to match (e.g., "Book Title")
         copy: If True, copy files; if False, move files
+        exact: If True, fname_prefix is the whole file name and only that file is transferred
 
     Returns:
         Count of files transferred
@@ -585,7 +624,8 @@ def _transfer_matching_files(
         ourfile = str(_ourfile)
         logger.debug(f"Checking if {ourfile} matches {fname_prefix}")
         # Only transfer files that start with our book's name and are valid media files
-        if ourfile.startswith(fname_prefix) and is_valid_type(ourfile, extensions=valid_extensions):
+        matched = ourfile == fname_prefix if exact else ourfile.startswith(fname_prefix)
+        if matched and is_valid_type(ourfile, extensions=valid_extensions):
             try:
                 srcfile = os.path.join(sourcedir, ourfile)
                 dstfile = os.path.join(targetdir, ourfile)
@@ -896,8 +936,13 @@ def _delete_failed_task_if_unused(
     db,
     book_state: BookState,
     logger: logging.Logger,
+    abandoned: bool = False,
 ) -> bool:
     if not book_state.source or not book_state.download_id:
+        return False
+
+    if book_state.source.upper() == "QBITTORRENT" and helper_owns_qbittorrent_lifecycle():
+        logger.debug("Helper-owned qBittorrent rejection retained for lifecycle enforcement")
         return False
 
     active_sibling = db.match(
@@ -913,7 +958,10 @@ def _delete_failed_task_if_unused(
         )
         return False
 
-    delete_task(book_state.source, book_state.download_id, True)
+    if abandoned:
+        delete_task(book_state.source, book_state.download_id, True, abandoned=True)
+    else:
+        delete_task(book_state.source, book_state.download_id, True)
     return True
 
 
@@ -951,13 +999,40 @@ def _normalize_title(title: str) -> str:
     return sanitize(new_title).strip()
 
 
+def _is_recognised_extension(ext: str) -> bool:
+    """
+    Decide whether a trailing ``.xxx`` is a real file extension rather than
+    part of the name (e.g. an author initial like ``Rhett C.``).
+
+    Recognised means a configured media type, a configured skip extension
+    (part/torrent/nzb/...), or the internal ``unpack`` marker. Comparison is
+    case-insensitive; ``ext`` is given with no leading dot.
+    """
+    ext = ext.strip().lower()
+    if not ext:
+        return False
+    recognised = set(CONFIG.get_all_types_list()) if CONFIG else set()
+    if CONFIG:
+        recognised.update(get_list(CONFIG["SKIPPED_EXT"]))
+    recognised.update(("unpack", "cbr", "cbz", "r00"))
+    return ext in recognised
+
+
 def _tokenize_file(filepath_or_name: str) -> "tuple[str, str]":
     """
     Extract filename stem and extension from a file path.
 
+    Only a *recognised* trailing extension is split off, so interior periods
+    in a name -- author initials such as "Rhett C." or "J.R.R." -- are kept in
+    the stem instead of being mistaken for an extension. Using ``Path.stem``
+    here would turn "Rhett C. Bruno - An Unexpected Hero" into "Rhett C",
+    destroying the title and dropping the fuzzy match below threshold.
+
     Example:
         >>> _tokenize_file("/path/to/file.epub")
         ("file", "epub")
+        >>> _tokenize_file("Rhett C. Bruno - An Unexpected Hero")
+        ("Rhett C. Bruno - An Unexpected Hero", "")
 
     Args:
         filepath_or_name: Full path or filename
@@ -965,11 +1040,12 @@ def _tokenize_file(filepath_or_name: str) -> "tuple[str, str]":
     Returns:
         Tuple of (stem, extension) where extension has no leading dot
     """
-    path_obj = Path(filepath_or_name)
-    stem = path_obj.stem
-    # Slice off the leading dot from the suffix
-    extension = path_obj.suffix[1:]
-    return stem, extension
+    name = os.path.basename(str(filepath_or_name))
+    stem, dot, ext = name.rpartition(".")
+    if dot and stem and _is_recognised_extension(ext):
+        return stem, ext
+    # No recognised extension: the whole name is the stem
+    return name, ""
 
 
 def _is_valid_media_file(
@@ -1010,8 +1086,8 @@ def _count_zipfiles_in_directory(directory_path: str) -> int:
         _, extn = _tokenize_file(f)
         extn = extn.lower()
 
-        # Skip ebook and comic book formats that happen to be zips
-        if extn not in [".epub", ".cbz"] and zipfile.is_zipfile(file_path):
+        # Skip ebook and comic book formats and rar indexes that happen to be zips
+        if extn not in [".epub", ".cbz", ".r00"] and zipfile.is_zipfile(file_path):
             zipcount += 1
     return zipcount
 
@@ -1084,7 +1160,7 @@ def _extract_best_match_from_collection(
             filename_stem, _ = _tokenize_file(f)
             normalized_fname = _normalize_title(filename_stem)
 
-            match_percent = fuzz.token_set_ratio(target_title, normalized_fname)
+            match_percent = fuzz.token_set_ratio(target_title, normalized_fname, processor=default_process)
             is_match = match_percent >= match_threshold
             fuzzlogger.debug(
                 f"{round(match_percent, 2)}% match {target_title} : {normalized_fname}"
@@ -1121,7 +1197,7 @@ def _extract_best_match_from_collection(
         ) or _is_metadata_file(f)):
             source = os.path.join(candidate_dir, f)
             if path_isdir(source):
-                shutil.copytree(source, target_dir)
+                shutil.copytree(source, target_dir, dirs_exist_ok=True)
             else:
                 dest = os.path.join(target_dir, f)
                 shutil.copyfile(source, dest)
@@ -1200,7 +1276,9 @@ def _extract_archives_in_directory(
             extn = extn.lower()
 
             # Skip files that are ebooks/comics (they're already in zip format)
-            if extn not in [".epub", ".cbr", ".cbz"]:
+            if item and extn not in [".epub", ".cbr", ".cbz", ".r00"]:
+                if not os.path.exists(os.path.join(dirpath, item)):
+                    continue
                 res = unpack_archive(os.path.join(dirpath, item), download_dir, title)
                 if res:
                     candidate_ptr = res
@@ -1221,7 +1299,7 @@ def _calculate_fuzzy_match(title1: str, title2: str, fuzzlogger: logging.Logger=
     Returns:
         Match percentage (0-100)
     """
-    match_fuzz = fuzz.token_set_ratio(title1, title2)
+    match_fuzz = fuzz.token_set_ratio(title1, title2, processor=default_process)
 
     if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
         # if it's a close enough match, check for purely number differences
@@ -2038,6 +2116,26 @@ def _update_issue_database(
         db.upsert("magazines", new_value_dict, control_value_dict)
 
 
+def _resolve_root(d):
+    if d and len(d) >= 2 and d[0] == '.' and d[1] in ('/', '\\'):
+        d = os.path.join(DIRS.PROG_DIR, d[2:])
+    return os.path.normcase(os.path.realpath(os.path.normpath(d)))
+
+
+def _is_protected_root(path):
+    if not path:
+        return False
+    resolved = _resolve_root(path)
+    roots = set()
+    for d in get_list(CONFIG.get_str('DOWNLOAD_DIR'), ','):
+        if d:
+            roots.add(_resolve_root(d))
+    alt = CONFIG.get_str('ALTERNATE_DIR')
+    if alt:
+        roots.add(_resolve_root(alt))
+    return resolved in roots
+
+
 def _should_delete_processed_files(book_path, download_dir) -> "tuple[bool, str]":
     """
     Determine if processed files should be deleted based on configuration.
@@ -2061,14 +2159,25 @@ def _should_delete_processed_files(book_path, download_dir) -> "tuple[bool, str]
         return False, book_path
 
     # Don't delete if path is the download root directory
-    if book_path == download_dir.rstrip(os.sep):
+    resolved_root = os.path.realpath(os.path.normpath(download_dir))
+    resolved_path = os.path.realpath(os.path.normpath(book_path))
+    if resolved_path == resolved_root:
         return False, book_path
 
+    # Reject paths outside the download root
+    deletion_path = resolved_path
+    if not deletion_path.startswith(resolved_root + os.sep):
+        if ".unpack" not in book_path:
+            return False, book_path
+        return True, book_path
+
     # Walk up subdirectories to find the top-level folder to delete
-    deletion_path = book_path
-    if deletion_path.startswith(download_dir) and ".unpack" not in deletion_path:
-        while os.path.dirname(deletion_path) != download_dir.rstrip(os.sep):
-            deletion_path = os.path.dirname(deletion_path)
+    if ".unpack" not in deletion_path:
+        while os.path.dirname(deletion_path) != resolved_root:
+            parent = os.path.dirname(deletion_path)
+            if parent == deletion_path:
+                break
+            deletion_path = parent
 
     return True, deletion_path
 
@@ -2121,10 +2230,7 @@ def _send_download_notifications(
     dispname = book_state.get_display_name(CONFIG)
 
     custom_notify_download(f"{book_state.book_id} {book_type}")
-    notify_download(
-        f"{book_type} {global_name} from {dispname} at {now()}",
-        notification_id,
-    )
+    notify_download(notify_text(global_name, dispname, book_type), notification_id)
     mailing_list(book_type, global_name, notification_id)
     _update_downloads_provider_count(book_state.download_provider)
 
@@ -2161,37 +2267,40 @@ def _handle_failed_processing(
     # Send failure notifications
     dispname = book_state.get_display_name(CONFIG)
     custom_notify_snatch(f"{book_state.book_id} {book_type_str}", fail=True)
-    notify_snatch(
-        f"{book_type_str} {global_name} from {dispname} at {now()}",
-        fail=True,
+    notify_snatch(notify_text(global_name, dispname, book_type_str), fail=True)
+
+    orchestration_hold = isinstance(dest_file, str) and dest_file.startswith(CALIBRE_DUPLICATE_UNVERIFIED)
+
+    # A shared result URL can represent several books/media or retries. Update
+    # only this attempt, without upsert inventing a replacement wanted row.
+    db.action(
+        "UPDATE wanted SET Status='Failed',DLResult=?,NZBDate=? "
+        "WHERE BookID=? AND COALESCE(DownloadID,'')=? AND COALESCE(Source,'')=? "
+        "AND COALESCE(AuxInfo,'')=? AND COALESCE(NZBurl,'')=? AND Status='Snatched'",
+        (enforce_str(make_unicode(dest_file)), now(), book_state.book_id,
+         book_state.download_id or "", book_state.source or "",
+         book_state.aux_info or "", book_state.download_url or ""),
     )
 
-    # Update database status to Failed
-    control_value_dict = {
-        "NZBurl": book_state.download_url,
-        "Status": "Snatched",
-    }
-    new_value_dict = {
-        "Status": "Failed",
-        "DLResult": enforce_str(make_unicode(dest_file)),
-        "NZBDate": now(),
-    }
-    db.upsert("wanted", new_value_dict, control_value_dict)
-
-    # Reset book status to Wanted so we can try a different version
-    if book_type_enum == BookType.EBOOK:
+    # A failed alternative must not downgrade a previously owned edition or a
+    # manual user status that changed while this import was being processed.
+    if not orchestration_hold and book_type_enum == BookType.EBOOK:
         db.action(
-            "UPDATE books SET status='Wanted' WHERE BookID=?",
+            "UPDATE books SET status='Wanted' WHERE BookID=? AND status='Snatched'",
             (book_state.book_id,),
         )
-    elif book_type_enum == BookType.AUDIOBOOK:
+    elif not orchestration_hold and book_type_enum == BookType.AUDIOBOOK:
         db.action(
-            "UPDATE books SET audiostatus='Wanted' WHERE BookID=?",
+            "UPDATE books SET audiostatus='Wanted' WHERE BookID=? AND audiostatus='Snatched'",
             (book_state.book_id,),
         )
 
-    # Handle failed download cleanup
-    _cleanup_failed_download(book_path, logger)
+    # An unverified existing Calibre record is an orchestration ambiguity,
+    # not evidence that the new source is bad or safe to discard.
+    if orchestration_hold:
+        logger.warning("Retaining duplicate import source until its Calibre association is reconciled")
+    else:
+        _cleanup_failed_download(book_path, logger)
 
 
 def _cleanup_failed_download(book_path, logger) -> None:
@@ -2299,13 +2408,16 @@ def _try_match_candidate_file(
         else:
             book_state.candidate_match_kind = "file_name"
 
-    # If no match and it's a directory, drill down to find the right book
-    if not is_match and path_isdir(book_state.candidate_ptr or ""):
+    # Drill down inside a directory to find the right book. Even when the
+    # folder name already matches the download/series title, the wanted book
+    # may be one item inside a multi-book collection, so always look for a more
+    # specific subdirectory match on the book title and prefer it when found.
+    if path_isdir(book_state.candidate_ptr or ""):
         logger.debug(f"{candidate_file} is a directory, checking contents")
 
         book_type_str = book_state.get_book_type_str()
         if not book_type_str:
-            return False, 0
+            return is_match, match_percent
 
         # Use actual book title for drill-down if available, otherwise use download title
         # This is critical for collections where download name != individual book name
@@ -2318,8 +2430,10 @@ def _try_match_candidate_file(
         # _normalize_title now handles stripping known extensions intelligently
         search_title = _normalize_title(search_title)
 
-        # Try 1: Match subdirectories (for collections organized in folders)
-        # This is common for audiobook series and some ebook collections
+        # Try 1: Match subdirectories (for collections organized in folders).
+        # This is common for audiobook series and some ebook collections. A
+        # specific subdir match overrides a broader folder-name match so a
+        # series download resolves to the individual wanted book.
         matched_subdir, subdir_match_percent = _find_matching_subdir(
             book_state.candidate_ptr or "",
             search_title,
@@ -2336,8 +2450,10 @@ def _try_match_candidate_file(
             book_state.candidate_match_kind = "inner_subdir_name"
             is_match = True
             match_percent = subdir_match_percent
-        else:
-            # Try 2: Match files at root level (for collections with files in one directory)
+        elif not is_match:
+            # Try 2: Match files at root level (for flat collections with files
+            # in one directory). Only needed when the folder name itself did not
+            # match; a single matched book folder is processed as-is.
             matched_file, file_match_percent = _find_matching_file_for_book_state(
                 book_state.candidate_ptr or "",
                 book_state,
@@ -2402,7 +2518,29 @@ def _process_matched_directory(
     logger.debug(f"download_dir: {download_dir}")
     logger.debug(f"download_title: {book_state.download_title}")
 
-    if candidate_ptr and candidate_ptr.rstrip(os.sep) == download_dir.rstrip(os.sep):
+    def _norm(p):
+        return os.path.normcase(os.path.normpath(p)) if p else ''
+
+    all_download_dirs = {_norm(d)
+                         for d in get_list(CONFIG.get_str('DOWNLOAD_DIR'), ',') if d.strip()}
+    all_download_dirs.add(_norm(get_directory('Download')))
+    all_download_dirs.discard('')
+
+    shared_file = False
+    if candidate_ptr and _norm(candidate_ptr) in all_download_dirs:
+        download_dir = candidate_ptr
+        candidate_ptr = os.path.join(candidate_ptr, book_state.download_title)
+        book_state.update_candidate(candidate_ptr)
+    elif (candidate_ptr and book_state.download_title
+          and book_state.download_title == os.path.basename(book_state.download_title)
+          and is_valid_type(book_state.download_title, extensions=CONFIG.get_all_types_list())
+          and path_isdir(candidate_ptr)
+          and path_isfile(os.path.join(candidate_ptr, book_state.download_title))):
+        # A single-file torrent in a folder shared with other downloads, such as a
+        # qBittorrent category save path. Isolate just our file, other names in the
+        # folder can share its prefix. Archives keep the folder search and extraction.
+        shared_file = True
+        download_dir = candidate_ptr
         candidate_ptr = os.path.join(candidate_ptr, book_state.download_title)
         book_state.update_candidate(candidate_ptr)
 
@@ -2436,7 +2574,8 @@ def _process_matched_directory(
 
             # Selectively transfer ONLY files matching this book's name
             cnt = _transfer_matching_files(
-                download_dir, targetdir, fname_prefix, copy=copy_files
+                file_dir, targetdir, fname if shared_file else fname_prefix,
+                copy=copy_files, exact=shared_file
             )
 
             if cnt:
@@ -2525,6 +2664,24 @@ def _process_matched_directory(
                 )
                 if not isolated:
                     return False, skip_reason
+        elif book_state.get_book_type_enum() in (BookType.AUDIOBOOK, BookType.MAGAZINE):
+            # No archives, but a multi-part audiobook is often placed in a subfolder
+            # (e.g. "<Title> (year)/"), and torrent packs often wrap the magazine in
+            # a subfolder (e.g. "~Get Your Files Here !/"). Recurse before giving up
+            # so the post-processor can still locate the media. Scoped to audiobooks
+            # and magazines only: the recursive find returns the first valid-extension
+            # file it walks into, with no sample filtering or name matching, so eBooks
+            # keep the original bail and let the archive/collection best-match logic
+            # handle nested layouts.
+            valid_file_path = _find_valid_file_in_directory(
+                book_state.candidate_ptr,
+                book_type=book_state.get_book_type_str(),
+                recurse=True,
+            )
+            if valid_file_path:
+                book_state.update_candidate(os.path.dirname(valid_file_path))
+            else:
+                return False, "No valid file or archives found"
         else:
             return False, "No valid file or archives found"
 
@@ -2555,6 +2712,9 @@ def _process_matched_directory(
         # For non ebook types, just find the file
         book_type_str = book_state.get_book_type_str()
         if book_type_str:
+            candidate = _norm(book_state.candidate_ptr or "")
+            if candidate in all_download_dirs or candidate == _norm(download_dir):
+                return False, f"No {book_type_enum.value} found in matched folder"
             result = book_file(
                 book_state.candidate_ptr or "",
                 book_type_str,
@@ -2573,12 +2733,34 @@ def _process_matched_directory(
     return is_valid, skip_reason
 
 
+def _is_multi_item_directory(dirpath, library_type):
+    """Whether a directory holds more than one item of the given library type.
+
+    For ebooks this reuses the multibook() logic (counts files per extension).
+    For audiobooks, checks for more than one 'part 1' or 'chapter 1' pattern
+    which indicates multiple books split into chapter files. For magazines and
+    comics, single-file is the norm so this always returns False."""
+    if not path_isdir(dirpath):
+        return False
+    if library_type in ('eBook', 'ebook'):
+        return bool(multibook(dirpath))
+    if library_type in ('AudioBook', 'audiobook'):
+        flist = [f.lower() for f in listdir(dirpath)]
+        part1_count = sum(
+            1 for f in flist
+            if any(marker in f for marker in ('part 1', 'part1', 'chapter 1', 'chapter01', '01 -', '01.'))
+        )
+        return part1_count > 1
+    return False
+
+
 def _find_best_match_in_downloads(
     book_state,
     all_downloads,
     match_threshold,
     logger,
     fuzzlogger,
+    consumed_paths=None,
 ) -> "tuple[float, str]":
     """
     Search through all downloads to find the best match for a book.
@@ -2608,7 +2790,13 @@ def _find_best_match_in_downloads(
     book_type = book_state.get_book_type_str()
     logger.debug(f"Fuzzy searching for {book_type} across all downloads")
 
+    library_type = book_state.aux_type or ''
     for parent_dir, candidate_file in all_downloads:
+        original_path = os.path.normpath(os.path.join(parent_dir, candidate_file))
+        if consumed_paths and (original_path, library_type) in consumed_paths:
+            fuzzlogger.debug(f"Skipping {candidate_file}: already consumed for {library_type}")
+            continue
+
         # Try to match this candidate
         is_match, match_percent = _try_match_candidate_file(
             candidate_file,
@@ -2634,6 +2822,7 @@ def _find_best_match_in_downloads(
                     match_percent,
                     book_state.candidate_ptr,
                     book_state.candidate_match_kind,
+                    original_path,
                 ])
                 if match_percent == 100:
                     # Perfect match, no need to keep searching
@@ -2646,6 +2835,7 @@ def _find_best_match_in_downloads(
                 match_percent,
                 book_state.candidate_ptr,
                 book_state.candidate_match_kind,
+                original_path,
             ])
 
     # Find the best match
@@ -2658,6 +2848,7 @@ def _find_best_match_in_downloads(
     best_match_kind = highest[2]
 
     book_state.update_candidate(best_candidate_ptr, best_match_kind)
+    book_state.matched_source_path = highest[3] if len(highest) > 3 else ""
 
     if best_match_percent >= match_threshold:
         logger.debug(
@@ -3120,6 +3311,7 @@ def _process_snatched_book(
     db,
     logger,
     fuzzlogger,
+    consumed_paths=None,
 ) -> int:
     """
     Process a single snatched book using fallback fuzzy search (Matching Stage|Second pass).
@@ -3147,6 +3339,7 @@ def _process_snatched_book(
         match_threshold,
         logger,
         fuzzlogger,
+        consumed_paths=consumed_paths,
     )
 
     if match_percent < match_threshold:
@@ -3269,6 +3462,25 @@ def _handle_seeding_status(
                 f"{book_state.download_title} not seeding at {book_state.source}"
             )
 
+        # asked while the torrent is still there to ask about, because the
+        # answer covers the files on disk further down as well as the task
+        may_delete = may_delete_data(book_state.source, book_state.download_id)
+        # only worth waiting on an answer if the answer would decide something:
+        # with Keep Files set and DEL_COMPLETED off, nothing gets removed either
+        # way and there is no reason to hold the row back
+        deletes_something = CONFIG.get_bool("DEL_COMPLETED") or not CONFIG.get_bool(
+            "DESTINATION_COPY"
+        )
+        if may_delete is None and deletes_something:
+            # the client could not be asked, so leave the row where it is and
+            # come back to it rather than marking it done with its files still
+            # sitting there
+            logger.info(
+                f"{book_state.download_title}: cannot reach {book_state.source} to "
+                f"finish up, leaving it for the next run"
+            )
+            return True  # Skip to next item
+
         if CONFIG.get_bool("DEL_COMPLETED"):
             logger.debug(
                 f"Removing seeding completed {book_state.download_title} from {book_state.source}"
@@ -3305,9 +3517,14 @@ def _handle_seeding_status(
         # NOTE it will silently fail if the torrent client downloadfolder is not local
         # e.g. in a docker or on a remote machine
         book_path = get_download_folder(book_state.source, book_state.download_id)
-        if CONFIG.get_bool("DESTINATION_COPY"):
+        if not may_delete:
+            # either nothing on record says we created this download, or the
+            # torrent has since been moved into a category someone is keeping,
+            # so book_path may well be someone else's download folder
+            logger.debug("Not removing original files as the torrent was not ours")
+        elif CONFIG.get_bool("DESTINATION_COPY"):
             logger.debug("Not removing original files as Keep Files is set")
-        elif book_path in get_list(CONFIG["DOWNLOAD_DIR"]):
+        elif _is_protected_root(book_path):
             logger.debug("Not removing original files as in download root")
         else:
             shutil.rmtree(book_path, ignore_errors=True)
@@ -3370,6 +3587,15 @@ def _handle_snatched_timeout(
             )
             should_abort = True
 
+    stall_hours = CONFIG.get_int('STALL_AGE')
+    progress_is_zero = not isinstance(book_state.progress, bool) and check_int(book_state.progress, -1) == 0
+    if stall_hours and hours >= stall_hours and progress_is_zero:
+        logger.warning(
+            f"{book_state.download_title} stalled at 0% for {hours} "
+            f"{plural(hours, 'hour')}, aborting"
+        )
+        should_abort = True
+
     if max_hours and hours >= max_hours:
         # SAB can report 100% (or more) and not finished if missing blocks and needs repair
         # For torrents, check if download is complete before timing out
@@ -3391,8 +3617,12 @@ def _handle_snatched_timeout(
             )
 
         elif check_int(book_state.progress, 0) < 95:
-            # Less than 95% after timeout - likely stuck
-            should_abort = True
+            if progress_is_zero and stall_hours and hours < stall_hours:
+                logger.debug(
+                    f"{book_state.download_title} at 0% but STALL_AGE ({stall_hours}h) not reached, waiting"
+                )
+            else:
+                should_abort = True
 
         elif (
             hours >= max_hours + 1
@@ -3434,9 +3664,7 @@ def _handle_aborted_download(
             dlresult = f"{book_state.download_title} was aborted by {book_state.source}"
 
     custom_notify_snatch(f"{book_state.book_id} {book_state.source}", fail=True)
-    notify_snatch(
-        f"{book_state.download_title} from {book_state.source} at {now()}", fail=True
-    )
+    notify_snatch(notify_text(book_state.download_title, book_state.source), fail=True)
 
     # change status to "Failed", and ask downloader to delete task and files
     # Only reset book status to wanted if still snatched in case another download task succeeded
@@ -3485,7 +3713,7 @@ def _handle_aborted_download(
 
         if CONFIG.get_bool("DEL_FAILED"):
             logger.warning(f"{dlresult}, deleting failed task")
-            _delete_failed_task_if_unused(db, book_state, logger)
+            _delete_failed_task_if_unused(db, book_state, logger, abandoned=True)
 
 
 def _check_and_schedule_next_run(db, logger: logging.Logger, reset: bool) -> None:
@@ -3629,6 +3857,84 @@ def _manage_download_status(
                     f" Progress {book_state.progress} {book_state.skipped_reason}"
                     f" Status {book_state.status}"
                 )
+
+
+def _cleanup_orphaned_failed_downloads(db, logger: logging.Logger) -> None:
+    """Remove torrents left in the download client for failed downloads.
+
+    When a download is marked Failed but its torrent is still sitting in the
+    client at 0% progress, it is an orphan that will never complete. This
+    happens when check_contents rejects a torrent after it was added, or when
+    a stalled torrent is marked Failed but not removed from the client.
+    """
+    if not CONFIG.get_bool('DEL_FAILED'):
+        return
+    stall_hours = CONFIG.get_int('STALL_AGE')
+    if not stall_hours:
+        return
+
+    failed = db.select(
+        "SELECT * from wanted WHERE Status='Failed' AND Source IS NOT NULL "
+        "AND DownloadID IS NOT NULL AND DownloadID != '' AND Origin='new' "
+        "AND (DLResult IS NULL OR DLResult != 'Orphan cleaned')"
+    )
+    seen = set()
+    cleaned = 0
+    for row in failed:
+        try:
+            row_dict = dict(row)
+            source = row_dict.get('Source', '')
+            download_id = row_dict.get('DownloadID', '')
+            # The box helper owns current and legacy qBittorrent generations.
+            # A failed row or 0% progress never grants LL deletion authority.
+            if source.upper() == 'QBITTORRENT' and helper_owns_qbittorrent_lifecycle():
+                continue
+            if wanted_row_is_durable_helper_owned(row_dict):
+                continue
+            if not source or not download_id or source not in ADOPTABLE_SOURCES:
+                continue
+            key = (source, download_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            other_origin = db.match(
+                "SELECT BookID from wanted WHERE DownloadID=? AND Source=? AND Origin != 'new'",
+                (download_id, source),
+            )
+            if other_origin:
+                continue
+            active = db.match(
+                "SELECT BookID from wanted WHERE DownloadID=? AND Source=? "
+                "AND Status NOT IN ('Failed', 'Processed')",
+                (download_id, source),
+            )
+            if active:
+                continue
+            progress, _finished = get_download_progress(source, download_id)
+            if isinstance(progress, bool) or not isinstance(progress, int | float) or progress != 0:
+                continue
+            nzb_date = row_dict.get('NZBDate') or row_dict.get('NZBdate', '')
+            if not nzb_date:
+                continue
+            hours, _mins, _ = _calculate_download_age(nzb_date)
+            if hours < stall_hours:
+                continue
+            title = row_dict.get('NZBtitle') or download_id
+            logger.warning(
+                f"Removing orphaned torrent {title} "
+                f"from {source}: failed and stuck at 0% for {hours} hours"
+            )
+            if delete_task(source, download_id, False, abandoned=True):
+                db.action(
+                    "UPDATE wanted SET DLResult='Orphan cleaned' "
+                    "WHERE DownloadID=? AND Source=? AND Status='Failed'",
+                    (download_id, source),
+                )
+                cleaned += 1
+        except Exception as e:
+            logger.warning(f"Error cleaning up orphaned download: {e}")
+    if cleaned:
+        logger.info(f"Cleaned up {cleaned} orphaned torrent(s)")
 
 
 def _search_in_known_location(
@@ -3784,16 +4090,17 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         count -= 1
 
     if count:
-        logger.debug("POSTPROCESSOR is already running")
+        logger.debug("POSTPROCESS is already running")
         return  # Exit early if already running
 
-    logger.debug("No concurrent POSTPROCESSOR threads detected")
+    logger.debug("No concurrent POSTPROCESS threads detected")
 
     # Set thread name for this execution
     thread_name("POSTPROCESS")
 
     db = database.DBConnection()
     try:
+        logger.debug(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
 
         # Now we will get a list of wanted books that are snatched and ready for processing
@@ -3868,6 +4175,7 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         # folders, we will still process the books because there is a chance that that a book is downloading
         # to a location outside of our configured directories (e.g., the download started before a config change)
         all_downloads = None
+        consumed_paths = set()
         if download_dirlist:
             if startdir_file:
                 all_downloads = [
@@ -3899,90 +4207,116 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
         processed_book_states = []
 
         for book_row in books_to_process:
+            stage = 'validation'  # stage is used for location reporting if there is an exception
             # Create BookState from database row
             book_state = BookState.from_db_row(book_row, CONFIG)
             processed_book_states.append(book_state)
-
-            # Check processing delay (once per book, not per directory!)
-            # Legacy-compatible: processes even if Completed==0 (some clients don't set it)
-            if processing_delay:
-                should_delay, elapsed = book_state.should_delay_processing(
-                    processing_delay
-                )
-                if should_delay:
-                    postprocesslogger.warning(
-                        f"Ignoring {book_state.download_title} as completion was only {elapsed} "
-                        f"{plural(elapsed, 'second')} ago, delay is {processing_delay}"
+            try:
+                # Check processing delay (once per book, not per directory!)
+                # Legacy-compatible: processes even if Completed==0 (some clients don't set it)
+                if processing_delay:
+                    should_delay, elapsed = book_state.should_delay_processing(
+                        processing_delay
                     )
-                    continue
-                # Only log completion time if we have a valid timestamp
-                if book_state.is_completed():
+                    if should_delay:
+                        postprocesslogger.warning(
+                            f"Ignoring {book_state.download_title} as completion was only {elapsed} "
+                            f"{plural(elapsed, 'second')} ago, delay is {processing_delay}"
+                        )
+                        continue
+                    # Only log completion time if we have a valid timestamp
+                    if book_state.is_completed():
+                        postprocesslogger.debug(
+                            f"{book_state.download_title} was completed {elapsed} {plural(elapsed, 'second')} ago"
+                        )
+                    else:
+                        postprocesslogger.debug(
+                            f"{book_state.download_title} has no completion timestamp (client doesn't support it)"
+                        )
+
+                stage = 'enriching'
+                # Enrich with download_folder (general + name) and book_title
+                book_state.enrich_with_download_info(db)
+
+                postprocesslogger.debug(
+                    f"Enrichment result: download_folder='{book_state.download_folder}', "
+                    f"book_title='{book_state.book_title[:50] if book_state.book_title else '(empty)'}'"
+                )
+
+                # ========================================================
+                #  Downloaded Processing Stage | Targeted Location Pass
+                # ========================================================
+                stage = 'targeted'
+                if book_state.download_folder:
+                    target_path = os.path.normpath(book_state.download_folder)
+                    lib_type = book_state.aux_type or ''
+                    if (target_path, lib_type) in consumed_paths:
+                        postprocesslogger.debug(
+                            f"Targeted pass skipped for {book_state.download_title}: "
+                            f"path already consumed for {lib_type}"
+                        )
+                    else:
+                        postprocesslogger.debug(
+                            f"Targeted Location Pass: Processing search for {book_state.download_title}"
+                        )
+                        result = _search_in_known_location(
+                            book_state, ignoreclient, db, postprocesslogger, fuzzlogger
+                        )
+                        if result > 0:
+                            ppcount += result
+                            postprocesslogger.info(
+                                f"Matching Stage - First Pass SUCCESS: {book_state.download_title}"
+                            )
+                            if not _is_multi_item_directory(target_path, lib_type):
+                                consumed_paths.add((target_path, lib_type))
+                            continue  # Successfully processed, move to next book
+
                     postprocesslogger.debug(
-                        f"{book_state.download_title} was completed {elapsed} {plural(elapsed, 'second')} ago"
+                        f"Matching Stage - First Pass unsuccessful for {book_state.download_title}, trying Pass 2"
                     )
                 else:
                     postprocesslogger.debug(
-                        f"{book_state.download_title} has no completion timestamp (client doesn't support it)"
+                        f"Matching Stage - First Pass skipped because no targeted download folder "
+                        f"specified for {book_state.download_title}, trying Pass 2"
                     )
 
-            # Enrich with download_folder (general + name) and book_title
-            book_state.enrich_with_download_info(db)
-
-            postprocesslogger.debug(
-                f"Enrichment result: download_folder='{book_state.download_folder}', "
-                f"book_title='{book_state.book_title[:50] if book_state.book_title else '(empty)'}'"
-            )
-
-            # ========================================================
-            #  Downloaded Processing Stage | Targeted Location Pass
-            # ========================================================
-            if book_state.download_folder:
+                # =======================================================
+                #  Matching Stage | Second Pass: Fuzzy Search
+                #  * Only here if not processed in First Pass
+                # =======================================================
+                stage = 'matching'
                 postprocesslogger.debug(
-                    f"Targeted Location Pass: Processing search for {book_state.download_title}"
+                    f"Matching Stage - Second Pass: Fallback search for {book_state.download_title}"
                 )
-                result = _search_in_known_location(
-                    book_state, ignoreclient, db, postprocesslogger, fuzzlogger
+                result = _process_snatched_book(
+                    book_state,
+                    all_downloads,
+                    ignoreclient,
+                    db,
+                    postprocesslogger,
+                    fuzzlogger,
+                    consumed_paths=consumed_paths,
                 )
                 if result > 0:
                     ppcount += result
                     postprocesslogger.info(
-                        f"Matching Stage - First Pass SUCCESS: {book_state.download_title}"
+                        f"Matching Stage - Second Pass SUCCESS: {book_state.download_title}"
                     )
-                    continue  # Successfully processed, move to next book
-
-                postprocesslogger.debug(
-                    f"Matching Stage - First Pass unsuccessful for {book_state.download_title}, trying Pass 2"
-                )
-            else:
-                postprocesslogger.debug(
-                    f"Matching Stage - First Pass skipped because no targeted download folder "
-                    f"specified for {book_state.download_title}, trying Pass 2"
-                )
-
-            # =======================================================
-            #  Matching Stage | Second Pass: Fuzzy Search
-            #  * Only here if not processed in First Pass
-            # =======================================================
-            postprocesslogger.debug(
-                f"Matching Stage - Second Pass: Fallback search for {book_state.download_title}"
-            )
-            result = _process_snatched_book(
-                book_state,
-                all_downloads,
-                ignoreclient,
-                db,
-                postprocesslogger,
-                fuzzlogger,
-            )
-            if result > 0:
-                ppcount += result
-                postprocesslogger.info(
-                    f"Matching Stage - Second Pass SUCCESS: {book_state.download_title}"
-                )
-            else:
-                postprocesslogger.warning(
-                    f"Matching Stage - Second Pass FAILED: {book_state.download_title}. No matches"
-                )
+                    source_path = getattr(book_state, 'matched_source_path', '')
+                    lib_type = book_state.aux_type or ''
+                    if source_path and not _is_multi_item_directory(source_path, lib_type):
+                        consumed_paths.add((source_path, lib_type))
+                else:
+                    postprocesslogger.warning(
+                        f"Matching Stage - Second Pass FAILED: {book_state.download_title}. No matches"
+                    )
+                    # The callee records genuine failures with their exact
+                    # cause. A zero/deferred result alone is not permission to
+                    # fail a sibling or overwrite an orchestration hold.
+            except Exception as e:
+                postprocesslogger.debug(f"Error processing {book_row}: {e}")
+                book_state.mark_failed(stage, "Exception while processing")
+                continue
 
         postprocesslogger.debug("Snatched Processing Stage Complete")
 
@@ -4051,8 +4385,11 @@ def process_dir(reset=False, startdir=None, ignoreclient=False, downloadid=None)
             startdir,
             helper_allowed_identities,
         )
+        if not scoped_downloadid:
+            _cleanup_orphaned_failed_downloads(db, postprocesslogger)
 
         # Cleanup and scheduling
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
         _check_and_schedule_next_run(db, logger, reset)
 
@@ -4294,28 +4631,20 @@ def process_book(book_path: str, book_id: str, logger=None, library=""):
                 if ".unpack" in book_path:
                     book_path = f"{book_path.split('.unpack')[0]}.unpack"
 
-                if (
-                    ".unpack" in book_path
-                    or (not CONFIG.get_bool("DESTINATION_COPY")
-                        and book_path != dest_dir)
-                ):
-                    if path_isdir(book_path):
-                        # calibre might have already deleted it?
+                if path_isdir(book_path):
+                    if book_path.endswith(".unpack"):
                         logger.debug(f"Deleting {book_path}")
                         shutil.rmtree(book_path, ignore_errors=True)
-                elif CONFIG.get_bool("DESTINATION_COPY"):
-                    logger.debug(f"Not removing {book_path} as Keep Files is set")
-                else:
-                    logger.debug(f"Not removing {book_path} as in download root")
+                    elif _is_protected_root(book_path):
+                        logger.debug(f"Not removing {book_path} as root folder")
+                    elif not CONFIG.get_bool("DESTINATION_COPY"):
+                        logger.debug(f"Deleting {book_path}")
+                        shutil.rmtree(book_path, ignore_errors=True)
 
                 logger.info(f"Successfully processed: {global_name}")
                 custom_notify_download(f"{book_id} {book_type_aux}")
-                frm = "" if snatched_from == "manually added" else "from "
-
-                notify_download(
-                    f"{book_type_aux} {global_name} {frm}{snatched_from} at {now()}",
-                    book_id,
-                )
+                provider = None if snatched_from == "manually added" else snatched_from
+                notify_download(notify_text(global_name, provider, book_type_aux), book_id)
                 mailing_list(book_type_aux, global_name, book_id)
                 if was_snatched:
                     _update_downloads_provider_count(
@@ -4452,7 +4781,7 @@ def _process_extras(
     # not contain our choice of authorname/title/identifier, so if autoadding we ignore it and write our own
     if not CONFIG.get_bool("IMP_AUTOADD_BOOKONLY"):
         _ = create_opf(dest_path, data, global_name, overwrite=True)
-    else:
+    elif CONFIG.get_bool('IMP_EBOOKOPF'):
         _ = create_opf(dest_path, data, global_name, overwrite=False)
     # if our_opf:
     #     write_meta(dest_path, opf_file)  # write metadata from opf to all ebook types in dest folder
@@ -5071,10 +5400,11 @@ def _process_destination(
 
     dir_list = listdir(book_path)  # Refresh our directory listing
     copied_count = 0
+    copied_to = {}
 
     # ok, we've got a target directory, try to copy only the files we want, renaming them on the fly.
     logger.info(f"COPY FILES STARTING - {book_path} ==> {udest_path}")
-    for _fname in dir_list:
+    for _fname in sorted(dir_list):
         fname = enforce_str(_fname)
         if not _should_copy_file(fname, best_format, book_type):
             logger.debug(f"Skip: {fname}")
@@ -5082,6 +5412,12 @@ def _process_destination(
 
         srcfile = os.path.join(book_path, fname)
         destfile = _get_dest_filename(fname, uglobal_name, book_type, udest_path)
+        # two files renamed to one name means the folder holds another download,
+        # don't let the last one silently replace ours
+        if destfile in copied_to:
+            logger.warning(f"Skip: {fname} would overwrite {copied_to[destfile]} at {destfile}")
+            continue
+        copied_to[destfile] = fname
 
         try:
             destfile = safe_copy(srcfile, destfile)
@@ -5124,8 +5460,9 @@ def _process_destination(
                 uglobal_name,
                 ImageType.BOOK,
             )
-            opf_data = book_metadata.get_opf_data()
-            _ = create_opf(book_path, opf_data, uglobal_name, True)
+            if CONFIG.get_bool('IMP_EBOOKOPF'):
+                opf_data = book_metadata.get_opf_data()
+                _ = create_opf(book_path, opf_data, uglobal_name, True)
 
         # try to keep track of "preferred" ebook type or the first part of multipart audiobooks
         # Find the preferred file to use as the main book file
@@ -5189,7 +5526,7 @@ def _process_auto_add(src_path: str, book_type_enum: BookType = BookType.EBOOK):
         if book_type_enum == BookType.EBOOK and CONFIG.get_bool("ONE_FORMAT"):
             booktype_list = get_list(CONFIG["EBOOK_TYPE"])
             for bktype in booktype_list:
-                while not match:
+                if not match:
                     for _name in names:
                         name = enforce_str(_name)
                         extn = os.path.splitext(name)[1].lstrip(".")

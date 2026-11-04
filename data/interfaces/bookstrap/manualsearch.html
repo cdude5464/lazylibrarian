@@ -15,12 +15,12 @@
     <table class="display table table-striped table-hover table-bordered" id="book_table">
       <thead>
         <tr>
-          <th class="bookid">Match</th>
-          <th class="filename">Title</th>
-          <th class="provider">Provider</th>
-          <th class="size text-right">Size</th>
-          <th class="date">Date</th>
-          <th class="status">Status</th>
+          <th class="bookid">${_('Match')}</th>
+          <th class="filename">${_('Title')}</th>
+          <th class="provider">${_('Provider')}</th>
+          <th class="size text-right">${_('Size')}</th>
+          <th class="date">${_('Date')}</th>
+          <th class="status">${_('Status')}</th>
         </tr>
       </thead>
       <tbody>
@@ -36,7 +36,7 @@
           <td class="size text-right">${item['size']}</td>
           <td class="date">${item['date']}</td>
           <td class="status text-center"> <a class="btn btn-xs btn-info button"
-                    href="snatch_book?bookid=${bookid}&mode=${item['mode']}&provider=${item['provider']}&title=${item['url_title']}&size=${item['size']}&library=${library}&url=${item['url']}" title="Snatch">Snatch</a></td>
+                    href="snatch_book?bookid=${bookid}&mode=${item['mode']}&provider=${item['provider']}&title=${item['url_title']}&size=${item['size']}&library=${library}&url=${item['url']}" title="${_('Snatch') | h}">${_('Snatch')}</a></td>
         </tr>
         %endfor
       </tbody>
@@ -62,18 +62,13 @@
                         return '<span style="display:none;">' + row[3] + '</span>' + formatBytes(row[3])
                          ;} },
                 ],
-                "oLanguage": {
-                    "sSearch": "Filter: ",
-                    "sLengthMenu":"Show _MENU_ rows per page",
-                    "sEmptyTable": "No results found",
-                    "sInfo":"Showing _START_ to _END_ of _TOTAL_ rows",
-                    "sInfoEmpty":"Showing 0 to 0 of 0 rows",
-                    "sInfoFiltered":"(filtered from _MAX_ total rows)"},
+                "oLanguage": $.extend({}, llDataTablesLanguage, {
+                "sEmptyTable": ${_js('No results found')}}),
                 "sPaginationType": "full_numbers",
-                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, "All"]],
+                "aLengthMenu": [[5, 10, 15, 25, 50, 100, 500, 1000, 5000, -1], [5, 10, 15, 25, 50, 100, 500, 1000, 5000, ${_js('All')}]],
                 "iDisplayLength": ${CONFIG['DISPLAYLENGTH']},
             });
-            $('.dataTables_filter input').attr("placeholder", "Results filter");
+            $('.dataTables_filter input').attr("placeholder", ${_js('Results filter')});
     });
   </script>
 </%def>

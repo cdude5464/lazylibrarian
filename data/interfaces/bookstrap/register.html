@@ -9,35 +9,35 @@
 <div class="container">
   <div class="row">
     <div class="col-sm-6 col-sm-offset-3">
-      <h4 class="">Please complete this short form and press "Submit"</h4>
-      <h5 class="">Your message will be reviewed and you will receive a reply by email</h5>
+      <h4 class="">${_('Please complete this short form and press "Submit"')}</h4>
+      <h5 class="">${_('Your message will be reviewed and you will receive a reply by email')}</h5>
     </div>
     <div class="col-sm-6 col-sm-offset-3 ptop21">
       <div class="login-container">
         <div class="row">
           <div class="col-xs-12">
               <div class="form-group">
-                <label for="fullname">Full Name</label>
+                <label for="fullname">${_('Full Name')}</label>
                 <input id="fullname" type="fullname" class="form-control" name="fullname" value="">
               </div>
               <div class="form-group">
-                <label for="username">Username (if already registered)</label>
+                <label for="username">${_('Username (if already registered)')}</label>
                 <input id="username" type="username" class="form-control" name="username" value="">
               </div>
               <div class="form-group">
-                <label class="ptop15" for="email">Email Address (required for reply)</label>
+                <label class="ptop15" for="email">${_('Email Address (required for reply)')}</label>
                 <div class="">
                   <input id="email" type="email" class="form-control" name="email">
                 </div>
               </div>
               <div class="form-group">
-                <label class="ptop15" for="message">Message to Admin (optional)</label>
+                <label class="ptop15" for="message">${_('Message to Admin (optional)')}</label>
                 <div class="">
                   <input id="message" type="message" class="form-control" name="message">
                 </div>
               </div>
               <div class="ptop21">
-                <button name='register' id='register' class="btn btn-primary btn-block btn-lg btn-inverse">Submit</button>
+                <button name='register' id='register' class="btn btn-primary btn-block btn-lg btn-inverse">${_('Submit')}</button>
               </div>
             <h4 id="loginmessage">${lazylibrarian.LOGIN_MSG}</h4>
           </div>
@@ -61,11 +61,11 @@
             $.get('user_contact', {'fullname': fullname, 'username': username, 'email': email, 'message': message},
                 function(data) {
                 bootbox.dialog({
-                    title: 'User Registration',
+                    title: ${_js('User Registration')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }

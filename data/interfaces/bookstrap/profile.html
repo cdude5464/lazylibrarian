@@ -5,7 +5,7 @@
 <%def name="headIncludes()">
 </%def>
 <%def name="body()">
-<h1>LazyLibrarian User Profile</h1>
+<h1>${_('LazyLibrarian User Profile')}</h1>
 <div class="container">
   <div class="row">
     <div class="col-sm-6 col-sm-offset-3 ptop21">
@@ -13,19 +13,19 @@
         <div class="row">
           <div class="col-xs-12">
               <div class="form-group">
-                <label for="fullname">Full Name</label>
+                <label for="fullname">${_('Full Name')}</label>
                 <input id="fullname" name="fullname" class="form-control" value="${user['Name']}">
               </div>
               <div class="form-group">
-                <label for="email">Email</label>
+                <label for="email">${_('Email')}</label>
                 <input id="email" name="email" class="form-control" value="${user['Email']}">
               </div>
               <div class="form-group">
-                <label for="sendto">Send To (eg kindle)</label>
+                <label for="sendto">${_('Send To (eg kindle)')}</label>
                 <input id="sendto" name="sendto" class="form-control" value="${user['SendTo']}">
               </div>
               <div class="form-group">
-                <label for="lltheme">Theme</label>
+                <label for="lltheme">${_('Theme')}</label>
                 <select name="lltheme" id="lltheme" class="form-control">
                   %for btype in themelist:
                       <%
@@ -39,11 +39,11 @@
                 </select>
               </div>
               <div class="form-group">
-                <label for="username">Username (UserID=${user['UserID']})</label>
+                <label for="username">${_('Username (UserID=%(userid)s)') % {'userid': user['UserID']}}</label>
                 <input id="username" class="form-control" name="username" value="${user['UserName']}">
               </div>
               <div class="form-group">
-                <label for="booktype">Preferred BookType to open/email</label>
+                <label for="booktype">${_('Preferred BookType to open/email')}</label>
                         <select name="booktype" id="booktype" class="form-control">
                           %for btype in typelist:
                           <%
@@ -57,31 +57,31 @@
                         </select>
               </div>
               <div class="form-group">
-                <label for="hc_token">HardCover Token</label>
+                <label for="hc_token">${_('HardCover Token')}</label>
                 <div class="input-group">
-                  <input type="text" id="hc_token" name="hc_token" value="${user['hc_token'] if 'hc_token' in user else ''}" class="form-control" placeholder="Bearer token">
+                  <input type="text" id="hc_token" name="hc_token" value="${user['hc_token'] if 'hc_token' in user else ''}" class="form-control" placeholder="${_('Bearer token') | h}">
                   <span class="input-group-btn">
-                    <button class="btn btn-default" type="button" id="test_hc_token">Test</button>
+                    <button class="btn btn-default" type="button" id="test_hc_token">${_('Test')}</button>
                   </span>
                 </div>
               </div>
               <div class="form-group">
-                <label class="ptop15" for="password">Password</label>
+                <label class="ptop15" for="password">${_('Password')}</label>
                 <div class="">
-                  <input id="password" type="password" class="form-control" name="password" placeholder="Leave empty to keep existing password">
+                  <input id="password" type="password" class="form-control" name="password" placeholder="${_('Leave empty to keep existing password') | h}">
                 </div>
               <div class="form-group">
-                <label class="ptop15" for="password">Confirm Password</label>
+                <label class="ptop15" for="password">${_('Confirm Password')}</label>
                 <div class="">
-                  <input id="password2" type="password" class="form-control" name="password2" placeholder="If changing password, enter new password  again here">
+                  <input id="password2" type="password" class="form-control" name="password2" placeholder="${_('If changing password, enter new password  again here') | h}">
                 </div>
               <div class="form-group col-md-12">
-                <label for="subs">Subscriptions (for information only)</label>
-                <textarea id="summernote" name="summernote" class="form-control" rows="10" placeholder="Nothing to see here..." readonly>${subs}</textarea>
+                <label for="subs">${_('Subscriptions (for information only)')}</label>
+                <textarea id="summernote" name="summernote" class="form-control" rows="10" placeholder="${_('Nothing to see here...') | h}" readonly>${subs}</textarea>
               </div>
               </div>
               <div class="ptop21">
-                <button value="save" name="save" id="save" class="btn btn-primary btn-block btn-lg btn-inverse">Update</button>
+                <button value="save" name="save" id="save" class="btn btn-primary btn-block btn-lg btn-inverse">${_('Update')}</button>
               </div>
           </div>
         </div>
@@ -110,11 +110,11 @@
           $.get("user_update", {'username': username, 'fullname': fullname, 'password': password, 'password2': password2, 'email': email, 'sendto': sendto, 'booktype': booktype, 'theme': lltheme, 'hc_token': hc_token},
                 function (data) {
                 bootbox.dialog({
-                    title: 'Update User',
+                    title: ${_js('Update User')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload(true) }
                         }
@@ -129,11 +129,11 @@
           $.get("test_hcauth", {'hc_token': hc_token, 'userid': userid},
                 function (data) {
                 bootbox.dialog({
-                    title: 'Test HardCover Token',
+                    title: ${_js('Test HardCover Token')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }

@@ -16,6 +16,7 @@ import logging
 import re
 from urllib.parse import urlencode
 
+from lazylibrarian import i18n
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import check_int, make_unicode
@@ -351,14 +352,13 @@ def check_link():
     # Make sure we can login to the synology drivestation
     # This function is used by the "test synology" button
     # to return a message giving success or fail
-    msg = "Synology login FAILED\nCheck debug log"
     hosturl = _host_url()
     if hosturl:
         auth_cgi, _, sid = _login(hosturl)
         if sid:
-            msg = "Synology login successful"
             _logout(auth_cgi, sid)
-    return msg
+            return i18n.gettext('%(name)s login successful') % {'name': 'Synology'}, True
+    return i18n.gettext('%(name)s login FAILED\nCheck debug log') % {'name': 'Synology'}, False
 
 
 def remove_torrent(hash_id, remove_data=False):

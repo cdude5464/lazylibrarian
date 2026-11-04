@@ -11,108 +11,112 @@
     <div class="col-sm-6 col-sm-offset-3">
       <div class="login-container">
             <div class="form-group col-md-6">
-                <label for="user" class="control-label">Select user</label>
+                <label for="user" class="control-label">${_('Select user')}</label>
                 <select id="user" class="form-control input" name="user">
-                <option value=""> -- add a new user -- </option>
+                <option value=""> ${_('-- add a new user --')} </option>
                 %for item in users:
                     <option value="${item['UserName']}">${item['UserName']}</option>
                 %endfor
                 </select>
             </div>
             <div>
-                <label for="saveusers" class="control-label">Import/Export Users/edit feeds</label>
+                <label for="saveusers" class="control-label">${_('Import/Export Users/edit feeds')}</label>
                 <div>
-                  <input type="button" value="Import" id="loadusers" class="btn btn-default" />
-                  <input type="button" value="Export" id="saveusers" class="btn btn-default" />
-                  <input type="button" value="Feeds" id="userfeeds" class="btn btn-default" />
+                  <input type="button" value="${_('Import') | h}" id="loadusers" class="btn btn-default" />
+                  <input type="button" value="${_('Export') | h}" id="saveusers" class="btn btn-default" />
+                  <input type="button" value="${_('Feeds') | h}" id="userfeeds" class="btn btn-default" />
                 </div>
             </div>
         <div class="row">
           <div class="col-md-12">
               <div class="form-group col-md-12">
-                <label for="username">Username</label>
+                <label for="username">${_('Username')}</label>
                 <input id="username" class="form-control" name="username" value="">
               </div>
               <div class="form-group col-md-12">
-                <label for="fullname">Full Name</label>
+                <label for="fullname">${_('Full Name')}</label>
                 <input id="fullname" name="fullname" class="form-control" value="">
               </div>
               <div class="form-group col-md-12">
-                <label for="email">Email (for messages)</label>
+                <label for="email">${_('Email (for messages)')}</label>
                 <input id="email" name="email" class="form-control" value="">
               </div>
               <div class="form-group col-md-12">
-                <label for="sendto">Send To (eg kindle email)</label>
+                <label for="sendto">${_('Send To (eg kindle email)')}</label>
                 <input id="sendto" name="sendto" class="form-control" value="">
               </div>
               <fieldset  class="form-group col-md-6">
               <div>
-                <label for="perms">Permissions</label>
+                <label for="perms">${_('Permissions')}</label>
                 <input id="perms" class="form-control" name="perms" value="">
-                <input type="button" value="Admin" name="admin" id="admin" class="button btn btn-primary btn-sm col-md-4">
-                <input type="button" value="Friend" name="friend" id="friend" class="button btn btn-primary btn-sm col-md-4">
-                <input type="button" value="Guest" name="guest" id="guest" class="button btn btn-primary btn-sm col-md-4">
+                <input type="button" value="${_('Admin') | h}" name="admin" id="admin" class="button btn btn-primary btn-sm col-md-4">
+                <input type="button" value="${_('Friend') | h}" name="friend" id="friend" class="button btn btn-primary btn-sm col-md-4">
+                <input type="button" value="${_('Guest') | h}" name="guest" id="guest" class="button btn btn-primary btn-sm col-md-4">
               </div>
               </fieldset>
               <div class="form-group col-md-6">
-                <label for="password">Password</label>
-                <input id="password" class="form-control" name="password" placeholder="keep existing password">
-                <input type="button" value="Generate Password" name="generatepwd" id="generatepwd" class="button btn btn-primary btn-sm">
+                <label for="password">${_('Password')}</label>
+                <input id="password" class="form-control" name="password" placeholder="${_('keep existing password') | h}">
+                <input type="button" value="${_('Generate Password') | h}" name="generatepwd" id="generatepwd" class="button btn btn-primary btn-sm">
                 <!-- input type="button" value="Email details to user" name="emailpwd" id="emailpwd" class="pull-right button btn btn-primary btn-sm" -->
               </div>
               <div class="form-group col-md-6">
-                <label for="calread">Calibre Read Column</label>
+                <label for="calread">${_('Calibre Read Column')}</label>
                 <input id="calread" name="calread" class="form-control" value="">
               </div>
               <div class="form-group col-md-6">
-                <label for="caltoread">Calibre ToRead Column</label>
+                <label for="caltoread">${_('Calibre ToRead Column')}</label>
                 <input id="caltoread" name="caltoread" class="form-control" value="">
               </div>
               <div class="form-group col-md-6">
-                <label for="booktype">Preferred BookType to open/email</label>
+                <label for="booktype">${_('Preferred BookType to open/email')}</label>
                 <input id="booktype" name="booktype" class="form-control" value="">
               </div>
               <div class="form-group col-md-6">
-                <label for="lltheme">Theme</label>
-                <input id="lltheme" name="lltheme" class="form-control" value="" placeholder="Default">
+                <label for="lltheme">${_('Theme')}</label>
+                <input id="lltheme" name="lltheme" class="form-control" value="" placeholder="${_('Default') | h}">
               </div>
               <div class="form-group col-md-6">
-                <label for="userid">UserID</label>
+                <label for="ui_lang">${_('UI Language')}</label>
+                <input id="ui_lang" name="ui_lang" class="form-control" value="" placeholder="${_('Default') | h}">
+              </div>
+              <div class="form-group col-md-6">
+                <label for="userid">${_('UserID')}</label>
                 <input id="userid" name="userid" class="form-control" value="" readonly>
               </div>
               <div class="form-group col-md-6">
-                <label for="hc_id">HardCoverID</label>
+                <label for="hc_id">${_('HardCoverID')}</label>
                 <input id="hc_id" name="hc_id" class="form-control" value="" readonly>
               </div>
               <div class="form-group col-md-6">
-                <label for="hc_token">HardCover Token</label>
+                <label for="hc_token">${_('HardCover Token')}</label>
                 <div class="input-group">
-                  <input type="text" id="hc_token" name="hc_token" class="form-control" value="" placeholder="Bearer token">
+                  <input type="text" id="hc_token" name="hc_token" class="form-control" value="" placeholder="${_('Bearer token') | h}">
                   <span class="input-group-btn">
-                    <button class="btn btn-default" type="button" id="test_hc_token" disabled>Test</button>
+                    <button class="btn btn-default" type="button" id="test_hc_token" disabled>${_('Test')}</button>
                   </span>
                 </div>
               </div>
               <div class="form-group col-md-6">
-                <label for="lastlogin">Last Login</label>
+                <label for="lastlogin">${_('Last Login')}</label>
                 <input id="lastlogin" name="lastlogin" class="form-control" value="" readonly>
               </div>
               <div class="form-group col-md-6">
-                <label for="logins">Logins</label>
+                <label for="logins">${_('Logins')}</label>
                 <input id="logins" name="logins" class="form-control" value="" readonly>
               </div>
               <div class="form-group col-md-6">
-                <label for="downloads">Downloads</label>
+                <label for="downloads">${_('Downloads')}</label>
                 <input id="downloads" name="downloads" class="form-control" value="" readonly>
               </div>
               <div class="form-group col-md-12">
-                <label for="summernote">Subscriptions</label>
-                <textarea id="summernote" name="summernote" class="form-control" rows="10" placeholder="Nothing to see here..." readonly></textarea>
+                <label for="summernote">${_('Subscriptions')}</label>
+                <textarea id="summernote" name="summernote" class="form-control" rows="10" placeholder="${_('Nothing to see here...') | h}" readonly></textarea>
               </div>
               <fieldset class="form-group col-md-12">
               <div>
-                <input type="button" value="Save" name="save" id="save" class="btn btn-primary btn-lg btn-inverse col-md-6">
-                <input type="button" value="Delete" name="delete" id="delete" class="btn btn-primary btn-lg btn-danger col-md-6">
+                <input type="button" value="${_('Save') | h}" name="save" id="save" class="btn btn-primary btn-lg btn-inverse col-md-6">
+                <input type="button" value="${_('Delete') | h}" name="delete" id="delete" class="btn btn-primary btn-lg btn-danger col-md-6">
               </div>
               </fieldset>
           </div>
@@ -162,6 +166,7 @@
             $("#downloads").val(obj['downloads']);
             $("#logins").val(obj['logins']);
             $("#lltheme").val(obj['theme']);
+            $("#ui_lang").val(obj['ui_lang']);
             $("#summernote").val(obj['subs']);
             $("#password").val("");
             $("#hc_id").val(obj['hc_id']);
@@ -187,11 +192,11 @@
           $.get("test_hcauth", {'hc_token': hc_token, 'userid': userid},
                 function (data) {
                 bootbox.dialog({
-                    title: 'Test HardCover Token',
+                    title: ${_js('Test HardCover Token')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -205,10 +210,10 @@
               var obj = JSON.parse(data);
               var feeds = obj['feeds']
               if (feeds.length === 0) {
-                alert("No wishlists found");
+                alert(${_js('No wishlists found')});
               }
               bootbox.prompt({
-                  title: "User Feeds",
+                  title: ${_js('User Feeds')},
                   value: obj['value'],
                   inputType: 'checkbox',
                   inputOptions: feeds,
@@ -216,11 +221,11 @@
                       $.get("update_feeds", {'user': user, 'value': result, 'feeds': obj['feeds']},
                             function (data) {
                             bootbox.dialog({
-                                title: 'Updated User',
+                                title: ${_js('Updated User')},
                                 message: '<pre>'+data+'</pre>',
                                 buttons: {
                                     primary: {
-                                        label: "Close",
+                                        label: ${_js('Close')},
                                         className: 'btn-primary',
                                         callback: function(result){ window.location.reload(true) }
                                     }
@@ -235,11 +240,11 @@
         $('#saveusers').on('click', function(e) {
             $.get('save_users', function(data) {
                 bootbox.dialog({
-                    title: 'Export Users',
+                    title: ${_js('Export Users')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -250,11 +255,11 @@
         $('#loadusers').on('click', function(e) {
             $.get('load_users', function(data) {
                 bootbox.dialog({
-                    title: 'Import Users',
+                    title: ${_js('Import Users')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary'
                         }
                     }
@@ -265,14 +270,14 @@
       $('#delete').click(function() {
           var user = $.trim($("#user").val());
             bootbox.confirm({
-                message: "Are you sure you want to permanently delete " + user + " ?",
+                message: ${_js('Are you sure you want to permanently delete %(user)s?')}.replace('%(user)s', user),
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
@@ -281,11 +286,11 @@
                       $.get("admin_delete", {'user': user},
                             function (data) {
                             bootbox.dialog({
-                                title: 'Delete User',
+                                title: ${_js('Delete User')},
                                 message: '<pre>'+data+'</pre>',
                                 buttons: {
                                     primary: {
-                                        label: "Close",
+                                        label: ${_js('Close')},
                                         className: 'btn-primary',
                                         callback: function(result){ window.location.reload(true) }
                                     }
@@ -309,17 +314,18 @@
           var booktype = $.trim($("#booktype").val());
           var password = $.trim($("#password").val());
           var lltheme = $.trim($("#lltheme").val());
+          var ui_lang = $.trim($("#ui_lang").val());
           var hc_token = $.trim($("#hc_token").val());
           $.get("admin_users", {'user': user, 'username': username, 'fullname': fullname, 'email': email,
                 'sendto': sendto, 'perms': perms, 'password': password, 'calread': calread, 'caltoread': caltoread,
-                'booktype': booktype, 'theme': lltheme, 'hc_token': hc_token},
+                'booktype': booktype, 'theme': lltheme, 'hc_token': hc_token, 'ui_lang': ui_lang},
                 function (data) {
                 bootbox.dialog({
-                    title: 'Update User',
+                    title: ${_js('Update User')},
                     message: '<pre>'+data+'</pre>',
                     buttons: {
                         primary: {
-                            label: "Close",
+                            label: ${_js('Close')},
                             className: 'btn-primary',
                             callback: function(result){ window.location.reload(true) }
                         }

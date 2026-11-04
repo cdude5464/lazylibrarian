@@ -16,6 +16,7 @@ from urllib.parse import urlencode
 import requests
 
 import lazylibrarian
+from lazylibrarian import i18n
 from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import make_utf8bytes, versiontuple
@@ -26,7 +27,7 @@ def check_link():
     # connection test, check host/port
     auth, _ = sab_nzbd(nzburl='auth')
     if not auth:
-        return "Unable to talk to sab_nzbd, check HOST/PORT/SUBDIR"
+        return i18n.gettext('Unable to talk to %(name)s, check HOST/PORT/SUBDIR') % {'name': 'SABnzbd'}, False
     vers, _ = sab_nzbd(nzburl='version')
     if not vers or 'version' not in vers:
         lazylibrarian.SAB_VER = (0, 0, 0)
@@ -37,14 +38,14 @@ def check_link():
     # check apikey is valid
     cats, _ = sab_nzbd(nzburl='get_cats')  # type: dict
     if not cats:
-        return "Unable to talk to sab_nzbd, check APIKEY"
+        return i18n.gettext('Unable to talk to %(name)s, check APIKEY') % {'name': 'SABnzbd'}, False
     # check category exists
     if CONFIG['SAB_CAT']:
         if 'categories' not in cats or not len(cats['categories']):
-            return f"Failed to get sab_nzbd categories: {str(cats)}"
+            return i18n.gettext('Failed to get %(name)s categories: %(error)s') % {'name': 'SABnzbd', 'error': str(cats)}, False
         if CONFIG['SAB_CAT'].split(',')[0] not in cats['categories']:
-            return f"sab_nzbd: Unknown category [{CONFIG['SAB_CAT']}]\nValid categories:\n{str(cats['categories'])}"
-    return f"sab_nzbd connection successful, version {vers['version']}"
+            return i18n.gettext('%(name)s: Unknown category [%(category)s]\nValid categories:\n%(valid)s') % {'name': 'SABnzbd', 'category': CONFIG['SAB_CAT'], 'valid': str(cats['categories'])}, False
+    return i18n.gettext('%(name)s connection successful, version %(version)s') % {'name': 'SABnzbd', 'version': vers['version']}, True
 
 
 def sab_nzbd(title=None, nzburl=None, remove_data=False, search=None, nzo_ids=None, library='eBook', label=''):
@@ -217,16 +218,13 @@ def sab_nzbd(title=None, nzburl=None, remove_data=False, search=None, nzo_ids=No
     if title and title.startswith('LL.('):
         return result, ''
 
-    if result['status'] is True:
+    if result.get('status') is True:
         logger.info(f"{title} sent to SAB successfully.")
         # sab versions earlier than 0.8.0 don't return nzo_ids
         if 'nzo_ids' in result and result['nzo_ids']:  # check its not empty
             return result['nzo_ids'][0], ''
         return 'unknown', ''
-    if result['status'] is False:
-        res = f"SAB returned Error: {result['error']}"
-        logger.error(res)
-        return False, res
-    res = f"Unknown error: {str(result)}"
+
+    res = f"Send to SAB failed: {str(result)}"
     logger.error(res)
     return False, res

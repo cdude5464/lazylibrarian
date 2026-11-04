@@ -10,13 +10,18 @@
 #  You should have received a copy of the GNU General Public License
 #  along with Lazylibrarian.  If not, see <http://www.gnu.org/licenses/>.
 
+import json
 import logging
+import re
 import time
 import traceback
 import unicodedata
+from datetime import datetime, timezone
 from urllib.parse import quote, quote_plus, urlencode
 
+import requests
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import ROLE, database
@@ -35,7 +40,8 @@ from lazylibrarian.bookwork import (
     set_genres,
     set_series,
 )
-from lazylibrarian.cache import gr_xml_request, html_request
+from lazylibrarian.cache import gr_xml_request
+from lazylibrarian.common import fallback_proxy, proxy_list
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
     book_series,
@@ -43,7 +49,6 @@ from lazylibrarian.formatter import (
     check_int,
     check_year,
     clean_name,
-    date_format,
     format_author_name,
     get_list,
     is_valid_isbn,
@@ -68,6 +73,84 @@ class GoodReads:
         if not CONFIG['GR_API']:
             self.logger.warning('No Goodreads API key, check config')
         self.params = {"key": CONFIG['GR_API']}
+
+    def get_gr_web_info(self, bookid):
+        """ Fallback scraper for GoodReads Next.js data when the legacy XML API
+        returns missing/empty description, cover, pubdate, or ASIN (especially post-2020 KDP books).
+        Uses Python requests with browser-like headers.
+        Tries direct request (or configured primary proxy) first.
+        Only if blocked by WAF (403/429/503) and a fallback/bypass proxy is configured (e.g. Tor/Byparr),
+        retries via the fallback proxy.
+        Only called when the XML API returns nothing useful, so request rate is low. """
+        url = f"https://www.goodreads.com/book/show/{bookid}"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:120.0) Gecko/20100101 Firefox/120.0',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+
+        html = ''
+        waf_blocked = False
+        try:
+            r = requests.get(url, headers=headers, proxies=proxy_list(), timeout=15, verify=False)
+            if r.status_code == 200 and '__NEXT_DATA__' in r.text:
+                html = r.text
+            elif r.status_code in (403, 429, 503):
+                waf_blocked = True
+                self.logger.debug(f"GoodReads web fetch challenged ({r.status_code}) for {bookid}")
+        except Exception as e:
+            self.logger.debug(f"GoodReads web fetch error for {bookid}: {e}")
+
+        # If challenged by WAF and a fallback/bypass proxy is configured, retry via that proxy
+        if waf_blocked and not html:
+            fb_proxy = fallback_proxy()
+            if fb_proxy:
+                try:
+                    self.logger.debug(f"Retrying GoodReads web fetch for {bookid} via fallback proxy")
+                    r = requests.get(url, headers=headers, proxies=fb_proxy, timeout=15, verify=False)
+                    if r.status_code == 200 and '__NEXT_DATA__' in r.text:
+                        html = r.text
+                except Exception as e:
+                    self.logger.debug(f"GoodReads fallback proxy fetch error for {bookid}: {e}")
+
+        if not html:
+            return {}
+
+        match = re.search(r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html)
+        if not match:
+            return {}
+
+        try:
+            data = json.loads(match.group(1))
+            apollo = data.get('props', {}).get('pageProps', {}).get('apolloState', {})
+            result = {}
+            for k, v in apollo.items():
+                if k.startswith('Book:'):
+                    desc = v.get('description', '')
+                    if isinstance(desc, dict):
+                        desc = desc.get('html', '')
+                    if desc:
+                        desc = re.sub(r'<[^>]+>', ' ', str(desc)).strip()
+                    result['desc'] = desc or ''
+                    result['img'] = v.get('imageUrl') or ''
+                    details = v.get('details') or {}
+                    if isinstance(details, dict):
+                        result['asin'] = details.get('asin') or ''
+                        result['format'] = details.get('format') or ''
+                        result['pages'] = details.get('numPages') or ''
+                        pub_time = details.get('publicationTime')
+                        if pub_time:
+                            try:
+                                dt = datetime.fromtimestamp(pub_time / 1000.0, tz=timezone.utc)
+                                result['date'] = dt.strftime('%Y-%m-%d')
+                            except Exception:
+                                pass
+                    break
+            return result
+        except Exception as e:
+            self.logger.debug(f"Error parsing GoodReads Next.js data for {bookid}: {e}")
+            return {}
+
 
     def find_results(self, searchterm=None, queue=None):
         # noinspection PyBroadException
@@ -180,19 +263,19 @@ class GoodReads:
                             book_title = ""
 
                         if searchauthorname:
-                            author_fuzz = fuzz.token_sort_ratio(author_name_result, searchauthorname)
+                            author_fuzz = fuzz.token_sort_ratio(author_name_result, searchauthorname, processor=default_process)
                         else:
-                            author_fuzz = fuzz.token_sort_ratio(author_name_result, searchterm)
+                            author_fuzz = fuzz.token_sort_ratio(author_name_result, searchterm, processor=default_process)
                         if searchtitle:
                             if book_title.endswith(')'):
                                 book_title = book_title.rsplit(' (', 1)[0]
-                            book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchtitle.lower())
+                            book_fuzz = fuzz.token_set_ratio(book_title, searchtitle, processor=default_process)
                             # lose a point for each extra word in the fuzzy matches so we get the closest match
                             words = len(get_list(book_title))
                             words -= len(get_list(searchtitle))
                             book_fuzz -= abs(words)
                         else:
-                            book_fuzz = fuzz.token_set_ratio(book_title.lower(), searchterm.lower())
+                            book_fuzz = fuzz.token_set_ratio(book_title, searchterm, processor=default_process)
                             words = len(get_list(book_title))
                             words -= len(get_list(searchterm))
                             book_fuzz -= abs(words)
@@ -327,18 +410,23 @@ class GoodReads:
             authorname = res.find('name').text
             authorname = format_author_name(unaccented(authorname, only_ascii=False),
                                             postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
-            match = fuzz.ratio(author, authorname)
+            match = fuzz.ratio(author, authorname, processor=default_process)
             if match >= CONFIG.get_int('NAME_RATIO'):
                 return self.get_author_info(authorid)
 
-            match = fuzz.partial_ratio(author, authorname)
+            match = fuzz.partial_ratio(author, authorname, processor=default_process)
             if match >= CONFIG.get_int('NAME_PARTNAME'):
                 return self.get_author_info(authorid)
             self.logger.debug(f"Fuzz failed: {round(match, 2)} [{author}][{authorname}]")
         return {}
 
-    def get_author_info(self, authorid=None, authorname=None):
+    def get_author_image(self, authorid=None, authorname=None):
+        res = self.get_author_info(authorid=authorid, authorname=authorname)
+        return res.get('authorimg', '')
 
+    def get_author_info(self, authorid=None, authorname=None):
+        if not authorid:
+            return {}
         url = '/'.join([CONFIG['GR_URL'],
                         f"author/show/{authorid}.xml?{urlencode(self.params)}"])
 
@@ -428,6 +516,13 @@ class GoodReads:
             gb_lang_change = 0
             cache_hits = 0
             not_cached = 0
+            # ASIN only comes from the single-book book/show endpoint, not this bulk
+            # author/list one (see the "We can't call book/show for every book because
+            # of api limits" note below) - capped per refresh so a single author with
+            # many missing ASINs can't turn one bulk call into dozens of extra ones;
+            # authors converge on full ASIN coverage gradually over successive refreshes.
+            asin_lookups_this_refresh = 0
+            asin_lookups_cap = 5
 
             # Artist is loading
             db.action("UPDATE authors SET Status='Loading' WHERE AuthorID=?", (authorid,))
@@ -471,6 +566,16 @@ class GoodReads:
             isbn_count = 0
             cover_time = 0
             isbn_time = 0
+            # GoodReads' CDN throttles rapid successive page-scrape/API requests
+            # (observed live: 10 fetches in a row with no delay between them all
+            # failed with a 202/cloudfront error or an AWS WAF challenge, even
+            # though a single isolated request succeeds fine) - cap live lookups
+            # per refresh and space them out below, so covers/dates converge
+            # gradually across refreshes instead of a whole batch failing together.
+            cover_lookups_this_refresh = 0
+            cover_lookups_cap = 10
+            pubdate_lookups_this_refresh = 0
+            pubdate_lookups_cap = 10
             auth_start = time.time()
             # these are reject reasons we might want to override, so optionally add to database as "ignored"
             ignorable = ['future', 'date', 'isbn', 'set', 'word', 'publisher']
@@ -504,6 +609,7 @@ class GoodReads:
                         book_language = "Unknown"
                         find_field = "id"
                         bookisbn = ""
+                        bookasin = ""
                         isbnhead = ""
                         originalpubdate = ""
                         bookgenre = ''
@@ -521,12 +627,49 @@ class GoodReads:
                         workid = bookdict['workid']
                         isbn13 = bookdict['isbn13']
                         isbn10 = bookdict['isbn10']
+                        # bookisbn (the BookIsbn column) used to stay '' for every book unless
+                        # the ISBN_LOOKUP name-search fallback further down happened to run and
+                        # find something - it never picked up isbn13/isbn10 even when GoodReads'
+                        # own bulk author/list response already had them right here (confirmed
+                        # live: this exact field is populated in that response for books that
+                        # have an ISBN). The name-search fallback below still overrides this with
+                        # a fuzzy-matched result if ISBN_LOOKUP is enabled and finds one - that's
+                        # existing behaviour, unchanged - but a real GoodReads-reported ISBN is a
+                        # sane starting point rather than leaving it empty by default.
+                        bookisbn = isbn13 or isbn10
                         bookdate = bookdict['pub_year']
                         if check_year(bookdate, past=1800, future=0):
                             mn = check_int(bookdict['pub_month'], 0)
                             dy = check_int(bookdict['pub_day'], 0)
                             if mn and dy:
                                 bookdate = f"{bookdate}-{mn:02d}-{dy:02d}"
+
+                        cmd = ("SELECT Status,AudioStatus,BookFile,AudioFile,Manual,BookAdded,BookName,"
+                               "OriginalPubDate,BookDate,BookDesc,BookGenre,BookImg,BookPub,BookPages,"
+                               "BookLang,ASIN,BookIsbn,ScanResult FROM books WHERE BookID=?")
+                        existing = db.match(cmd, (bookid,))
+                        if existing:
+                            if (not bookdesc or bookdesc == 'No Description') and existing['BookDesc'] and existing['BookDesc'] != 'No Description':
+                                bookdesc = existing['BookDesc']
+                            if not bookgenre and existing['BookGenre']:
+                                bookgenre = existing['BookGenre']
+                            if not bookpub and existing['BookPub']:
+                                bookpub = existing['BookPub']
+                            if not bookpages and existing['BookPages']:
+                                bookpages = existing['BookPages']
+                            if (not bookdate or bookdate == '0000') and existing['BookDate'] and existing['BookDate'] != '0000':
+                                bookdate = existing['BookDate']
+                            if (not originalpubdate or originalpubdate == '0000') and existing['OriginalPubDate'] and existing['OriginalPubDate'] != '0000':
+                                originalpubdate = existing['OriginalPubDate']
+                            if (not book_language or book_language == 'Unknown') and existing['BookLang'] and existing['BookLang'] != 'Unknown':
+                                book_language = existing['BookLang']
+                            if not bookasin and existing['ASIN']:
+                                bookasin = existing['ASIN']
+                            if not bookisbn and existing['BookIsbn']:
+                                bookisbn = existing['BookIsbn']
+                            if (existing['BookImg'] and 'nocover' not in existing['BookImg'] and 'nophoto' not in existing['BookImg']) and \
+                                    (not bookimg or 'nocover' in bookimg or 'nophoto' in bookimg):
+                                    bookimg = existing['BookImg']
 
                         if not bookname:
                             self.logger.debug(f'Rejecting bookid {bookid} for {author_name_result}, no bookname')
@@ -566,9 +709,11 @@ class GoodReads:
                             try:
                                 if book.find(find_field).text:
                                     if find_field == 'id':
+                                        # Use path-based .xml format: book/show?id=X returns HTTP 202
+                                        # (Cloudfront WAF challenge) but book/show/X.xml returns 200 XML
                                         book_url = '/'.join([CONFIG['GR_URL'],
-                                                             f"book/show?id={book.find(find_field).text}"
-                                                             f"&{urlencode(self.params)}"])
+                                                             f"book/show/{book.find(find_field).text}.xml"
+                                                             f"?{urlencode(self.params)}"])
                                     else:
                                         book_url = '/'.join([CONFIG['GR_URL'],
                                                              f"book/isbn/{book.find(find_field).text}"
@@ -607,6 +752,8 @@ class GoodReads:
                                             try:
                                                 bookdate = book_rootxml.find(
                                                     './book/work/original_publication_year').text
+                                                if not bookdate:
+                                                    bookdate = '0000'
                                                 if check_year(bookdate, past=1800, future=0):
                                                     try:
                                                         mn = check_int(book_rootxml.find(
@@ -646,7 +793,7 @@ class GoodReads:
                             except Exception as e:
                                 self.logger.error(f"Goodreads language search failed: {type(e).__name__} {str(e)}")
 
-                        if not isbnhead and CONFIG.get_bool('ISBN_LOOKUP') and bookname or shortname:
+                        if not isbnhead and CONFIG.get_bool('ISBN_LOOKUP') and (bookname or shortname):
                             # try lookup by name
                             if shortname:
                                 name = replace_all(shortname, {':': ' ', '"': '', '\'': ''}).strip()
@@ -773,8 +920,8 @@ class GoodReads:
                         if not amatch:
                             continue
 
-                        cmd = ("SELECT AuthorName,BookName,AudioStatus,books.Status,ScanResult FROM books,authors "
-                               "WHERE authors.AuthorID = books.AuthorID AND BookID=?")
+                        cmd = ("SELECT AuthorName,BookName,AudioStatus,books.Status,ScanResult,BookFile,AudioFile,"
+                               "books.Manual FROM books,authors WHERE authors.AuthorID = books.AuthorID AND BookID=?")
                         match = db.match(cmd, (bookid,))
                         not_rejectable = None
                         if match:
@@ -782,6 +929,29 @@ class GoodReads:
                             if author_name_result != match['AuthorName']:
                                 rejected.append(['author', (f"Different author for this bookid [{author_name_result}]"
                                                             f"[{match['AuthorName']}]")])
+                                # This is a fatal rejection (see the `rejected` handling below, 'author'
+                                # is not in `ignorable`) so the usual upsert path never runs and this
+                                # book would otherwise sit unchanged forever, still attributed to an
+                                # author the source no longer agrees with. Set it Ignored so it stops
+                                # being actively wanted/searched under a stale attribution - but don't
+                                # touch it if the user already has the file or has it manually locked,
+                                # since re-attribution doesn't mean the file itself is wrong.
+                                match_locked = match['Manual']
+                                if match_locked is None:
+                                    match_locked = False
+                                elif str(match_locked).isdigit():
+                                    match_locked = bool(int(match_locked))
+                                if not match_locked:
+                                    updates = {}
+                                    if (match['Status'] not in ('Have', 'Open') or not match['BookFile']) and match['Status'] != 'Ignored':
+                                            updates['Status'] = 'Ignored'
+                                    if (match['AudioStatus'] not in ('Have', 'Open') or not match['AudioFile']) and match['AudioStatus'] != 'Ignored':
+                                            updates['AudioStatus'] = 'Ignored'
+                                    if updates:
+                                        db.upsert("books", updates, {"BookID": bookid})
+                                        self.logger.warning(
+                                            f"Bookid {bookid} [{match['BookName']}] no longer matches author "
+                                            f"[{match['AuthorName']}] (now [{author_name_result}]) - set {updates}")
                             elif bookname != match['BookName']:
                                 # same bookid and author, assume goodreads fixed the title, use the new title
                                 db.action("UPDATE books SET BookName=? WHERE BookID=?", (bookname, bookid))
@@ -867,14 +1037,9 @@ class GoodReads:
                         if fatal:
                             self.logger.debug(f"Rejected {bookid}:{reason}:{rejected}")
                         else:
-                            cmd = ("SELECT Status,AudioStatus,BookFile,AudioFile,Manual,BookAdded,BookName,"
-                                   "OriginalPubDate,BookDesc,BookGenre,ScanResult FROM books WHERE BookID=?")
-                            existing = db.match(cmd, (bookid,))
                             if existing:
                                 book_status = existing['Status']
                                 audio_status = existing['AudioStatus']
-                                bookdesc = existing['BookDesc']
-                                bookgenre = existing['BookGenre']
                                 if CONFIG['FOUND_STATUS'] == 'Open':
                                     if book_status == 'Have' and existing['BookFile']:
                                         book_status = 'Open'
@@ -884,7 +1049,7 @@ class GoodReads:
                                 added = existing['BookAdded']
                                 if locked is None:
                                     locked = False
-                                elif locked.isdigit():
+                                elif str(locked).isdigit():
                                     locked = bool(int(locked))
                                 if not originalpubdate:
                                     originalpubdate = existing['OriginalPubDate']
@@ -895,7 +1060,8 @@ class GoodReads:
                                 added = today()
                                 locked = False
 
-                            if not originalpubdate or len(originalpubdate) < 5:
+                            if (not originalpubdate or len(originalpubdate) < 5) and \
+                                    pubdate_lookups_this_refresh < pubdate_lookups_cap:
                                 # already set with language code or existing book?
                                 newdate, in_cache = get_book_pubdate(bookid)
                                 if not originalpubdate:
@@ -905,30 +1071,20 @@ class GoodReads:
                                     self.logger.debug(f"Extended date info found: {newdate}")
                                 if not in_cache:
                                     api_hits += 1
+                                    pubdate_lookups_this_refresh += 1
+                                    time.sleep(2)
 
-                            if originalpubdate:
-                                bookdate = originalpubdate
-
-                            if (not bookdate or bookdate == '0000') and booklink:
-                                result, in_cache = html_request(booklink)
-                                try:
-                                    pubdate = result.split(b"publicationInfo")[1].split(b"<")[0]
-                                    pubdate = make_unicode(pubdate)
-                                except IndexError:
-                                    pubdate = ''
-
-                                # Expected publication November 17, 2026
-                                # First published October 2, 2001
-                                dateparts = lazylibrarian.magazinescan.get_dateparts(pubdate)
-                                if dateparts['style']:
-                                    pubdate = dateparts['dbdate']
-                                    bookdate = date_format(pubdate)
-                                else:
-                                    for keyword in ["ublication ", "ublished "]:
-                                        if keyword in pubdate:
-                                            pubdate = pubdate.split(keyword)[1]
-                                            bookdate = date_format(make_unicode(pubdate))
-                                            break
+                            # Only let this override bookdate with a genuine date - '0000' is
+                            # get_book_pubdate()'s own not-found placeholder (a non-empty string,
+                            # so `if originalpubdate:` alone is always true for it), and was
+                            # unconditionally clobbering any real date already found earlier in
+                            # this same pass (GoodReads' own extraction, or the HardCover/local-
+                            # dump fallbacks below) with a worse '0000' every time GoodReads
+                            # itself had nothing - silently discarding those fallbacks' results
+                            # before they ever reached the database.
+                            if (originalpubdate and originalpubdate != '0000') and \
+                                    (not bookdate or bookdate == '0000' or len(originalpubdate) > len(bookdate)):
+                                    bookdate = originalpubdate
 
                             # Leave alone if locked
                             if locked:
@@ -939,7 +1095,7 @@ class GoodReads:
                                     if genres:
                                         bookgenre = ', '.join(genres)
                                 infodict = get_gb_info(isbn=bookisbn, author=author_name_result,
-                                                       title=bookname, expire=False)
+                                                       title=bookname)
                                 if infodict:  # None if api blocked
                                     gbupdate = []
                                     if not bookdesc and infodict['desc']:
@@ -963,9 +1119,45 @@ class GoodReads:
                                     if gbupdate:
                                         self.logger.debug(f"Updated {', '.join(gbupdate)} from googlebooks")
 
+                                if (not bookdate or bookdate == '0000') and bookname:
+                                    title_match = re.search(r'\b(1[89]\d\d|20\d\d)\b', bookname)
+                                    if title_match and check_year(title_match.group(1), past=1800, future=1):
+                                        bookdate = title_match.group(1)
+                                        self.logger.debug(f"Extracted pubdate {bookdate} from title for {bookid}")
+
+                                need_desc = not bookdesc or bookdesc == 'No Description'
+                                need_img = not bookimg or 'nocover' in bookimg or 'nophoto' in bookimg
+                                need_date = not bookdate or bookdate == '0000'
+                                need_asin = not bookasin
+                                if need_desc or need_img or need_date or need_asin:
+                                    web_info = self.get_gr_web_info(bookid)
+                                    if web_info:
+                                        if need_desc and web_info.get('desc'):
+                                            bookdesc = web_info['desc']
+                                            self.logger.debug(f"Got description from GoodReads web for {bookid}")
+                                        if need_img and web_info.get('img'):
+                                            bookimg = web_info['img']
+                                            self.logger.debug(f"Got cover from GoodReads web for {bookid}")
+                                        if need_date and web_info.get('date'):
+                                            bookdate = web_info['date']
+                                            self.logger.debug(f"Got pubdate {bookdate} from GoodReads web for {bookid}")
+                                        if need_asin and web_info.get('asin'):
+                                            bookasin = web_info['asin']
+                                            self.logger.debug(f"Got ASIN {bookasin} from GoodReads web for {bookid}")
+                                        if not bookpages and web_info.get('pages'):
+                                            bookpages = str(web_info['pages'])
+
+                                if (not book_language or book_language == 'Unknown') and bookdesc and bookdesc != 'No Description':
+                                    det_lang, det_conf = language_from_words(bookname, desc=bookdesc)
+                                    if det_lang and det_conf > 0.5 and det_lang not in ['None', 'Disabled', 'Blocked']:
+                                        book_language = det_lang
+                                        self.logger.debug(f"Detected language [{book_language}] ({det_conf:.2f}) from description for {bookname}")
+
                                 threadname = thread_name()
                                 reason = f"[{threadname}] {reason}"
                                 control_value_dict = {"BookID": bookid}
+                                if not bookdate:
+                                    bookdate = '0000'
                                 new_value_dict = {
                                     "AuthorID": authorid,
                                     "BookName": bookname,
@@ -984,6 +1176,7 @@ class GoodReads:
                                     "AudioStatus": audio_status,
                                     "BookAdded": added,
                                     "WorkID": workid,
+                                    "ASIN": bookasin or '',
                                     "gr_id": bookid,
                                     "ScanResult": reason,
                                     "OriginalPubDate": originalpubdate
@@ -993,6 +1186,14 @@ class GoodReads:
                                           (authorid, bookid, ROLE['PRIMARY']), suppress='UNIQUE')
                                 self.logger.debug(f'Added {authorid} as primary')
                                 set_genres(get_list(bookgenre, ','), bookid)
+
+                                if asin_lookups_this_refresh < asin_lookups_cap:
+                                    current_asin = db.match('SELECT ASIN FROM books WHERE BookID=?', (bookid,))
+                                    if current_asin and not current_asin['ASIN']:
+                                        asin_lookups_this_refresh += 1
+                                        asin = self.get_book_asin(bookid)
+                                        if asin:
+                                            db.action('UPDATE books SET ASIN=? WHERE BookID=?', (asin, bookid))
 
                                 update_value_dict = {}
                                 # need to run get_work_series AFTER adding to book table (foreign key constraint)
@@ -1033,14 +1234,28 @@ class GoodReads:
                                         update_value_dict["ScanResult"] = reason
 
                                     if 'nocover' in bookimg or 'nophoto' in bookimg:
-                                        # try to get a cover from another source
-                                        start = time.time()
-                                        link, source = get_book_cover(bookid, ignore='goodreads')
-                                        if source != 'cache':
-                                            cover_count += 1
-                                            cover_time += (time.time() - start)
-                                        if link:
-                                            update_value_dict["BookImg"] = link
+                                        # infodict (Google Books) was already fetched a few lines
+                                        # above for date/desc/genre - use its cover too before
+                                        # falling to the untrusted keyword image-search crawler.
+                                        # Costs no extra API call, so isn't gated by
+                                        # cover_lookups_cap.
+                                        gb_img = infodict.get('img') if infodict else ''
+                                        if gb_img and gb_img.startswith('http') and \
+                                                'nocover' not in gb_img and 'nophoto' not in gb_img:
+                                            link = cache_bookimg(gb_img, bookid, 'gr')
+                                            if link:
+                                                update_value_dict["BookImg"] = link
+                                        elif cover_lookups_this_refresh < cover_lookups_cap:
+                                            # try to get a cover from another source
+                                            start = time.time()
+                                            link, source = get_book_cover(bookid, ignore='goodreads')
+                                            if source != 'cache':
+                                                cover_count += 1
+                                                cover_time += (time.time() - start)
+                                                cover_lookups_this_refresh += 1
+                                                time.sleep(2)
+                                            if link:
+                                                update_value_dict["BookImg"] = link
                                     elif bookimg and bookimg.startswith('http'):
                                         link = cache_bookimg(bookimg, bookid, 'gr')
                                         update_value_dict["BookImg"] = link
@@ -1270,16 +1485,59 @@ class GoodReads:
         finally:
             db.close()
 
+    def get_book_asin(self, bookid):
+        """ ASIN/kindle_asin only exist on the single-book book/show endpoint, not the
+        bulk author/list one - see get_author_books' rate-limited, capped use of this
+        below. Returns '' on any failure (not found, blocked, network error) rather
+        than raising - callers treat "no ASIN found" as a normal, expected outcome. """
+        # Use .xml extension: without it, book/show/{id}?key= returns HTTP 202 (WAF challenge)
+        url = '/'.join([CONFIG['GR_URL'], f"book/show/{bookid}.xml?{urlencode(self.params)}"])
+        try:
+            rootxml, _ = gr_xml_request(url)
+        except Exception as e:
+            self.logger.debug(f"get_book_asin error for {bookid}: {e}")
+            return ''
+        if rootxml is None:
+            return ''
+        book_el = rootxml.find('book')
+        if book_el is None:
+            return ''
+        asin_el = book_el.find('asin')
+        asin = asin_el.text if asin_el is not None and asin_el.text else ''
+        if not asin:
+            kasin_el = book_el.find('kindle_asin')
+            asin = kasin_el.text if kasin_el is not None and kasin_el.text else ''
+        return asin or ''
+
     def add_bookid_to_db(self, bookid=None, bookstatus=None, audiostatus=None, reason='gr.add_bookid'):
-        url = '/'.join([CONFIG['GR_URL'], f"book/show/{bookid}?{urlencode(self.params)}"])
+        # Use .xml extension: book/show/{id}?key= returns HTTP 202 (WAF challenge)
+        # but book/show/{id}.xml?key= returns HTTP 200 with valid XML
+        url = '/'.join([CONFIG['GR_URL'], f"book/show/{bookid}.xml?{urlencode(self.params)}"])
         try:
             self.searchinglogger.debug(url)
             rootxml, _ = gr_xml_request(url)
             if rootxml is None:
-                self.logger.debug(f"Failed to get book info for {bookid}")
+                # Was silently swallowed at debug level - invisible at INFO log level, so
+                # a refresh_book click that changed nothing gave no clue why. Warn, and
+                # leave a visible trail on the book itself (shown on book_detail.html)
+                # since this is usually reached from a single-book refresh with no other
+                # feedback mechanism (refresh_book is fire-and-forget - background thread
+                # + immediate redirect, same pattern as refresh_author).
+                msg = (f"Refresh failed for book {bookid} - could not reach GoodReads "
+                       f"(blocked/rate-limited?), nothing updated")
+                self.logger.warning(msg)
+                db = database.DBConnection()
+                db.action("UPDATE books SET ScanResult=? WHERE BookID=?",
+                         (f"[Refresh Failed {today()}] Could not reach GoodReads", bookid))
+                db.close()
                 return False
         except Exception as e:
-            self.logger.error(f"{type(e).__name__} finding book: {str(e)}")
+            msg = f"Refresh failed for book {bookid} - {type(e).__name__}: {str(e)}"
+            self.logger.error(msg)
+            db = database.DBConnection()
+            db.action("UPDATE books SET ScanResult=? WHERE BookID=?",
+                     (f"[Refresh Failed {today()}] {type(e).__name__}: {str(e)}", bookid))
+            db.close()
             return False
 
         threadname = thread_name()
@@ -1290,8 +1548,26 @@ class GoodReads:
             audiostatus = CONFIG['NEWAUDIO_STATUS']
             self.logger.debug(f"No audiostatus passed, using default {audiostatus}")
         self.logger.debug(f"bookstatus={bookstatus}, audiostatus={audiostatus}")
-        book_language = rootxml.find('./book/language_code').text
+        try:
+            book_language = rootxml.find('./book/language_code').text
+        except Exception as e:
+            self.logger.error(f"Error getting language_code from book xml: {str(e)}")
+            book_language = ''
+
         bookname = rootxml.find('./book/title').text
+
+        try:
+            # 'img_url' doesn't exist in GoodReads' book/show response - confirmed live
+            # against the real XML, the field is 'image_url' (same name get_bookdict() uses
+            # elsewhere in this file). This always raised AttributeError and fell to the
+            # except branch below, meaning single-book refresh never once used GoodReads'
+            # own cover even when it had a real one, relying entirely on the fallback
+            # search further down instead.
+            bookimg = rootxml.find('./book/image_url').text
+            if not bookimg or 'nocover' in bookimg or 'nophoto' in bookimg:
+                bookimg = 'images/nocover.png'
+        except (KeyError, AttributeError):
+            bookimg = 'images/nocover.png'
 
         if not book_language:
             book_language = "Unknown"
@@ -1332,6 +1608,33 @@ class GoodReads:
                     pass
             bookdate = originalpubdate
 
+        if (not bookdate or bookdate == '0000') and bookname:
+            title_match = re.search(r'\b(1[89]\d\d|20\d\d)\b', bookname)
+            if title_match and check_year(title_match.group(1), past=1800, future=1):
+                bookdate = title_match.group(1)
+                self.logger.debug(f"Extracted pubdate {bookdate} from title for {bookid}")
+
+        need_date = not bookdate or bookdate == '0000'
+        need_img = 'nocover' in bookimg or 'nophoto' in bookimg
+        if (need_date or need_img) and bookname and CONFIG['GB_API']:
+            # Legitimate API call, not a page-scrape - see !1849 (GoodReads HTML-scraping
+            # got the maintainer's own API keys cancelled and their IP blocked). Author
+            # name isn't normally extracted this early, so read it directly here rather
+            # than reordering the rest of the function around it.
+            try:
+                early_authorname = rootxml.find('./book/authors/author/name').text
+            except (KeyError, AttributeError):
+                early_authorname = ''
+            if early_authorname:
+                early_gb_info = get_gb_info(author=early_authorname, title=bookname, expire=False)
+                if early_gb_info and need_date and early_gb_info.get('date') and early_gb_info['date'] != '0000':
+                    bookdate = early_gb_info['date']
+                    self.logger.debug(f"Got pubdate {bookdate} from googlebooks for {bookid}")
+                if early_gb_info and need_img and early_gb_info.get('img') and \
+                        'nocover' not in early_gb_info['img'] and 'nophoto' not in early_gb_info['img']:
+                    bookimg = early_gb_info['img']
+                    self.logger.debug(f"Got cover from googlebooks for {bookid}")
+
         if CONFIG.get_bool('NO_PUBDATE') and (not bookdate or bookdate == '0000'):
             msg = f'Book {bookname} Publication date [{bookdate}] does not match preference'
             self.logger.warning(msg)
@@ -1352,12 +1655,6 @@ class GoodReads:
                 self.logger.warning(msg)
                 if reason.startswith("Series:") or threadname.startswith('SERIES'):
                     return False
-        try:
-            bookimg = rootxml.find('./book/img_url').text
-            if not bookimg or 'nocover' in bookimg or 'nophoto' in bookimg:
-                bookimg = 'images/nocover.png'
-        except (KeyError, AttributeError):
-            bookimg = 'images/nocover.png'
 
         #  multiauth info
         # for each author in './book/authors'
@@ -1382,6 +1679,11 @@ class GoodReads:
         bookrate = check_float(rootxml.find('./book/average_rating').text, 0)
         bookpages = rootxml.find('.book/num_pages').text
         workid = rootxml.find('.book/work/id').text
+        # asin/kindle_asin sit alongside isbn/link/etc in this response but were never read -
+        # only this single-book endpoint has them, the bulk author/show book list doesn't
+        bookasin = rootxml.find('./book/asin').text
+        if not bookasin:
+            bookasin = rootxml.find('./book/kindle_asin').text
 
         db = database.DBConnection()
         try:
@@ -1458,8 +1760,9 @@ class GoodReads:
             genres, _ = get_gr_genres(bookid)
             if genres:
                 bookgenre = ', '.join(genres)
+            infodict = None
             if not bookdesc:
-                infodict = get_gb_info(isbn=bookisbn, author=authorname, title=bookname, expire=False)
+                infodict = get_gb_info(isbn=bookisbn, author=authorname, title=bookname)
                 if infodict is not None:  # None if api blocked
                     if infodict and infodict['desc']:
                         bookdesc = infodict['desc']
@@ -1478,6 +1781,63 @@ class GoodReads:
                 self.logger.warning(f"Authorid {author_id} not found in database, unable to add {bookname}")
             else:
                 control_value_dict = {"BookID": bookid}
+                if not bookdate:
+                    bookdate = '0000'
+                # Same fix as get_author_books(): don't let this refresh's own nocover/
+                # nophoto placeholder (bookimg defaults to it above whenever this book's
+                # single-book XML has no real cover - true unconditionally right now due to
+                # a separate field-name bug reading 'img_url', which doesn't exist in
+                # GoodReads' response, instead of 'image_url') overwrite a real cover this
+                # book already has, in the window before the fallback search below runs
+                # (and if that search fails or is only intermittently reliable - confirmed
+                # live this session it can be - the wipe was never corrected).
+                existing_book = db.match("SELECT BookImg,BookDate,BookDesc,BookLang,ASIN,BookPub,BookPages FROM books WHERE BookID=?", (bookid,))
+                if existing_book:
+                    if ('nocover' in bookimg or 'nophoto' in bookimg) and existing_book['BookImg'] \
+                            and 'nocover' not in existing_book['BookImg'] \
+                            and 'nophoto' not in existing_book['BookImg']:
+                        bookimg = existing_book['BookImg']
+                    if (not bookdesc or bookdesc == 'No Description') and existing_book['BookDesc'] and existing_book['BookDesc'] != 'No Description':
+                        bookdesc = existing_book['BookDesc']
+                    if (not bookdate or bookdate == '0000') and existing_book['BookDate'] and existing_book['BookDate'] != '0000':
+                        bookdate = existing_book['BookDate']
+                    if (not book_language or book_language == 'Unknown') and existing_book['BookLang'] and existing_book['BookLang'] != 'Unknown':
+                        book_language = existing_book['BookLang']
+                    if not bookasin and existing_book['ASIN']:
+                        bookasin = existing_book['ASIN']
+                    if not bookpub and existing_book['BookPub']:
+                        bookpub = existing_book['BookPub']
+                    if not bookpages and existing_book['BookPages']:
+                        bookpages = existing_book['BookPages']
+
+                need_desc = not bookdesc or bookdesc == 'No Description'
+                need_img = not bookimg or 'nocover' in bookimg or 'nophoto' in bookimg
+                need_date = not bookdate or bookdate == '0000'
+                need_asin = not bookasin
+                if need_desc or need_img or need_date or need_asin:
+                    web_info = self.get_gr_web_info(bookid)
+                    if web_info:
+                        if need_desc and web_info.get('desc'):
+                            bookdesc = web_info['desc']
+                            self.logger.debug(f"Got description from GoodReads web for {bookid}")
+                        if need_img and web_info.get('img'):
+                            bookimg = web_info['img']
+                            self.logger.debug(f"Got cover from GoodReads web for {bookid}")
+                        if need_date and web_info.get('date'):
+                            bookdate = web_info['date']
+                            self.logger.debug(f"Got pubdate {bookdate} from GoodReads web for {bookid}")
+                        if need_asin and web_info.get('asin'):
+                            bookasin = web_info['asin']
+                            self.logger.debug(f"Got ASIN {bookasin} from GoodReads web for {bookid}")
+                        if not bookpages and web_info.get('pages'):
+                            bookpages = str(web_info['pages'])
+
+                if (not book_language or book_language == 'Unknown') and bookdesc and bookdesc != 'No Description':
+                    det_lang, det_conf = language_from_words(bookname, desc=bookdesc)
+                    if det_lang and det_conf > 0.5 and det_lang not in ['None', 'Disabled', 'Blocked']:
+                        book_language = det_lang
+                        self.logger.debug(f"Detected language [{book_language}] ({det_conf:.2f}) from description for {bookname}")
+
                 new_value_dict = {
                     "AuthorID": author_id,
                     "BookName": bookname,
@@ -1498,14 +1858,26 @@ class GoodReads:
                     "WorkID": workid,
                     "gr_id": bookid,
                     "ScanResult": reason,
-                    "OriginalPubDate": originalpubdate
+                    "OriginalPubDate": originalpubdate,
+                    "ASIN": bookasin or ''
                 }
                 db.upsert("books", new_value_dict, control_value_dict)
                 added = True
+                db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
+                          (author_id, bookid, ROLE['PRIMARY']), suppress='UNIQUE')
+                self.logger.debug(f'Added {author_id} as primary')
                 # get_book_cover needs the bookid to already exist in db
                 if 'nocover' in bookimg or 'nophoto' in bookimg:
-                    # try to get a cover from another source
-                    link, _ = get_book_cover(bookid, ignore='goodreads')
+                    # infodict (Google Books), if fetched above for the description, may
+                    # already have a usable cover - use it before falling to the untrusted
+                    # keyword image-search crawler. No extra API call either way.
+                    gb_img = infodict.get('img') if infodict else ''
+                    if gb_img and gb_img.startswith('http') and \
+                            'nocover' not in gb_img and 'nophoto' not in gb_img:
+                        link = cache_bookimg(gb_img, bookid, 'gr')
+                    else:
+                        # try to get a cover from another source
+                        link, _ = get_book_cover(bookid, ignore='goodreads')
                     if link:
                         new_value_dict = {"BookImg": link}
                         db.upsert("books", new_value_dict, control_value_dict)
@@ -1526,9 +1898,6 @@ class GoodReads:
 
                 set_genres(get_list(bookgenre, ','), bookid)
 
-                db.action('INSERT into bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
-                          (author_id, bookid, ROLE['PRIMARY']), suppress='UNIQUE')
-                self.logger.debug(f'Added {author_id} as primary')
                 lazylibrarian.importer.update_totals(author_id)
 
                 if CONFIG.get_bool('CONTRIBUTING_AUTHORS'):

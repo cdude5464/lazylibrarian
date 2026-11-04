@@ -12,25 +12,31 @@
 
 import contextlib
 import logging
+import os
 import re
 import sqlite3
 import string
 import threading
 import time
 import traceback
+import unicodedata
+from hashlib import sha1
 from queue import Queue
 from urllib.parse import unquote_plus
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
+from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import ImageType, cache_img
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.formatter import (
     check_int,
     format_author_name,
     get_list,
+    make_bytestr,
     plural,
     thread_name,
     today,
@@ -58,37 +64,49 @@ def is_valid_authorid(authorid: str, api=None) -> bool:
     return bool(authorid.isdigit() and api != 'OpenLibrary')
 
 
-def get_preferred_author(author):
-    # Look up an authorname in the database, if not found try fuzzy match
+def get_preferred_author(author, authorid=''):
+    # Look up an author in the database, if not found try fuzzy match
     # Return possibly changed authorname and authorid if found in library
     logger = logging.getLogger(__name__)
     author = format_author_name(author, postfix=get_list(CONFIG.get_csv('NAME_POSTFIX')))
-    authorid = ''
     db = database.DBConnection()
-    check_exist_author = db.match('SELECT * FROM authors where AuthorName=?', (author,))
+    check_exist_author = None
+    if authorid:
+        keys = author_keys()
+        cmd = "SELECT * from authors WHERE AuthorID=?"
+        for k in keys:
+            cmd += f" or {k}=?"
+        check_exist_author = db.match(cmd, tuple([str(authorid)] * (len(keys) + 1)))
+    if not check_exist_author:
+        check_exist_author = db.match('SELECT * FROM authors where AuthorName=?', (author,))
     if check_exist_author:
-        authorid = check_exist_author['AuthorID']
-    else:  # If no exact match, look for a close fuzzy match to handle misspellings, accents or AKA
-        match_name = author.lower().replace('.', '')
-        res = db.action('select AuthorID,AuthorName,AKA from authors')
-        for item in res:
-            aname = item['AuthorName']
-            if aname:
-                match_fuzz = fuzz.ratio(aname.lower().replace('.', ''), match_name)
+        db.close()
+        return check_exist_author['AuthorName'], check_exist_author['AuthorID']
+
+    # If no exact match, look for a close fuzzy match to handle misspellings, accents or AKA.
+    # Compare in composed form, names may be stored decomposed (eg 'Z' plus a combining dot)
+    match_name = unicodedata.normalize('NFC', author).lower().replace('.', '')
+    res = db.action('select AuthorID,AuthorName,AKA from authors')
+    for item in res:
+        aname = item['AuthorName']
+        if aname:
+            aname = unicodedata.normalize('NFC', aname)
+            match_fuzz = fuzz.ratio(aname, match_name, processor=default_process)
+            if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
+                logger.debug(f"Fuzzy match [{item['AuthorName']}] {round(match_fuzz, 2)}% for [{author}]")
+                author = item['AuthorName']
+                authorid = item['AuthorID']
+                break
+        akas = get_list(item['AKA'], ',')
+        if akas:
+            for aka in akas:
+                aka = unicodedata.normalize('NFC', aka)
+                match_fuzz = fuzz.token_set_ratio(aka, match_name, processor=default_process)
                 if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
-                    logger.debug(f"Fuzzy match [{item['AuthorName']}] {round(match_fuzz, 2)}% for [{author}]")
+                    logger.debug(f"Fuzzy AKA match [{aka}] {round(match_fuzz, 2)}% for [{author}]")
                     author = item['AuthorName']
                     authorid = item['AuthorID']
                     break
-            akas = get_list(item['AKA'], ',')
-            if akas:
-                for aka in akas:
-                    match_fuzz = fuzz.token_set_ratio(aka.lower().replace('.', '').replace(',', ''), match_name)
-                    if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
-                        logger.debug(f"Fuzzy AKA match [{aka}] {round(match_fuzz, 2)}% for [{author}]")
-                        author = item['AuthorName']
-                        authorid = item['AuthorID']
-                        break
     db.close()
     return author, authorid
 
@@ -97,30 +115,32 @@ def available_author_sources():
     author_sources = []
     source_dict = {}
     pref = ''
+    # only return enabled and not-blocked sources
     for item in lazylibrarian.INFOSOURCES.keys():
         # fullname, 2-letter_code, class, author_key, api_enabled
         this_source = lazylibrarian.INFOSOURCES[item]
-        source_dict[item] = [this_source['src'], this_source['api'],
-                             this_source['author_key'], this_source['enabled']]
-    # GB/DNB don't have authorid so we use one of the others...
+        if CONFIG[this_source['enabled']] and not BLOCKHANDLER.is_blocked(item):
+            source_dict[item] = [this_source['src'], this_source['api'],
+                                 this_source['author_key'], this_source['enabled']]
+    # GB/DNB/BN don't have authorid so we use one of the others...
     # prefer CONFIG['BOOK_API'] if it has authorid
     # 2nd choice, one that's enabled with an apikey
     # 3rd choice, openlibrary if enabled (doesn't need apikey)
-    if source_dict[CONFIG['BOOK_API']][3] and source_dict[CONFIG['BOOK_API']][2] != 'authorid':
+    if CONFIG['BOOK_API'] in source_dict and source_dict[CONFIG['BOOK_API']][3] and source_dict[CONFIG['BOOK_API']][2] != 'authorid':
         pref = CONFIG['BOOK_API']
     else:
         for item in source_dict:
-            if (source_dict[CONFIG['BOOK_API']][3] and
-                source_dict[CONFIG['BOOK_API']][2] != 'authorid' and
-                    source_dict[CONFIG['BOOK_API']][0] != 'OL'):
+            if (source_dict[item][3] and
+                source_dict[item][2] != 'authorid' and
+                    source_dict[item][0] != 'OL'):
                 pref = item
                 break
-        if not pref and source_dict['OpenLibrary'][3]:
+        if not pref and 'OpenLibrary' in source_dict and source_dict['OpenLibrary'][3]:
             pref = 'OpenLibrary'
     if not pref:
         logger = logging.getLogger(__name__)
-        logger.warning("No suitable source for authorid, using OpenLibrary")
-        pref = 'OpenLibrary'
+        logger.warning("No suitable source for authorid")
+        return []
 
     author_sources.append(source_dict[pref])
     if CONFIG.get_bool('MULTI_SOURCE'):
@@ -176,6 +196,8 @@ def add_author_name_to_db(author=None, refresh=False, addbooks=None, reason=None
                 book_api = api_source[1]
                 book_api = book_api()
                 author_info = book_api.find_author_id(authorname=author, title=title, refresh=True)
+                if not author_info:
+                    author_info = book_api.find_author_id(authorname=author, refresh=True)
                 if author_info:
                     # only try to add if data matches found author data
                     authorname = author_info['authorname']
@@ -190,17 +212,24 @@ def add_author_name_to_db(author=None, refresh=False, addbooks=None, reason=None
                     # filename may have the accented or un-accented version of the character
                     # We stored GoodReads/OpenLibrary author name in author_info, so store in LL db under that
                     # fuzz.ratio doesn't lowercase for us
-                    match_fuzz = fuzz.ratio(match_auth.lower(), match_name.lower())
+                    match_fuzz = fuzz.ratio(match_auth, match_name, processor=default_process)
                     if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
                         break
-                    match_fuzz = fuzz.partial_ratio(match_auth.lower(), match_name.lower())
+                    match_fuzz = fuzz.partial_ratio(match_auth, match_name, processor=default_process)
                     if match_fuzz >= CONFIG.get_int('NAME_PARTNAME'):
                         break
                     logger.debug(
                         f"Failed to match author [{author}] to authorname [{match_name}] fuzz [{match_fuzz}]")
 
-            if not author_info:
-                return "", "", new
+            if not api_sources:
+                # no available non-blocked author sources
+                match_fuzz = 0
+            elif not author_info:
+                # not found at any enabled provider. Fake it, generate our own ID...
+                author_info['authorname'] = author
+                author_info['authorid'] = f'LL{sha1(make_bytestr(author)).hexdigest()}'
+                logger.debug(f"Generated ID {author_info['authorid']} for {author_info['authorname']}")
+                match_fuzz = 100
 
             # To save loading hundreds of books by unknown authors at GR or GB, ignore unknown
             if "unknown" not in author.lower() and 'anonymous' not in author.lower() and \
@@ -289,19 +318,26 @@ def get_all_author_details(authorid='', authorname=None):
     searchinglogger.debug(f"{authorid}:{authorname}:{sources}")
     keys = author_keys()
     author_info = {}
+    source_links = {}
     pref = ''
     match = {}
     db = database.DBConnection()
+    select_keys = f"{','.join(keys)}," if keys else ""
     if authorid:
-        cmd = f"SELECT {','.join(keys)},authorid,authorname from authors WHERE authorid=?"
+        cmd = f"SELECT {select_keys}authorid,authorname from authors WHERE authorid=?"
         for k in keys:
             cmd += f" or {k}=?"
         match = db.match(cmd, tuple([str(authorid)] * (len(keys) + 1)))
     if not match and authorname:
-        a_name, a_id = get_preferred_author(authorname)
+        a_name, a_id = get_preferred_author(authorname, authorid=authorid)
         if a_id:
-            cmd = f"SELECT {','.join(keys)},authorid,authorname from authors WHERE authorname=? COLLATE NOCASE"
-            match = db.match(cmd, (a_name,))
+            cmd = f"SELECT {select_keys}authorid,authorname from authors WHERE authorname=? COLLATE NOCASE"
+            name_match = db.match(cmd, (a_name,))
+            if name_match:
+                for k in keys:
+                    if name_match[k] == authorid:
+                        match = name_match
+                        break
     if match:
         authorname = match['authorname']
         authorid = match['authorid']
@@ -326,13 +362,14 @@ def get_all_author_details(authorid='', authorname=None):
                 db.action(f"UPDATE authors SET {src[2]}=? WHERE authorid=?",
                           (aid['authorid'], authorid))
                 auth_id = aid['authorid']
-        if not auth_id and authorid:
-            auth_id = authorid
-        if auth_id:
+        if auth_id:  # does author_id for this source exist
             res = cl.get_author_info(authorid=auth_id, authorname=authorname)
             if res:
                 author_info[src[0]] = res
                 author_info[src[0]][src[2]] = auth_id
+                link_col = lazylibrarian.INFOSOURCES.get(src[0], {}).get('author_link')
+                if link_col and res.get('authorlink'):
+                    source_links[link_col] = res['authorlink']
                 if not merged_info:
                     pref = src[0]
                     merged_info = author_info[pref]
@@ -368,6 +405,7 @@ def get_all_author_details(authorid='', authorname=None):
         merged_info['AKA'] = ', '.join(akas)
     if authorid:
         merged_info['authorid'] = authorid  # keep original entry authorid if we have one
+    merged_info.update(source_links)
     db.close()
     searchinglogger.debug(str(merged_info))
     return merged_info
@@ -387,14 +425,14 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
         else:
             reason = "Unknown reason in add_author_to_db"
 
-    threadname = thread_name()
-    if "Thread" in threadname:
-        thread_name("AddAuthorToDB")
+    if "AUTHOR" not in thread_name().upper():
+        thread_name("ADDAUTHORTODB")
     db = database.DBConnection()
     ret_id = None
-
+    current_author = {}
     # noinspection PyBroadException
     try:
+        logger.debug(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
         authorkeys = author_keys()
         new_author = True
@@ -404,33 +442,44 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
                 cmd += f" or {k}=?"
             dbauthor = db.match(cmd, tuple([str(authorid)] * (len(authorkeys) + 1)))
         else:
-            dbauthor = []
+            dbauthor = {}
         if dbauthor:
             new_author = False
             authorid = dbauthor['AuthorID']
             authorname = dbauthor['AuthorName']
         elif authorname and 'unknown' not in authorname and 'anonymous' not in authorname:
-            dbauthor = db.match("SELECT * from authors WHERE AuthorName=?", (authorname,))
-            if dbauthor:
-                new_author = False
-                authorid = dbauthor['AuthorID']
-            else:
-                dbauthor = db.match("SELECT * from authors WHERE instr(AKA, ?) > 0", (authorname,))
-                if dbauthor:
-                    new_author = False
-                    authorid = dbauthor['AuthorID']
-                    authorname = dbauthor['AuthorName']
+            dbauthor = db.match("SELECT * from authors WHERE AuthorName=? or instr(AKA, ?) > 0", (authorname, authorname))
+            if dbauthor:  # same name or AKA but different id
+                for k in authorkeys:
+                    if dbauthor[k] == authorid:
+                        new_author = False
+                        authorid = dbauthor['AuthorID']
+                        authorname = dbauthor['AuthorName']
+                        break
+        if not new_author and refresh and authorid:
+            # Mark this visible *before* the slow multi-provider fetch below, not after it
+            # returns - get_all_author_details() can take several seconds (one HTTP round
+            # trip per configured source), and author.html's "Fetching information for this
+            # author..." banner only renders when Status is already 'Loading' at page-render
+            # time. refresh_author() redirects to author_page essentially instantly after
+            # starting this as a background thread, so if Status only flips to 'Loading'
+            # after the fetch completes (as it used to, further down), the page has already
+            # rendered without ever seeing it - the refresh was running the whole time, just
+            # invisibly.
+            db.action("UPDATE authors SET Status='Loading' WHERE AuthorID=?", (authorid,))
 
         if new_author or refresh:
             current_author = get_all_author_details(authorid, authorname)
             if authorid:
                 current_author['authorid'] = authorid  # keep entry authorid
-        else:
+            if authorname:
+                current_author['authorname'] = authorname  # and entry authorname
+        elif dbauthor:
             current_author = {}
             for item in dict(dbauthor):
                 current_author[item.lower()] = dbauthor[item]
 
-        if new_author and not authorname and current_author.get('authorname'):
+        if new_author and not authorid and current_author.get('authorname'):
             # maybe we only had authorid(s) to search for
             dbauthor = db.match("SELECT * from authors WHERE AuthorName=? COLLATE NOCASE",
                                 (current_author['authorname'],))
@@ -450,8 +499,7 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
         if new_author:
             current_author['status'] = CONFIG['NEWAUTHOR_STATUS']
         else:
-            if dbauthor['manual'] in [True, 'True', 1, '1']:
-                current_author['manual'] = True
+            current_author['manual'] = bool(dbauthor['manual'] in [True, 'True', 1, '1'])
             current_author['status'] = dbauthor['status']
 
         if not current_author.get('authorid'):
@@ -483,16 +531,44 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
                 db.action('UPDATE authors SET AuthorName=? WHERE AuthorID=?',
                           (current_author['authorname'], current_author['authorid']))
 
-        if not current_author.get('authorid'):
+        if authorid and not current_author.get('authorid'):
             current_author['authorid'] = authorid
-        if not current_author.get('authorname'):
+        if not current_author['authorid']:
+            logger.debug(
+                f"Unable to update author: AuthorID missing: Entry ID {authorid}, Entry name {authorname}, dbauthor {dict(dbauthor)}")
+            return None
+        if authorname and not current_author.get('authorname'):
             current_author['authorname'] = authorname
+        if not current_author.get('authorname'):
+            logger.debug(
+                f"Unable to update author {current_author['authorid']}: Authorname missing: Entry name {authorname}, dbauthor {dict(dbauthor)}")
+            return None
 
         control_value_dict = {"AuthorID": current_author['authorid']}
         if not current_author['manual']:
             new_value_dict = current_author.copy()
             new_value_dict.pop('authorid')
             try:
+                # at this point we should be able to add as a new author
+                # but the name may collide if an existing author has the same name
+                # but different authorid, eg there are several "David Mitchell" in openlibrary
+                if new_author:
+                    new_name = current_author['authorname']
+                    while True:
+                        existing = db.match("SELECT * from authors WHERE AuthorName=? COLLATE NOCASE",
+                                            (new_name,))
+                        if existing and existing['AuthorID'] != current_author['authorid']:
+                            words = new_name.split()
+                            if len(words) > 1:  # add an extra dot to make the name different
+                                new_name = words[0] + '. ' + ' '.join(words[1:])
+                            else:
+                                new_name = f"{new_name}."
+                            logger.warning(f"Authorname {current_author['authorname']} already exists, Trying {new_name}")
+                        else:
+                            break
+                    new_value_dict['authorname'] = new_name
+                    current_author['authorname'] = new_name
+
                 db.upsert("authors", new_value_dict, control_value_dict)
             except sqlite3.IntegrityError as err:
                 # Had a report of authorname constraint failed here but currently can't see why. Need more info
@@ -520,6 +596,7 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
         }
         if new_author:
             new_value_dict["AuthorImg"] = "images/nophoto.png"
+            new_value_dict["AuthorName"] = current_author['authorname']
             new_value_dict['Reason'] = reason
             new_value_dict['DateAdded'] = today()
             refresh = True
@@ -601,11 +678,12 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
                                                   bookstatus=bookstatus,
                                                   audiostatus=audiostatus, entrystatus=entry_status,
                                                   refresh=refresh, reason=reason)
-                de_duplicate(current_author['authorid'])
-                update_totals(current_author['authorid'])
+                cnt = de_duplicate(current_author['authorid'])
+                if not cnt:  # if duplicates found, totals have already been updated
+                    update_totals(current_author['authorid'])
 
-            if lazylibrarian.STOPTHREADS and threadname == "AUTHORUPDATE":
-                logger.debug(f"[{current_author['authorname']}] Author update aborted, status {entry_status}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "AUTHORUPDATE":
+                logger.debug(f"STOPTHREADS [{current_author['authorname']}] Author update aborted, status {entry_status}")
                 return ret_id
 
             if new_author and CONFIG['GR_FOLLOWNEW']:
@@ -630,6 +708,7 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
             msg = (f"{current_author['authorid']} [{current_author['authorname']}] Author update complete, "
                    f"status {entry_status}")
             logger.info(msg)
+            db.commit()
             ret_id = current_author['authorid']
         else:
             logger.warning(f"Authorid {authorid} ({authorname}) not found in database")
@@ -640,6 +719,7 @@ def add_author_to_db(authorname=None, refresh=False, authorid='', addbooks=True,
         logger.debug(msg)
         return None
     finally:
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
         db.close()
 
@@ -672,21 +752,16 @@ def collate_nopunctuation(string1, string2):
 
 def collate_fuzzy(string1, string2):
     fuzzlogger = logging.getLogger('special.fuzz')
-    string1 = string1.lower()
-    string2 = string2.lower()
+    # compare in composed form, a decomposed 'Z' plus combining dot is the same as 'Ż'
+    string1 = unicodedata.normalize('NFC', string1).lower()
+    string2 = unicodedata.normalize('NFC', string2).lower()
     for entry in title_translates:
         string1 = string1.replace(entry[0], entry[1])
         string2 = string2.replace(entry[0], entry[1])
-    # strip all punctuation so things like "it's" matches "its"
-    str1 = string1.translate(str.maketrans('', '', string.punctuation))
-    str2 = string2.translate(str.maketrans('', '', string.punctuation))
-    if str1 == str2:
-        fuzzlogger.debug(f"[{string1}][{string2}] match")
-        return 0
 
     # make sure "The Lord of the Rings" matches "Lord of the Rings"
-    set1 = set(str1.split())
-    set2 = set(str2.split())
+    set1 = set(string1.split())
+    set2 = set(string2.split())
     for word in get_list(CONFIG.get_csv('NAME_DEFINITE')):
         set1.discard(word)
         set2.discard(word)
@@ -694,7 +769,7 @@ def collate_fuzzy(string1, string2):
         fuzzlogger.debug(f"[{set1}][{set2}] match")
         return 0
 
-    match_fuzz = fuzz.ratio(str1, str2)
+    match_fuzz = fuzz.ratio(string1, string2, processor=default_process)
     fuzzlogger.debug(f"[{string1}][{string2}]{match_fuzz}")
     if match_fuzz >= CONFIG.get_int('NAME_RATIO'):
         # if it's a close enough match, check for purely number differences
@@ -719,13 +794,14 @@ def collate_fuzzy(string1, string2):
         if num1 == num2:
             return 0
         return 1
-    if str1 < str2:
+    if string1 < string2:
         return -1
     return 1
 
 
 def de_duplicate(authorid):
     logger = logging.getLogger(__name__)
+    matchlogger = logging.getLogger('special.matching')
     db = database.DBConnection()
     author = db.match("SELECT AuthorName from authors where AuthorID=?", (authorid,))
     db.connection.create_collation('fuzzy', collate_fuzzy)
@@ -740,10 +816,125 @@ def de_duplicate(authorid):
 
     if author:
         authorname = author['AuthorName']
+
+    def merge_copies(copys, pass_msg):
+        nonlocal total
+        if not copys or len(copys) <= 1:
+            return 0
+        logger.debug(f"Merge {len(copys)} copies {pass_msg}")
+        for c in copys:
+            matchlogger.debug(f"{c['BookName']}")
+
+        copys = [dict(c) for c in copys]
+        favourite = {}
+        for copy in copys:
+            if (copy['Status'] in ['Open', 'Have'] or
+                    copy['AudioStatus'] in ['Open', 'Have']):
+                favourite = copy
+                break
+        if not favourite:
+            for copy in copys:
+                if (copy['Status'] in ['Wanted'] or
+                        copy['AudioStatus'] in ['Wanted']):
+                    favourite = copy
+                    break
+        if not favourite:
+            for copy in copys:
+                if copy['Status'] not in ['Ignored'] and copy['AudioStatus'] not in ['Ignored']:
+                    favourite = copy
+                    break
+        if not favourite and copys:
+            favourite = copys[0]
+        if not favourite:
+            return 0
+        logger.debug(f"Favourite {favourite['BookID']} {favourite['BookName']} "
+                     f"({favourite['Status']}/{favourite['AudioStatus']})")
+        merged = 0
+        def is_empty(val):
+            if not val:
+                return True
+            s = str(val).strip().lower()
+            return s in ['0000', '0000-00-00', '0000-00', '0', '0.0', 'unknown', 'none', 'null']
+
+        for copy in copys:
+            if copy['BookID'] != favourite['BookID']:
+                members = db.select("SELECT SeriesID,SeriesNum from member WHERE BookID=?",
+                                    (copy['BookID'],))
+                if members:
+                    for member in members:
+                        logger.debug(f"Updating BookID for member {member['SeriesNum']} of series "
+                                     f"{member['SeriesID']}")
+                        db.action("UPDATE member SET BookID=? WHERE BookID=? and SeriesID=?",
+                                  (favourite['BookID'], copy['BookID'], member['SeriesID']),
+                                  suppress='UNIQUE')
+                for key in booktable_keys:
+                    if is_empty(favourite[key]) and not is_empty(copy[key]):
+                        action = f"UPDATE books SET {key}=? WHERE BookID=?"
+                        logger.debug(f"Copy {key} from {copy['BookID']}: {copy['BookName']}")
+                        db.action(action, (copy[key], favourite['BookID']))
+                        favourite[key] = copy[key]
+                        if copy['Status'] not in ['Ignored'] and copy['AudioStatus'] not in ['Ignored']:
+                            if key == 'BookFile' and favourite['Status'] not in ['Open', 'Have']:
+                                logger.debug(f"Copy Status from {copy['BookID']}")
+                                db.action('UPDATE books SET Status=? WHERE BookID=?',
+                                          (copy['Status'], favourite['BookID']))
+                            if key == 'AudioFile' and favourite['AudioStatus'] not in ['Open', 'Have']:
+                                logger.debug(f"Copy AudioStatus from {copy['BookID']}")
+                                db.action('UPDATE books SET AudioStatus=? WHERE BookID=?',
+                                          (copy['AudioStatus'], favourite['BookID']))
+
+                if copy['Status'] in ['Ignored'] or copy['AudioStatus'] in ['Ignored']:
+                    logger.debug(f"Keeping duplicate {copy['BookID']}, {copy['Status']}/"
+                                 f"{copy['AudioStatus']}")
+                else:
+                    logger.debug(f"Delete {copy['BookID']} keeping {favourite['BookID']}")
+                    db.action('DELETE from books WHERE BookID=?', (copy['BookID'],))
+                    db.action("UPDATE readinglists SET Bookid=? WHERE BookID=?",
+                              (favourite['BookID'], copy['BookID']), suppress='UNIQUE')
+                    merged += 1
+        total += merged
+        return merged
+
     # noinspection PyBroadException
     try:
-        # check/delete any duplicate titles - with separate fuzz
-        # we do a nocase first, as for some reason fuzzy doesn't get called if the names match
+        # Pass 1: Merge by matching external provider IDs
+        id_keys = ['gr_id', 'WorkID', 'ol_id', 'gb_id', 'hc_id', 'dnb_id', 'bn_id', 'dbk_id', 'ran_id', 'LT_WorkID']
+        for id_key in id_keys:
+            res = db.select(f"SELECT count({id_key}), {id_key} FROM books WHERE AuthorID=? AND {id_key} IS NOT NULL AND {id_key} != '' GROUP BY {id_key} HAVING ( count({id_key}) > 1 )", (authorid,))
+            for item in res:
+                copies = db.select(f"SELECT * FROM books WHERE AuthorID=? AND {id_key}=?", (authorid, item[1]))
+                merge_copies(copies, 'pass_1')
+
+        # Pass 2: Merge by full title (BookName + BookSub) fuzzy comparison
+        all_books = db.select("SELECT * FROM books WHERE AuthorID=?", (authorid,))
+        seen_pairs = set()
+        for i in range(len(all_books)):
+            for j in range(i + 1, len(all_books)):
+                b1 = all_books[i]
+                b2 = all_books[j]
+                if b1['BookID'] == b2['BookID']:
+                    continue
+                pair_key = tuple(sorted([b1['BookID'], b2['BookID']]))
+                if pair_key in seen_pairs:
+                    continue
+                seen_pairs.add(pair_key)
+
+                # Full title construction
+                title1 = b1['BookName']
+                if b1['BookSub']:
+                    title1 += f" {b1['BookSub']}"
+                title2 = b2['BookName']
+                if b2['BookSub']:
+                    title2 += f" {b2['BookSub']}"
+
+                if collate_fuzzy(title1, title2) == 0:
+                    logger.info(f"Fuzzy duplicate full title match between [{b1['BookID']}: {title1}] and [{b2['BookID']}: {title2}]")
+                    # Reload records in case one was deleted by previous iteration
+                    current_copies = db.select("SELECT * FROM books WHERE BookID IN (?, ?)", (b1['BookID'], b2['BookID']))
+                    if len(current_copies) > 1:
+                        merge_copies(current_copies, 'pass_2')
+
+        # Pass 3: Existing bookname NOCASE and FUZZY collation check
         for collation in ['NOCASE', 'FUZZY']:
             cmd = ("select count('bookname'),bookname from books where authorid=? "
                    f"group by bookname COLLATE {collation} having ( count(bookname) > 1 )")
@@ -755,80 +946,22 @@ def de_duplicate(authorid):
                 logger.warning(f"There {plural(dupes, 'is')} {dupes} duplicate {collation} {plural(dupes, 'title')} "
                                f"for {authorid}:{authorname}")
                 for item in res:
-                    logger.debug(f"{item[1]} has {item[0]} entries")
-                    favourite = {}
                     copies = db.select(f"SELECT * from books where AuthorID=? and BookName=? COLLATE {collation}",
                                        (authorid, item[1]))
+                    merge_copies(copies, f'pass_3 {collation}')
 
-                    for copy in copies:
-                        if (copy['Status'] in ['Open', 'Have'] or
-                                copy['AudioStatus'] in ['Open', 'Have']):
-                            favourite = copy
-                            break
-                    if not favourite:
-                        for copy in copies:
-                            if (copy['Status'] in ['Wanted'] or
-                                    copy['AudioStatus'] in ['Wanted']):
-                                favourite = copy
-                                break
-                    if not favourite:
-                        for copy in copies:
-                            if copy['Status'] not in ['Ignored'] and copy['AudioStatus'] not in ['Ignored']:
-                                favourite = copy
-                                break
-                    if not favourite and copies:
-                        favourite = copies[0]
-                    if favourite:
-                        logger.debug(f"Favourite {favourite['BookID']} {favourite['BookName']} "
-                                     f"({favourite['Status']}/{favourite['AudioStatus']})")
-                    for copy in copies:
-                        if copy['BookID'] != favourite['BookID']:
-                            logger.debug(f"Copy {copy['BookID']} {copy['BookName']} "
-                                         f"({copy['Status']}/{copy['AudioStatus']})")
-                    for copy in copies:
-                        if copy['BookID'] != favourite['BookID']:
-                            members = db.select("SELECT SeriesID,SeriesNum from member WHERE BookID=?",
-                                                (copy['BookID'],))
-                            if members:
-                                for member in members:
-                                    logger.debug(f"Updating BookID for member {member['SeriesNum']} of series "
-                                                 f"{member['SeriesID']}")
-                                    db.action("UPDATE member SET BookID=? WHERE BookID=? and SeriesID=?",
-                                              (favourite['BookID'], copy['BookID'], member['SeriesID']),
-                                              suppress='UNIQUE')
-                            for key in booktable_keys:
-                                if not favourite[key] and copy[key]:
-                                    cmd = f"UPDATE books SET {key}=? WHERE BookID=?"
-                                    logger.debug(f"Copy {key} from {copy['BookID']}: {copy['BookName']}")
-                                    db.action(cmd, (copy[key], favourite['BookID']))
-                                    if copy['Status'] not in ['Ignored'] and copy['AudioStatus'] not in ['Ignored']:
-                                        if key == 'BookFile' and favourite['Status'] not in ['Open', 'Have']:
-                                            logger.debug(f"Copy Status from {copy['BookID']}")
-                                            db.action('UPDATE books SET Status=? WHERE BookID=?',
-                                                      (copy['Status'], favourite['BookID']))
-                                        if key == 'AudioFile' and favourite['AudioStatus'] not in ['Open', 'Have']:
-                                            logger.debug(f"Copy AudioStatus from {copy['BookID']}")
-                                            db.action('UPDATE books SET AudioStatus=? WHERE BookID=?',
-                                                      (copy['AudioStatus'], favourite['BookID']))
-
-                            if copy['Status'] in ['Ignored'] or copy['AudioStatus'] in ['Ignored']:
-                                logger.debug(f"Keeping duplicate {copy['BookID']},  {copy['Status']}/"
-                                             f"{copy['AudioStatus']}")
-                            else:
-                                logger.debug(f"Delete {copy['BookID']} keeping {favourite['BookID']}")
-                                db.action('DELETE from books WHERE BookID=?', (copy['BookID'],))
-                                db.action("UPDATE readinglists SET Bookid=? WHERE BookID=?",
-                                          (favourite['BookID'], copy['BookID']), suppress='UNIQUE')
-                                total += 1
     except Exception:
         msg = f'Unhandled exception in de_duplicate: {traceback.format_exc()}'
         logger.warning(msg)
     finally:
         db.close()
+    if total:
+        update_totals(authorid)
     logger.info(f"Deleted {total} duplicate {plural(total, 'entry')} for {authorname}")
+    return total
 
 
-def update_totals(authorid):
+def update_totals(authorid, quiet=False):
     logger = logging.getLogger(__name__)
     if not authorid:
         logger.error("update_totals called with no authorid")
@@ -883,11 +1016,152 @@ def update_totals(authorid):
                 db.action('UPDATE series SET Have=?, Total=? WHERE SeriesID=?',
                           (check_int(series['Have'], 0), check_int(series['Total'], 0), series['Series']))
         db.close()
-        logger.debug(
-            f"Updated totals for [{authorname}] {new_value_dict['HaveBooks']}/{new_value_dict['TotalBooks']}")
+        if not quiet:
+            logger.debug(
+                f"Updated totals for [{authorname}] Have {new_value_dict['HaveBooks']}/{new_value_dict['TotalBooks']} Total")
     except Exception as e:
         logger.error(str(e))
         db.close()
+
+
+def delete_secondaries(quiet=False):
+    logger = logging.getLogger(__name__)
+    db = database.DBConnection()
+    res = db.select('select distinct authorid from bookauthors except select authorid from books')
+    data = {}
+    cnt = 0
+    for item in res:
+        auth = db.match('select authorname from authors where authorid=?', (item['authorid'], ))
+        if auth:
+            data[item['authorid']] = auth['authorname']
+    for key, value in data.items():
+        cnt += 1
+        if not quiet:
+            logger.debug(f"Deleting {key}: {value}")
+        db.action('delete from authors where authorid=?', (key, ))
+    db.action('vacuum')
+    db.close()
+    return cnt
+
+
+def update_all_totals():
+    """ Recalculate and update book totals (Have, Unignored, Total) for all authors in database """
+    logger = logging.getLogger(__name__)
+    db = database.DBConnection()
+    jobname =  'UPDATEALLTOTALS'
+    try:
+        logger.debug(f"Storing start time for {jobname}")
+        db.upsert("jobs", {'Start': time.time()}, {'Name': jobname})
+        authors = db.select("SELECT AuthorID FROM authors")
+        if authors:
+            logger.debug(f"Recalculating totals for {len(authors)} authors")
+            for author in authors:
+                update_totals(author['AuthorID'], quiet=True)
+            logger.debug("Update totals complete")
+            if CONFIG.get_bool('DEL_SECONDARY'):
+                cnt = delete_secondaries(quiet=True)
+                logger.debug(f"Deleted {cnt} secondary authors")
+    except Exception as e:
+        logger.error(f"Error in update_all_totals: {e}")
+    finally:
+        logger.debug(f"Storing finish time for {jobname}")
+        db.upsert("jobs", {'Finish': time.time()}, {'Name': jobname})
+        db.close()
+
+
+def move_book_to_author(bookid, old_authorid, new_authorid):
+    logger = logging.getLogger(__name__)
+    mydb = database.DBConnection()
+    try:
+        mydb.action('PRAGMA foreign_keys = OFF')
+
+        mydb.action('UPDATE books SET AuthorID=? WHERE BookID=?', (new_authorid, bookid))
+
+        mydb.action('INSERT OR REPLACE INTO bookauthors (AuthorID, BookID, Role) VALUES (?, ?, ?)',
+                    (new_authorid, bookid, lazylibrarian.ROLE['PRIMARY']))
+        mydb.action('DELETE FROM bookauthors WHERE AuthorID=? AND BookID=?',
+                    (old_authorid, bookid))
+
+        series_rows = mydb.select('SELECT SeriesID FROM member WHERE BookID=?', (bookid,))
+        for row in series_rows:
+            sid = row['SeriesID']
+            mydb.action("INSERT INTO seriesauthors (SeriesID, AuthorID) VALUES (?, ?)",
+                        (sid, new_authorid), suppress='UNIQUE')
+            other_books = mydb.select(
+                'SELECT m.BookID FROM member m, bookauthors ba '
+                'WHERE m.SeriesID=? AND m.BookID=ba.BookID AND ba.AuthorID=? AND m.BookID!=?',
+                (sid, old_authorid, bookid))
+            if not other_books:
+                mydb.action('DELETE FROM seriesauthors WHERE SeriesID=? AND AuthorID=?',
+                            (sid, old_authorid))
+
+        mydb.action('PRAGMA foreign_keys = ON')
+    finally:
+        mydb.close()
+
+    update_totals(old_authorid)
+    update_totals(new_authorid)
+
+    _rewrite_opf_creator(bookid, logger)
+    logger.debug(f"Moved book {bookid} from author {old_authorid} to {new_authorid}")
+
+
+def _rewrite_opf_creator(bookid, logger):
+    from lazylibrarian.filesystem import opf_file, path_isfile, remove_file, safe_move
+    from lazylibrarian.opfedit import opf_read, opf_write
+
+    db = database.DBConnection()
+    try:
+        row = db.match(
+            'SELECT b.BookFile, b.AudioFile, a.AuthorName '
+            'FROM books b, authors a WHERE b.BookID=? AND b.AuthorID=a.AuthorID',
+            (bookid,))
+    finally:
+        db.close()
+    if not row:
+        return
+
+    new_author = row['AuthorName']
+    book_dir = None
+    for field in ('BookFile', 'AudioFile'):
+        fpath = row[field]
+        if fpath and path_isfile(fpath):
+            book_dir = os.path.dirname(fpath)
+            break
+
+    if not book_dir:
+        return
+
+    opf = opf_file(book_dir)
+    if not opf or not path_isfile(opf):
+        return
+
+    opf_template, replaces = opf_read(opf)
+    if not opf_template:
+        return
+
+    subs = []
+    changed = False
+    for itm in replaces:
+        if itm[0].startswith('creator'):
+            if itm[1] != new_author:
+                subs.append((itm[0], new_author))
+                changed = True
+            else:
+                subs.append(itm)
+        else:
+            subs.append(itm)
+
+    if changed:
+        new_opf = opf_write(opf_template, subs)
+        if new_opf:
+            remove_file(opf_template)
+            remove_file(opf)
+            try:
+                safe_move(new_opf, opf)
+                logger.debug(f"Updated OPF creator to {new_author} in {opf}")
+            except Exception as e:
+                logger.warning(f"Failed to update OPF: {e}")
 
 
 def import_book(bookid, ebook=None, audio=None, wait=False, reason='importer.import_book', source=None):

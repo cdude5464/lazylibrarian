@@ -18,17 +18,17 @@
                 <input type="text" id="seriesid" name="seriesid" value="${config['SeriesID']}" class="hidden">
             </div>
             <div class="form-group">
-                <label for="new_name" class="control-label">Series Name:</label>
-                <input type="text" id="new_name" name="new_name" value="${config['SeriesName']}" class="form-control" placeholder="Series Name">
+                <label for="new_name" class="control-label">${_('Series Name:')}</label>
+                <input type="text" id="new_name" name="new_name" value="${config['SeriesName']}" class="form-control" placeholder="${_('Series Name') | h}">
             </div>
             <div class="form-group">
-                <label for="new_id" class="control-label">Series ID:</label>
-                <input type="text" id="new_id" name="new_id" value="${config['SeriesID']}" class="form-control" placeholder="Series ID">
+                <label for="new_id" class="control-label">${_('Series ID:')}</label>
+                <input type="text" id="new_id" name="new_id" value="${config['SeriesID']}" class="form-control" placeholder="${_('Series ID') | h}">
             </div>
 
             <div class="form-group">
-                <label for="reason" class="control-label">Added by:</label>
-                <input type="text" id="reason" name="reason" value="${config['Reason']}" readonly class="form-control" placeholder="Reason for inclusion">
+                <label for="reason" class="control-label">${_('Added by:')}</label>
+                <input type="text" id="reason" name="reason" value="${config['Reason']}" readonly class="form-control" placeholder="${_('Reason for inclusion') | h}">
             </div>
           %for result in members:
             <div class="input-group">
@@ -38,8 +38,8 @@
           %endfor
 </fieldset>
 <div class="table_wrapper_button">
-  <input type="submit" value="Save changes" id="add" class="btn btn-primary">
-<button class="pull-right button btn btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> Delete Series</button>
+  <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
+<button class="pull-right button btn btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> ${_('Delete Series')}</button>
 </div>
 <p>&nbsp;</p>
 </div>
@@ -56,21 +56,22 @@
         initThisPage();
         $('#removeme').click(function () {
             bootbox.confirm({
-                message: "Are you sure you want to permanently delete the series?",
+                message: ${_js('Are you sure you want to permanently delete the series?')},
                 buttons: {
                     confirm: {
-                        label: 'Yes',
+                        label: ${_js('Yes')},
                         className: 'btn-success'
                     },
                     cancel: {
-                        label: 'No',
+                        label: ${_js('No')},
                         className: 'btn-danger'
                     }
                 },
                 callback: function (result) {
-                  if (result) { $.get("remove_series", {'seriesid': '${config['SeriesID']}' },
-                      function (data) { }); }
-                    window.location = "series"
+                  if (result) {
+                      $.get("remove_series", {'seriesid': '${config['SeriesID']}' });
+                      window.location = "series";
+                  }
                 }
             });
         });    });

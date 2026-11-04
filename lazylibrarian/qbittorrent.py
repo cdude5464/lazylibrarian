@@ -12,17 +12,35 @@
 
 import logging
 import os
-import time
+import re
 from decimal import Decimal, InvalidOperation
+import os
+import re
+import time
 
+import requests
+
+from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.box_helper_handoff import (
     POLICY_QUARANTINE_PREFIX,
-    QBITTORRENT_LIFECYCLE_OWNER_ENV,
     configured_qbittorrent_lifecycle_owner,
     helper_owns_qbittorrent_lifecycle,
+    validate_box_helper_handoff_config,
 )
+from lazylibrarian.formatter import get_list, redact_url
 from lib.qbittorrent import Client, WrongCredentialsError
+
+# qBittorrent Web API 2.14+ can accept a torrents/add request before it has
+# actually retrieved and parsed the url (pending_count > 0, HTTP 202). While
+# that is in progress, torrents/properties for the new hash legitimately 404,
+# so a short poll window isn't enough to tell a slow fetch from a real failure.
+QBIT_ADD_POLL_SECONDS = 10
+QBIT_ADD_PENDING_POLL_SECONDS = 60
+
+# torrents/add answers 409 Conflict when qBittorrent already holds the torrent,
+# whether or not it managed to merge the new trackers into the existing one.
+QBIT_DUPLICATE_STATUS = 409
 
 
 def get_client():
@@ -41,7 +59,9 @@ def get_client():
 
     try:
         verify_ssl = not CONFIG.get_bool('QBITTORRENT_IGNORE_SSL')
-        qb = Client(url, CONFIG['QBITTORRENT_USER'], CONFIG['QBITTORRENT_PASS'], verify=verify_ssl)
+        skip_login = CONFIG.get_bool('QBITTORRENT_NOAUTH')
+        qb = Client(url, CONFIG['QBITTORRENT_USER'], CONFIG['QBITTORRENT_PASS'],
+                     verify=verify_ssl, skip_login=skip_login)
     except WrongCredentialsError:
         logger.error("qBittorrent reports Wrong Credentials")
         return None
@@ -59,6 +79,71 @@ def get_client():
         logger.debug("Failed to login to qBittorrent")
         return None
     return qb
+
+
+def valid_infohash(hashid):
+    """ v1 infohashes are 40 hex characters, v2 are 64 """
+    if not hashid or not isinstance(hashid, str):
+        return False
+    return bool(re.fullmatch(r'[0-9a-f]{40}|[0-9a-f]{64}', hashid.lower()))
+
+
+def matches_hash(torrent, hashid):
+    """ Match a torrents/info entry against an exact infohash.
+
+    qBittorrent identifies a torrent by 'hash', but v2 and hybrid torrents also
+    report infohash_v1/infohash_v2 separately (Web API 2.8.2+), and which of
+    them ends up in 'hash' depends on the torrent.
+    """
+    if not isinstance(torrent, dict):
+        return False
+    hashid = hashid.lower()
+    for key in ('hash', 'infohash_v1', 'infohash_v2'):
+        value = torrent.get(key)
+        if isinstance(value, str) and value.lower() == hashid:
+            return True
+    return False
+
+
+def find_torrent(qbclient, hashid, full_scan=False):
+    """ Look up a single torrent by exact infohash, or return {}.
+
+    Not filtered by category: a torrent we didn't add ourselves, or one added
+    before the category was configured, can sit in any category or save path,
+    and the infohash is the only thing worth matching on. Web API versions that
+    predate the hashes filter return the full list, so match locally too.
+
+    The hashes filter only matches the id qBittorrent gave the torrent, which
+    for a v2 or hybrid torrent is its truncated v2 hash, so asking for the v1
+    hash of a hybrid torrent finds nothing even though it is right there.
+    full_scan asks for the whole list instead and matches infohash_v1 and
+    infohash_v2 as well. That costs a full torrent list, so it is only worth
+    doing once the cheap lookup has already missed.
+    """
+    if not hashid or not isinstance(hashid, str):
+        return {}
+    hashid = hashid.lower()
+    torrents = qbclient.torrents(hashes=hashid)
+    if isinstance(torrents, list):
+        for torrent in torrents:
+            if matches_hash(torrent, hashid):
+                return torrent
+    if not full_scan:
+        return {}
+
+    torrents = qbclient.torrents()
+    if not isinstance(torrents, list):
+        return {}
+    for torrent in torrents:
+        if matches_hash(torrent, hashid):
+            return torrent
+    return {}
+
+
+def torrent_id(torrent, default=''):
+    """ The id qBittorrent knows a torrent by, which is what its api expects """
+    value = torrent.get('hash') if isinstance(torrent, dict) else None
+    return value.lower() if isinstance(value, str) and value else default
 
 
 def get_files(hashid):
@@ -94,21 +179,16 @@ def get_name(hashid):
         return ''
 
     retries = 5
-    cat = CONFIG['QBITTORRENT_LABEL']
-    if not cat:
-        cat = None
     while retries:
         # get_torrent(hashid) gets info on one torrent but doesn't return all the information
         # eg we are missing name, state, progress
-        # so get all of our torrents and then look for the hashid
         try:
-            torrents = qbclient.torrents(category=cat)
+            torrent = find_torrent(qbclient, hashid)
         except Exception as e:
             dlcommslogger.error(f" Failed to get_name: {e}")
             return ''
-        for torrent in torrents:
-            if torrent.get('hash') == hashid and torrent.get('name'):
-                return torrent['name']
+        if torrent.get('name'):
+            return torrent['name']
         time.sleep(2)
         retries -= 1
     return ''
@@ -125,19 +205,15 @@ def get_folder(hashid):
 
     retries = 5
     save_path = ''
-    cat = CONFIG['QBITTORRENT_LABEL']
-    if not cat:
-        cat = None
     while retries:
         try:
-            torrents = qbclient.torrents(category=cat)
+            torrent = find_torrent(qbclient, hashid)
         except Exception as e:
             dlcommslogger.error(f"Failed to get_folder: {e}")
-            torrents = ''
-        for torrent in torrents:
-            if torrent.get('hash') == hashid and torrent.get('save_path'):
-                # If there's no folder yet then it's probably a magnet, try until folder is populated
-                return torrent['save_path']
+            torrent = {}
+        if torrent.get('content_path'):
+            # return absolute path of single file, or folder contaning multi files
+            return torrent['content_path']
         time.sleep(6)
         retries -= 1
     if not save_path:
@@ -145,6 +221,37 @@ def get_folder(hashid):
     if os.name != 'nt':
         save_path = save_path.replace('\\', '/')
     return os.path.basename(os.path.normpath(save_path))
+
+
+def get_content_path(hashid):
+    """qBittorrent's actual content path (root of the downloaded files) for a torrent.
+    Differs from save_path + name when the torrent was renamed; use it to locate the real
+    folder for post-processing. Returns '' if unavailable."""
+    dlcommslogger = logging.getLogger('special.dlcomms')
+    dlcommslogger.debug(f'get_content_path({hashid})')
+    hashid = hashid.lower()
+    qbclient = get_client()
+    if not qbclient:
+        return ''
+    cat = CONFIG['QBITTORRENT_LABEL']
+    if not cat:
+        cat = None
+    # content_path is normally populated as soon as the torrent exists, but can be briefly
+    # empty right after completion; retry a few times (short sleep) before giving up.
+    retries = 3
+    while retries:
+        try:
+            torrents = qbclient.torrents(category=cat)
+        except Exception as e:
+            dlcommslogger.error(f"Failed to get_content_path: {e}")
+            return ''
+        for torrent in torrents:
+            if torrent.get('hash') == hashid and torrent.get('content_path'):
+                return torrent['content_path']
+        retries -= 1
+        if retries:
+            time.sleep(2)
+    return ''
 
 
 def get_progress(hashid):
@@ -156,133 +263,169 @@ def get_progress(hashid):
     qbclient = get_client()
     if not qbclient:
         return -2, 'error connecting', False
-    failure = ''
     try:
-        preferences = qbclient.preferences()
-    except Exception as e:
-        dlcommslogger.error(f"Failed to get_progress: {e}")
-        preferences = {}
-        failure = str(e)
-    dlcommslogger.debug(str(preferences))
-    max_ratio = 0.0
-    if 'max_ratio_enabled' in preferences and 'max_ratio' in preferences and preferences['max_ratio_enabled']:
-        max_ratio = float(preferences['max_ratio'])
-    max_seeding_time = 0
-    if preferences.get('max_seeding_time_enabled') and 'max_seeding_time' in preferences:
-        max_seeding_time = int(preferences['max_seeding_time'])
-    cat = CONFIG['QBITTORRENT_LABEL']
-    if not cat:
-        cat = None
-    try:
-        torrents = qbclient.torrents(category=cat)
+        torrent = find_torrent(qbclient, hashid)
     except Exception as e:
         dlcommslogger.error(f"Failed to get torrents: {e}")
         return -2, 'error getting torrents', False
 
-    for torrent in torrents:
-        if torrent.get('hash') == hashid:
-            state = torrent.get('state', '')
-            if 'ratio' in torrent:
-                ratio = float(torrent['ratio'])
-            else:
-                ratio = 0.0
-            if 'progress' in torrent:
-                try:
-                    progress = int(100 * float(torrent['progress']))
-                except ValueError:
-                    progress = 0
-            else:
+    if torrent:
+        state = torrent.get('state', '')
+        if 'progress' in torrent:
+            try:
+                progress = int(100 * float(torrent['progress']))
+            except ValueError:
                 progress = 0
-            finished = False
+        else:
+            progress = 0
 
-            # state was changed from pausedUP to stoppedUP in web API 2.11.0, but wiki doesn't reflect change
-            # See: https://qbittorrent-api.readthedocs.io/en/latest/apidoc/definitions.html
-            if state == 'pausedUP' or state == 'stoppedUP':
-                ratio_met = max_ratio > 0 and ratio >= max_ratio
-                seeding_time = torrent.get('seeding_time', 0)
-                time_met = max_seeding_time > 0 and seeding_time >= max_seeding_time * 60
-                if ratio_met or time_met:
-                    finished = True
-            return progress, state, finished
-    return -1, failure if failure else 'error hash not found', False
+        # qBittorrent enforces the seeding policy (share-ratio / seeding-time limits, including
+        # any per-provider seed_ratio/seed_duration we set when adding) itself, so we delegate the
+        # "should we keep seeding?" decision to the client's reported state rather than
+        # re-evaluating limits here. While a completed torrent is still being seeded it reports an
+        # active upload state (uploading / stalledUP / forcedUP / queuedUP). Once the client stops
+        # seeding it -- because a limit was reached, a stop-condition fired, or the user stopped it
+        # -- the state becomes stoppedUP (pausedUP before web API 2.11.0). We therefore treat the
+        # torrent as finished exactly when the client has stopped seeding it: this honours
+        # KEEP_SEEDING while the client is still seeding, yet lets a completed-but-stopped torrent
+        # be processed instead of being stuck in 'Seeding' forever.
+        # See: https://qbittorrent-api.readthedocs.io/en/latest/apidoc/definitions.html
+        finished = state == 'pausedUP' or state == 'stoppedUP'
+        dlcommslogger.debug(f"{hashid} state={state} progress={progress} finished={finished}")
+        return progress, state, finished
+    return -1, 'error hash not found', False
 
 
-def remove_torrent(hashid, remove_data=False):
+def configured_categories():
+    """ Every category this configuration could have filed a torrent under.
+
+    QBITTORRENT_LABEL is a single category, or a comma separated list that
+    resolves per library, so both spellings have to count as ours.
+    """
+    label = CONFIG['QBITTORRENT_LABEL']
+    if not label:
+        return set()
+    return {label, *get_list(label, ',')}
+
+
+def category_mismatch(category, expect_category=None):
+    """ Say why a torrent is not where we filed it, or return '' if it is.
+
+    With nothing recorded, fall back to what this configuration could have
+    asked for. An install with no label of its own files torrents with no
+    category at all, so that is what counts as ours there.
+    """
+    if expect_category is not None:
+        if category != expect_category:
+            return f"torrent category [{category}] does not match owned category [{expect_category}]"
+        return ''
+    ours = configured_categories() or {''}
+    if category not in ours:
+        return f"torrent category [{category}] is not one of ours {sorted(ours)}"
+    return ''
+
+
+def category_matches(hashid, expect_category=None):
+    """ Whether the torrent is still in the category we filed it under.
+
+    Three answers, because they lead to different places: True to go ahead,
+    False for a torrent that is somewhere else or no longer here, and None when
+    the client could not be asked, which is worth trying again rather than
+    treating as a no.
+    """
+    dlcommslogger = logging.getLogger('special.dlcomms')
+    qbclient = get_client()
+    if not qbclient:
+        return None
+    try:
+        torrent = find_torrent(qbclient, hashid.lower())
+    except Exception as e:
+        dlcommslogger.error(f"Failed to check category: {e}")
+        return None
+    if not torrent:
+        return False
+    return not category_mismatch(torrent.get('category') or '', expect_category)
+
+
+def seed_state(hashid):
+    """ What a torrent has seeded so far, as (ratio, seconds), or None.
+
+    None means we could not ask, which is not the same as nothing seeded.
+    """
+    dlcommslogger = logging.getLogger('special.dlcomms')
+    qbclient = get_client()
+    if not qbclient:
+        return None
+    try:
+        torrent = find_torrent(qbclient, hashid.lower())
+    except Exception as e:
+        dlcommslogger.error(f"Failed to get seed_state: {e}")
+        return None
+    if not torrent:
+        return None
+    # torrents/info reports the ratio as a float and seeding_time in seconds
+    return torrent.get('ratio') or 0, torrent.get('seeding_time') or 0
+
+
+def remove_torrent(hashid, remove_data=False, expect_category=None):
+    """ Remove a torrent from qBittorrent, category permitting.
+
+    :param expect_category: the category recorded when we snatched this, or None
+        where there is no record of it. A torrent sitting in any other category
+        is left alone: qBittorrent looks a torrent up by hash whatever category
+        it is in, which is what lets us find one we took on, and the same reach
+        would otherwise let us delete a torrent somebody keeps for a private
+        tracker.
+    """
     logger = logging.getLogger(__name__)
     dlcommslogger = logging.getLogger('special.dlcomms')
-    dlcommslogger.debug(f'remove_torrent({hashid},{remove_data})')
+    dlcommslogger.debug(f'remove_torrent({hashid},{remove_data},{expect_category})')
     hashid = hashid.lower()
     if helper_owns_qbittorrent_lifecycle():
-        owner = configured_qbittorrent_lifecycle_owner()
-        logger.warning(
-            f"Retaining qBittorrent task {hashid[:8]}: lifecycle removal is owned by "
-            f"{owner or 'an invalid external owner'}"
-        )
+        logger.warning("qBittorrent removal is owned by the durable box helper; retaining torrent")
         return False
     qbclient = get_client()
     if not qbclient:
         return False
 
-    cat = CONFIG['QBITTORRENT_LABEL']
-    if not cat:
-        cat = None
     try:
-        torrents = qbclient.torrents(category=cat)
+        torrent = find_torrent(qbclient, hashid)
     except Exception as e:
         dlcommslogger.error(f" Failed to remove_torrent: {e}")
         return False
-    for torrent in torrents:
-        if torrent.get('hash') == hashid:
-            remove = True
-            if torrent['state'] == 'uploading' or torrent['state'] == 'stalledUP':
-                if not CONFIG.get_bool('SEED_WAIT'):
-                    logger.debug(f"{torrent['name']} is seeding, removing torrent and data anyway")
-                else:
-                    logger.info(f"{torrent['name']} has not finished seeding yet, torrent will not be removed")
-                    remove = False
-            if remove:
-                if remove_data:
-                    try:
-                        qbclient.delete_permanently(hashid)
-                        logger.info(f"{torrent['name']} removing torrent and data")
-                    except Exception as e:
-                        dlcommslogger.error(f"Failed to delete_permanently: {e}")
-                        return False
-                else:
-                    try:
-                        qbclient.delete(hashid)
-                        logger.info(f"{torrent['name']} removing torrent")
-                    except Exception as e:
-                        dlcommslogger.error(f"Failed to delete: {e}")
-                        return False
-                return True
+    if torrent:
+        # delete by the id qBittorrent filed it under, which is not always the
+        # hash we matched on
+        found = torrent_id(torrent, hashid)
+        name = torrent.get('name', found)
+        mismatch = category_mismatch(torrent.get('category') or '', expect_category)
+        if mismatch:
+            logger.warning(f"Skipping deletion of {found}: {mismatch}")
+            return False
+        remove = True
+        if torrent.get('state') in ('uploading', 'stalledUP'):
+            if not CONFIG.get_bool('SEED_WAIT'):
+                logger.debug(f"{name} is seeding, removing torrent and data anyway")
+            else:
+                logger.info(f"{name} has not finished seeding yet, torrent will not be removed")
+                remove = False
+        if remove:
+            if remove_data:
+                try:
+                    qbclient.delete_permanently(found)
+                    logger.info(f"{name} removing torrent and data")
+                except Exception as e:
+                    dlcommslogger.error(f"Failed to delete_permanently: {e}")
+                    return False
+            else:
+                try:
+                    qbclient.delete(found)
+                    logger.info(f"{name} removing torrent")
+                except Exception as e:
+                    dlcommslogger.error(f"Failed to delete: {e}")
+                    return False
+            return True
     return False
-
-
-def preserve_rejected_torrent(hashid, provider_options):
-    """Keep a post-add rejection under its exact provider share policy."""
-    logger = logging.getLogger(__name__)
-    dlcommslogger = logging.getLogger('special.dlcomms')
-    hashid = hashid.lower()
-    qbclient = get_client()
-    if not qbclient:
-        return False
-    expected = provider_share_limits(provider_options)
-    if not expected:
-        dlcommslogger.error(
-            f"Rejected torrent {hashid[:8]} has no explicit provider share policy"
-        )
-        return False
-    mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
-    if mismatch:
-        dlcommslogger.error(
-            f"Failed to verify rejected torrent provider share limits: {mismatch}"
-        )
-        return False
-    logger.warning(
-        f"Preserving rejected torrent {hashid[:8]} in qBittorrent under its verified provider policy"
-    )
-    return True
 
 
 def check_link():
@@ -294,126 +437,305 @@ def check_link():
             qb_api = qbclient.api_version
         if qb_api:
             qb_version = qbclient.qbittorrent_version
-            return f"qBittorrent login successful, api: {qb_api} version: {qb_version}"
-        return "qBittorrent login FAILED\nCheck debug log"
+            return i18n.gettext('%(name)s login successful, api: %(api)s version: %(version)s') % {'name': 'qBittorrent', 'api': qb_api, 'version': qb_version}, True
+        return i18n.gettext('%(name)s login FAILED\nCheck debug log') % {'name': 'qBittorrent'}, False
     except Exception as err:
-        return f"qBittorrent login FAILED: {type(err).__name__} {str(err)}"
+        return i18n.gettext('%(name)s login FAILED: %(error)s') % {'name': 'qBittorrent', 'error': f'{type(err).__name__} {str(err)}'}, False
 
 
-def add_file(data, hashid, title, provider_options):
+def classify_add_response(result):
+    """ Interpret the response from qBittorrent's torrents/add endpoint.
+
+    Pre-2.14 Web API responses (plain "Ok." text, or an empty body) carry no
+    structured info, so there's nothing to classify - treat as 'legacy' and
+    fall back to polling for the hash as before. Web API 2.14+ returns JSON
+    with success_count/pending_count/failure_count and added_torrent_ids.
+
+    :return: (state, added_ids) where state is one of
+             'legacy', 'accepted', 'pending', 'rejected'
+    """
+    if not isinstance(result, dict):
+        return 'legacy', []
+
+    added_ids = result.get('added_torrent_ids') or []
+    success_count = result.get('success_count', 0)
+    pending_count = result.get('pending_count', 0)
+    failure_count = result.get('failure_count', 0)
+
+    if failure_count and not (success_count or pending_count):
+        return 'rejected', added_ids
+    # Check pending ahead of success: if a batch response is ever a mix of
+    # the two, we still need the longer pending poll window, not the short
+    # one that's only safe when everything in the batch was already added.
+    if pending_count:
+        return 'pending', added_ids
+    if success_count:
+        return 'accepted', added_ids
+    return 'legacy', added_ids
+
+
+def pause_torrent(qbclient, dlcommslogger, hashid):
+    # Add explicit pause as qbittorrent v5 seems to ignore start paused arg
+    if not CONFIG.get_bool('TORRENT_PAUSED'):
+        return
+    try:
+        paused = not qbclient.qbittorrent_version.startswith('v5')
+        dlcommslogger.debug(f"Pausing torrent {hashid}")
+        qbclient.pause(hashid, paused)
+    except Exception as e:
+        dlcommslogger.error(f" Failed to pause torrent {hashid}: {e}")
+
+
+def wait_for_torrent(qbclient, dlcommslogger, hashid, result, label):
+    """ Poll qBittorrent until a just-added torrent shows up, or give up.
+
+    :param hashid: the infohash we calculated, used when qBittorrent doesn't
+                   tell us which id it gave the torrent
+    :param result: the response already returned by download_from_link/file
+    :param label: 'add_torrent' or 'add_file', used in the failure message
+    :return: (torrent id, '', False) once it appears, or (False, message, False).
+             The third value says the torrent was not already in qBittorrent.
+    """
+    state, added_ids = classify_add_response(result)
+    dlcommslogger.debug(f"torrents/add response state={state}, id_count={len(added_ids)}")
+    if helper_owns_qbittorrent_lifecycle() and added_ids:
+        if (len(added_ids) != 1 or not valid_infohash(added_ids[0])
+                or added_ids[0].lower() != hashid.lower()):
+            return False, 'qBittorrent identity differs from durable add intent; retained for operator review', False
+
+    if state == 'rejected':
+        res = "qBittorrent rejected the torrent add"
+        dlcommslogger.error(res)
+        return False, res, False
+    if isinstance(result, dict) and result.get('failure_count'):
+        # Only reachable when success_count or pending_count is also set, ie a
+        # partial failure on a multi-url add. We only ever submit one url, so
+        # this shouldn't happen in practice, but don't discard it silently.
+        dlcommslogger.error("qBittorrent reported a partial add failure")
+
+    if len(added_ids) == 1 and valid_infohash(added_ids[0]):
+        # Web API 2.14+ tells us the id it gave the torrent. For a v2 or hybrid
+        # torrent that is the truncated v2 hash, not the v1 hash we calculate
+        # from the metadata, so take qBittorrent's answer over our own.
+        if added_ids[0].lower() != hashid:
+            dlcommslogger.debug(f"qBittorrent gave {added_ids[0]} as the id for {hashid}")
+        hashid = added_ids[0].lower()
+
+    max_wait = QBIT_ADD_PENDING_POLL_SECONDS if state == 'pending' else QBIT_ADD_POLL_SECONDS
+    count = 0
+    while count < max_wait:
+        count += 1
+        time.sleep(1)
+        try:
+            torrent = qbclient.get_torrent(hashid)
+        except requests.HTTPError as e:
+            if e.response is not None and e.response.status_code == 404:
+                # Not indexed yet, e.g. qBittorrent is still fetching a pending url
+                continue
+            dlcommslogger.error(f" Failed {label}: {e}")
+            return False, str(e), False
+        except Exception as e:
+            dlcommslogger.error(f" Failed {label}: {e}")
+            return False, str(e), False
+        if torrent:
+            if (helper_owns_qbittorrent_lifecycle() and isinstance(torrent, dict)
+                    and torrent.get('hash') and torrent_id(torrent) != hashid):
+                return False, 'qBittorrent identity differs from durable add intent; retained for operator review', False
+            pause_torrent(qbclient, dlcommslogger, hashid)
+            if count > 1:
+                dlcommslogger.debug(f"hashid found in torrent list after {count} seconds")
+            return hashid, '', False
+
+    # One last look at the whole list before giving up: a torrent fetched from
+    # a url can turn out to be v2 or hybrid, and then the id qBittorrent filed
+    # it under isn't the hash we have been asking for.
+    try:
+        torrent = find_torrent(qbclient, hashid, full_scan=True)
+    except Exception as e:
+        dlcommslogger.error(f" Failed {label}: {e}")
+        return False, str(e), False
+    if torrent:
+        found = torrent_id(torrent, hashid)
+        if helper_owns_qbittorrent_lifecycle() and found != hashid:
+            return False, 'qBittorrent identity differs from durable add intent; retained for operator review', False
+        dlcommslogger.debug(f"Found {hashid} in the torrent list under id {found}")
+        pause_torrent(qbclient, dlcommslogger, found)
+        return found, '', False
+
+    res = f"hashid not found in torrent list, {label} failed"
+    dlcommslogger.debug(res)
+    return False, res, False
+
+
+def handle_add_http_error(qbclient, dlcommslogger, err, hashid, label):
+    """ Work out whether an HTTPError from torrents/add means qBittorrent
+    already has the torrent we asked it for.
+
+    A 409 says the torrent is a duplicate of one qBittorrent already holds, but
+    it says that whether or not the trackers could be merged, and whether the
+    existing torrent is downloading, seeding or paused. It's only a success if
+    the exact infohash we wanted is really there, so ask rather than assume.
+
+    :return: (torrent id, '', True) for a duplicate we can use, else
+             (False, message, False). The third value marks a torrent that was
+             already in qBittorrent before we asked for it, which makes it
+             someone else's to delete.
+    """
+    logger = logging.getLogger(__name__)
+    response = getattr(err, 'response', None)
+    status_code = getattr(response, 'status_code', None)
+    if status_code != QBIT_DUPLICATE_STATUS:
+        dlcommslogger.error(f"Failed {label}: {err}")
+        return False, str(err), False
+
+    reason = getattr(response, 'text', '')
+    if not isinstance(reason, str):
+        reason = ''
+    # the body is usually just "Conflict", but don't rely on that: it is the
+    # one place qBittorrent could echo the url we submitted back at us
+    reason = redact_url(reason.strip()[:200])
+
+    if not valid_infohash(hashid):
+        res = f"qBittorrent refused {label} with {status_code} and [{hashid}] is not a usable infohash"
+        logger.error(res)
+        return False, res, False
+
+    try:
+        torrent = find_torrent(qbclient, hashid, full_scan=True)
+    except Exception as e:
+        res = f"qBittorrent returned {status_code} for {label}, and the hash lookup failed: {e}"
+        logger.error(res)
+        return False, res, False
+
+    if torrent:
+        found = torrent_id(torrent, hashid)
+        logger.info(f"Torrent already exists in qBittorrent; using existing hash {found}")
+        category = torrent.get('category') or ''
+        our_label = CONFIG['QBITTORRENT_LABEL']
+        if our_label and category != our_label:
+            mismatch = category_mismatch(category)
+            if mismatch:
+                res = (f"Torrent {found} is in category [{category}], not [{our_label}]. "
+                       f"Skipping to avoid a snatch loop (the postprocessor would not "
+                       f"find the files and the book would be re-searched indefinitely)")
+                logger.info(res)
+                return False, res, False
+            logger.info(f"Existing torrent is in category [{category}] "
+                        f"(accepted alternate for [{our_label}])")
+        dlcommslogger.debug(f"Existing torrent: name=[{torrent.get('name')}] state={torrent.get('state')} "
+                            f"category=[{category}] progress={torrent.get('progress')}")
+        return found, '', True
+
+    res = f"qBittorrent refused {label} with {status_code} and has no torrent with hash {hashid}"
+    if reason:
+        res = f"{res}: {reason}"
+    logger.error(res)
+    return False, res, False
+
+
+def add_file(data, hashid, title, provider_options, label=None):
+    """ Send torrent data to qBittorrent.
+
+    :return: (torrent id, '', adopted) on success, or (False, message, False).
+             The id is qBittorrent's own, which is not always the hash we
+             calculated, and adopted is True when the torrent was already there.
+    """
     dlcommslogger = logging.getLogger('special.dlcomms')
 
     dlcommslogger.debug(f'add_file(data){title}')
-    if not provider_share_limits(provider_options):
-        return False, "Refusing qBittorrent add without an explicit provider share policy"
     hashid = hashid.lower()
+    if helper_owns_qbittorrent_lifecycle():
+        try:
+            validate_box_helper_handoff_config()
+        except RuntimeError:
+            return False, 'Refusing qBittorrent add without the paired durable helper ownership configuration', False
+        if not provider_share_limits(provider_options):
+            return False, "Refusing qBittorrent add without an explicit provider share policy", False
     qbclient = get_client()
     if not qbclient:
-        return False, "Failed to login to qbittorrent"
+        return False, "Failed to login to qbittorrent", False
 
-    kwargs = get_args(provider_options)
+    preflight_error = helper_add_preflight(qbclient, hashid)
+    if preflight_error:
+        return False, preflight_error, False
+    kwargs = get_args(provider_options, label)
     dlcommslogger.debug(f'{kwargs}')
     try:
-        qbclient.download_from_file(data, **kwargs)
+        result = qbclient.download_from_file(data, **kwargs)
+    except requests.HTTPError as e:
+        return verify_provider_add_result(qbclient, handle_add_http_error(qbclient, dlcommslogger, e, hashid, 'add_file'), provider_options, hashid)
     except Exception as e:
         dlcommslogger.error(f"Failed to download_from_file: {e}")
-        return False, str(e)
+        return False, str(e), False
 
-    count = 0
-    while count < 10:
-        count += 1
-        time.sleep(1)
-        # noinspection PyProtectedMember
-        try:
-            torrent = qbclient.get_torrent(hashid)
-        except Exception as e:
-            dlcommslogger.error(f"Failed to add torrent file: {e}")
-            return False, str(e)
-        if torrent:
-            mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
-            if mismatch:
-                dlcommslogger.warning(
-                    f"qBittorrent provider share limits not verified for {hashid[:8]}: {mismatch}"
-                )
-                if count < 10:
-                    time.sleep(1)
-                    continue
-                warning = quarantine_unverified_provider_torrent(
-                    qbclient, hashid, mismatch
-                )
-                dlcommslogger.error(warning)
-                # The torrent already exists. Report success so LazyLibrarian
-                # records its exact hash and emits normal helper ownership
-                # instead of creating an unmanaged qBittorrent orphan.
-                return True, warning
-            # Add explicit pause as qbittorrent v5 seems to ignore start paused arg
-            if CONFIG.get_bool('TORRENT_PAUSED'):
-                paused = not qbclient.qbittorrent_version.startswith('v5')
-                dlcommslogger.debug(f"Pausing torrent {hashid}")
-                qbclient.pause(hashid, paused)
-            if count > 1:
-                dlcommslogger.debug(f"hashid found in torrent list after {count} seconds")
-            return True, ''
-    res = "hashid not found in torrent list, add_file failed"
-    dlcommslogger.debug(res)
-    return False, res
+    return verify_provider_add_result(qbclient, wait_for_torrent(qbclient, dlcommslogger, hashid, result, 'add_file'), provider_options, hashid)
 
 
-def add_torrent(link, hashid, provider_options):
+def add_torrent(link, hashid, provider_options, label=None):
+    """ Send a url or magnet to qBittorrent.
+
+    :return: (torrent id, '', adopted) on success, or (False, message, False).
+             The id is qBittorrent's own, which is not always the hash we
+             calculated, and adopted is True when the torrent was already there.
+    """
     dlcommslogger = logging.getLogger('special.dlcomms')
 
-    dlcommslogger.debug(f'add_torrent({link})')
-    if not provider_share_limits(provider_options):
-        return False, "Refusing qBittorrent add without an explicit provider share policy"
+    dlcommslogger.debug(f'add_torrent({redact_url(link)})')
 
+    if helper_owns_qbittorrent_lifecycle():
+        try:
+            validate_box_helper_handoff_config()
+        except RuntimeError:
+            return False, 'Refusing qBittorrent add without the paired durable helper ownership configuration', False
+        if not provider_share_limits(provider_options):
+            return False, "Refusing qBittorrent add without an explicit provider share policy", False
     qbclient = get_client()
     if not qbclient:
-        return False, "Failed to login to qbittorrent"
+        return False, "Failed to login to qbittorrent", False
 
     hashid = hashid.lower()
-    kwargs = get_args(provider_options)
+    preflight_error = helper_add_preflight(qbclient, hashid)
+    if preflight_error:
+        return False, preflight_error, False
+    kwargs = get_args(provider_options, label)
     dlcommslogger.debug(f'{kwargs}')
     try:
-        qbclient.download_from_link(link, **kwargs)
+        result = qbclient.download_from_link(link, **kwargs)
+    except requests.HTTPError as e:
+        return verify_provider_add_result(qbclient, handle_add_http_error(qbclient, dlcommslogger, e, hashid, 'add_torrent'), provider_options, hashid)
     except Exception as e:
         dlcommslogger.error(f" Failed to download_from_link: {e}")
-        return False, str(e)
+        return False, str(e), False
 
-    count = 0
-    while count < 10:
-        count += 1
-        time.sleep(1)
-        # noinspection PyProtectedMember
-        try:
-            torrent = qbclient.get_torrent(hashid)
-        except Exception as e:
-            dlcommslogger.error(f" Failed to add torrent: {e}")
-            return False, str(e)
-        if torrent:
-            mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
-            if mismatch:
-                dlcommslogger.warning(
-                    f"qBittorrent provider share limits not verified for {hashid[:8]}: {mismatch}"
-                )
-                if count < 10:
-                    time.sleep(1)
-                    continue
-                warning = quarantine_unverified_provider_torrent(
-                    qbclient, hashid, mismatch
-                )
-                dlcommslogger.error(warning)
-                return True, warning
-            # Add explicit pause as qbittorrent v5 seems to ignore start paused arg
-            if CONFIG.get_bool('TORRENT_PAUSED'):
-                paused = not qbclient.qbittorrent_version.startswith('v5')
-                dlcommslogger.debug(f"Pausing torrent {hashid}")
-                qbclient.pause(hashid, paused)
-            if count > 1:
-                dlcommslogger.debug(f"hashid found in torrent list after {count} seconds")
-            return True, ''
-    res = "hashid not found in torrent list, add_torrent failed"
-    dlcommslogger.debug(res)
-    return False, res
+    return verify_provider_add_result(qbclient, wait_for_torrent(qbclient, dlcommslogger, hashid, result, 'add_torrent'), provider_options, hashid)
+
+
+def get_args(provider_options, label=None):
+    """ Get optional arguments based on configuration
+
+    :param label: the category to file the torrent under, already resolved for
+        the library being searched. QBITTORRENT_LABEL can be a comma separated
+        list of per library categories, so the unresolved value is not usable as
+        a category on its own.
+    """
+    args = {'paused': bool(CONFIG.get_bool('TORRENT_PAUSED'))}
+    if CONFIG['QBITTORRENT_DIR']:
+        args['savepath'] = CONFIG['QBITTORRENT_DIR']
+
+    if label is None:
+        label = CONFIG['QBITTORRENT_LABEL']
+    if label:
+        args['category'] = label
+
+    if helper_owns_qbittorrent_lifecycle():
+        args.update(provider_share_limits(provider_options))
+    else:
+        if "seed_ratio" in provider_options:
+            args['ratioLimit'] = provider_options["seed_ratio"]
+        if "seed_duration" in provider_options:
+            args['seedingTimeLimit'] = provider_options["seed_duration"]
+
+    return args
 
 
 def provider_share_limits(provider_options):
@@ -588,15 +910,71 @@ def quarantine_unverified_provider_torrent(qbclient, hashid, provider_mismatch):
     )
 
 
-def get_args(provider_options):
-    """ Get optional arguments based on configuration"""
-    args = {'paused': bool(CONFIG.get_bool('TORRENT_PAUSED'))}
-    if CONFIG['QBITTORRENT_DIR']:
-        args['savepath'] = CONFIG['QBITTORRENT_DIR']
+def preserve_rejected_torrent(hashid, provider_options):
+    """Keep a post-add rejection under its exact provider share policy."""
+    logger = logging.getLogger(__name__)
+    dlcommslogger = logging.getLogger('special.dlcomms')
+    hashid = hashid.lower()
+    qbclient = get_client()
+    if not qbclient:
+        return False
+    expected = provider_share_limits(provider_options)
+    if not expected:
+        dlcommslogger.error(
+            f"Rejected torrent {hashid[:8]} has no explicit provider share policy"
+        )
+        return False
+    mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
+    if mismatch:
+        dlcommslogger.error(
+            f"Failed to verify rejected torrent provider share limits: {mismatch}"
+        )
+        return False
+    logger.warning(
+        f"Preserving rejected torrent {hashid[:8]} in qBittorrent under its verified provider policy"
+    )
+    return True
 
-    if CONFIG['QBITTORRENT_LABEL']:
-        args['category'] = CONFIG['QBITTORRENT_LABEL']
 
-    args.update(provider_share_limits(provider_options))
+def helper_add_preflight(qbclient, hashid):
+    """Refuse fresh LL adoption of any already-held helper torrent.
 
-    return args
+    Existing attested generations are recovered by the helper, never adopted by
+    a new LL grab. No category, limits, state, or tracker mutation is authorized
+    by this read-only check.
+    """
+    if not helper_owns_qbittorrent_lifecycle():
+        return ''
+    try:
+        validate_box_helper_handoff_config()
+    except RuntimeError:
+        return 'Refusing qBittorrent add without the paired durable helper ownership configuration'
+    try:
+        existing = find_torrent(qbclient, hashid, full_scan=True)
+    except Exception as exc:
+        return f'Cannot verify qBittorrent ownership before add: {type(exc).__name__}'
+    if existing:
+        return 'Refusing fresh helper adoption of a pre-existing qBittorrent torrent'
+    return ''
+
+
+def verify_provider_add_result(qbclient, result, provider_options, expected_hash=None):
+    """Preserve the upstream id/adopted return contract and verify our policy."""
+    hashid, message, adopted = result
+    if not hashid or not helper_owns_qbittorrent_lifecycle():
+        return result
+    if expected_hash and hashid.lower() != expected_hash.lower():
+        return False, 'qBittorrent identity differs from durable add intent; retained for operator review', False
+    if adopted:
+        return False, 'Refusing fresh helper adoption of a pre-existing qBittorrent torrent', False
+    mismatch = ''
+    for attempt in range(10):
+        mismatch = repair_provider_share_limits(qbclient, hashid, provider_options)
+        if not mismatch:
+            break
+        if attempt < 9:
+            time.sleep(1)
+    if mismatch:
+        warning = quarantine_unverified_provider_torrent(qbclient, hashid, mismatch)
+        return hashid, warning, False
+    return result

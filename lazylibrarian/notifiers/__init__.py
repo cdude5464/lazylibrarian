@@ -19,7 +19,9 @@
 import logging
 import traceback
 
+from lazylibrarian import i18n
 from lazylibrarian.config2 import CONFIG
+from lazylibrarian.formatter import date_format, now
 
 from ..telemetry import TELEMETRY
 from . import (
@@ -69,6 +71,24 @@ notifiers = [
 APPRISE_VER: str = apprise_notify.APPRISE_CANLOAD
 
 
+def notify_text(title, provider='', library=''):
+    """ The text of a snatch or download notification, in the notification language.
+        provider None means the book was added manually """
+    with i18n.language(i18n.notify_language()):
+        libraries = {'ebook': i18n.gettext('eBook'), 'audiobook': i18n.gettext('AudioBook'),
+                     'magazine': i18n.gettext('Magazine'), 'comic': i18n.gettext('Comic')}
+        timestamp = now()
+        # the date part in the user's display date format, the time of day as is
+        when = f"{date_format(timestamp, CONFIG['DATE_FORMAT'], datelang=CONFIG['DATE_LANG'])} {timestamp[11:]}"
+        params = {'library': libraries.get(library.lower(), library), 'title': title,
+                  'provider': provider, 'time': when}
+        if provider is None:
+            return i18n.gettext('%(library)s %(title)s added manually at %(time)s') % params
+        if library:
+            return i18n.gettext('%(library)s %(title)s from %(provider)s at %(time)s') % params
+        return i18n.gettext('%(title)s from %(provider)s at %(time)s') % params
+
+
 def custom_notify_download(bookid):
     logger = logging.getLogger(__name__)
     try:
@@ -95,11 +115,12 @@ def notify_download(title, bookid=None):
         title = title.replace(item, '******')
     try:
         TELEMETRY.record_usage_data('Notify/Download')
-        for n in notifiers:
-            if 'EmailNotifier' in str(n):
-                n.notify_download(title, bookid=bookid)
-            else:
-                n.notify_download(title)
+        with i18n.language(i18n.notify_language()):
+            for n in notifiers:
+                if 'EmailNotifier' in str(n):
+                    n.notify_download(title, bookid=bookid)
+                else:
+                    n.notify_download(title)
     except Exception as e:
         logger.warning(f'Notify download failed: {str(e)}')
         logger.error(f'Unhandled exception: {traceback.format_exc()}')
@@ -111,8 +132,9 @@ def notify_snatch(title, fail=False):
         title = title.replace(item, '******')
     try:
         TELEMETRY.record_usage_data('Notify/Snatch')
-        for n in notifiers:
-            n.notify_snatch(title, fail=fail)
+        with i18n.language(i18n.notify_language()):
+            for n in notifiers:
+                n.notify_snatch(title, fail=fail)
     except Exception as e:
         logger.warning(f'Notify snatch failed: {str(e)}')
         logger.error(f'Unhandled exception: {traceback.format_exc()}')

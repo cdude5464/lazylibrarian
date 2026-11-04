@@ -23,6 +23,7 @@ class Client:
         verify: bool = True,
         timeout: bool = None,
         max_attempts_on_403: int = 3,
+        skip_login: bool = False,
     ):
         """
         Initialize the client
@@ -37,9 +38,13 @@ class Client:
                         Defaults to None.
         :param max_attempts_on_403: Maximum time a request will be done after a 403 and a re-login before
                                     raising HTTPError
+        :param skip_login: When True, skip the qBittorrent API login and attach
+                           credentials as HTTP basic auth instead. For reverse-proxy
+                           setups where the proxy handles authentication.
         """
         self._username = username
         self._password = password
+        self._skip_login = skip_login
 
         if not url.endswith("/"):
             url += "/"
@@ -164,7 +169,7 @@ class Client:
         else:
             request = self._session.post(final_url, data, **kwargs)
 
-        if request.status_code == 403 and attempt <= self._max_attempts_on_403:
+        if request.status_code == 403 and not self._skip_login and attempt <= self._max_attempts_on_403:
             self.login()
             return self._request(endpoint, method, data, attempt=attempt + 1, **kwargs)
 
@@ -189,10 +194,19 @@ class Client:
         stores the authenticated session if the login is correct.
         Else, shows the login error.
 
+        When skip_login is set, the qBittorrent auth/login endpoint is not
+        called. Credentials are attached as HTTP basic auth on every request
+        instead, for reverse-proxy setups that handle authentication upstream.
+
         :raises WrongCredentialsError: When given credentials are wrong
         :return:
         """
         self._session = requests.Session()
+
+        if self._skip_login:
+            if self._username or self._password:
+                self._session.auth = (self._username or '', self._password or '')
+            return
 
         if not (self.username and self.password):
             # anonymous login, whitelisted ip or localhost

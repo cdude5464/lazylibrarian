@@ -5,6 +5,7 @@
 
 import time
 import logging
+from unittest import mock
 
 from unittests.unittesthelpers import LLTestCase
 from lazylibrarian.config2 import LLConfigHandler
@@ -136,3 +137,67 @@ class BlockhandlerTest(LLTestCase):
             'second blocked for 2 hours, 46 minutes, 40 seconds: hello',
             'googleapi blocked for 1 hours: xyz',
         ])
+
+
+class BlockhandlerBackoffTest(LLTestCase):
+    """ Escalating block for providers that keep answering 'too many requests' """
+
+    NOW = 1_000_000
+
+    def _handler_at(self, clock):
+        handler = BlockHandler()
+        return handler, mock.patch('lazylibrarian.blockhandler.time.time', side_effect=lambda: clock[0])
+
+    def test_delay_escalates_when_rate_limited_again_after_block_expires(self):
+        clock = [self.NOW]
+        handler, patch = self._handler_at(clock)
+        with patch:
+            delays = []
+            for _ in range(6):
+                delays.append(handler.block_provider_backoff('prov', 'Too Many Requests'))
+                clock[0] += delays[-1] + 1  # block expires, provider is asked again and is limited again
+        self.assertListEqual(delays, [30, 120, 600, 3600, 3600, 3600])
+
+    def test_concurrent_rate_limits_inside_one_block_do_not_escalate(self):
+        clock = [self.NOW]
+        handler, patch = self._handler_at(clock)
+        with patch:
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 30)
+            clock[0] += 5  # a request already in flight also gets a 429
+            remaining = handler.block_provider_backoff('prov', 'Too Many Requests')
+            self.assertEqual(remaining, 25, 'Should report the time left, not start a longer block')
+            clock[0] += 26
+            # next real rate-limit after expiry is only the second event, not the third
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 120)
+
+    def test_quiet_spell_restarts_at_shortest_delay(self):
+        clock = [self.NOW]
+        handler, patch = self._handler_at(clock)
+        with patch:
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 30)
+            clock[0] += 31
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 120)
+            clock[0] += 120 + 120 + 1  # asked again only after more than one full extra delay of quiet
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 30)
+
+    def test_reset_backoff_restarts_at_shortest_delay(self):
+        clock = [self.NOW]
+        handler, patch = self._handler_at(clock)
+        with patch:
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 30)
+            clock[0] += 31
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 120)
+            clock[0] += 121
+            handler.reset_backoff('prov')  # a search succeeded
+            self.assertEqual(handler.block_provider_backoff('prov', 'Too Many Requests'), 30)
+
+    def test_providers_are_tracked_independently_and_clear_all_resets(self):
+        clock = [self.NOW]
+        handler, patch = self._handler_at(clock)
+        with patch:
+            self.assertEqual(handler.block_provider_backoff('a', 'Too Many Requests'), 30)
+            clock[0] += 31
+            self.assertEqual(handler.block_provider_backoff('a', 'Too Many Requests'), 120)
+            self.assertEqual(handler.block_provider_backoff('b', 'Too Many Requests'), 30)
+            handler.clear_all()
+            self.assertEqual(handler.block_provider_backoff('a', 'Too Many Requests'), 30)

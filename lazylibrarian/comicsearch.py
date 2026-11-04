@@ -17,6 +17,7 @@ import time
 import traceback
 
 from rapidfuzz import fuzz
+from rapidfuzz.utils import default_process
 
 import lazylibrarian
 from lazylibrarian import database
@@ -33,7 +34,7 @@ from lazylibrarian.formatter import (
     thread_name,
     unaccented,
 )
-from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch
+from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import (
     iterate_over_direct_sites,
     iterate_over_irc_sites,
@@ -155,8 +156,7 @@ def search_item(comicid=None):
             # strip any trailing words that are just digits
             while part_title and part_title[-1].isdigit():
                 part_title = part_title[:-1].strip()
-            searchmatch = searchterm.replace('+', ' ')
-            score = fuzz.token_set_ratio(searchmatch, part_title)
+            score = fuzz.token_set_ratio(searchterm, part_title, processor=default_process)
 
             # lose a point for each extra word in the title, so we get the closest match
             words = len(get_list(searchterm))
@@ -213,8 +213,8 @@ def search_comics(comicid=None):
     logger = logging.getLogger(__name__)
     searchinglogger = logging.getLogger('special.searching')
     TELEMETRY.record_usage_data('Search/Comics')
-    threadname = thread_name()
-    if "Thread" in threadname:
+
+    if 'SEARCH' not in thread_name():
         if not comicid:
             thread_name("SEARCHALLCOMICS")
         else:
@@ -223,6 +223,7 @@ def search_comics(comicid=None):
     db = database.DBConnection()
     # noinspection PyBroadException
     try:
+        logger.debug(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
         cmd = "SELECT ComicID,Title, aka from comics WHERE Status='Active'"
         if comicid:
@@ -235,8 +236,8 @@ def search_comics(comicid=None):
             logger.debug(f"Found {len(comics)} active comics")
 
         for comic in comics:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLCOMICS":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLCOMICS":
+                logger.debug("STOPTHREADS Aborting SEARCHALLCOMICS")
                 break
             comicid = comic['ComicID']
             aka = get_list(comic['aka'])
@@ -264,7 +265,7 @@ def search_comics(comicid=None):
                         searchinglogger.debug(f"No match ({match[3]['seriesid']}) want {id_list}: {item['title']}")
                         notfound += 1
                 else:
-                    searchinglogger.debug(f"No match [{item['score']}%] {item['title']}")
+                    searchinglogger.debug(f"No match [{round(item['score'], 2)}%] {item['title']}")
                     notfound += 1
 
             total = len(foundissues)
@@ -286,6 +287,7 @@ def search_comics(comicid=None):
 
             time.sleep(CONFIG.get_int('SEARCH_RATELIMIT'))
         logger.info("ComicSearch for Wanted items complete")
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
     except Exception:
         logger.error(f'Unhandled exception in search_comics: {traceback.format_exc()}')
@@ -354,9 +356,8 @@ def download_comiclist(foundissues):
                     logger.info(f"Downloading {item['title']} from {item['provider']}")
                     db.action("UPDATE wanted SET nzbdate=? WHERE NZBurl=?", (now(), item['url']))
                     custom_notify_snatch(f"{bookid} {item['url']}")
-                    notify_snatch(
-                        f"Comic {unaccented(item['title'], only_ascii=False)} from "
-                        f"{CONFIG.disp_name(item['provider'])} at {now()}")
+                    notify_snatch(notify_text(unaccented(item['title'], only_ascii=False),
+                                              CONFIG.disp_name(item['provider']), 'Comic'))
                 else:
                     db.action("UPDATE wanted SET status='Failed',DLResult=? WHERE NZBurl=?",
                               (res, item["url"]))

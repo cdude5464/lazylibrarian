@@ -53,6 +53,9 @@ class BookType(str, Enum):
 
         mapping = {  # Allows flexibility as we get new variants
             "audiobook": cls.AUDIOBOOK,
+            "audio": cls.AUDIOBOOK,  # the internal "library" literal used by
+                                      # get_directory()/process_book_from_dir(),
+                                      # distinct from the "AudioBook" display string
             "ebook": cls.EBOOK,
             "magazine": cls.MAGAZINE,
             "mag": cls.MAGAZINE,
@@ -132,6 +135,9 @@ class EbookMetadata(BookMetadata):
     ol_id: str = ""
     hc_id: str = ""
     dnb_id: str = ""
+    bn_id: str = ""
+    dbk_id: str = ""
+    ran_id: str = ""
 
     def __post_init__(self):
         """Validate required fields"""
@@ -299,7 +305,7 @@ def prepare_book_metadata(book_id: str, book_type: str, db) -> EbookMetadata | N
     query = (
         "SELECT AuthorName,BookName,BookDesc,BookIsbn,BookImg,BookDate,BookLang,BookPub,BookRate,"
         "Requester,AudioRequester,BookGenre,Narrator,"
-        "books.gr_id,books.ol_id,books.gb_id,books.hc_id,books.dnb_id "
+        "books.gr_id,books.ol_id,books.gb_id,books.hc_id,books.dnb_id,books.bn_id,books.dbk_id,books.ran_id "
         "from books,authors WHERE BookID=? and books.AuthorID = authors.AuthorID"
     )
     result = db.match(query, (book_id,))
@@ -352,6 +358,9 @@ def prepare_book_metadata(book_id: str, book_type: str, db) -> EbookMetadata | N
         ol_id=book_data.get("ol_id", ""),
         hc_id=book_data.get("hc_id", ""),
         dnb_id=book_data.get("dnb_id", ""),
+        bn_id=book_data.get("bn_id", ""),
+        dbk_id=book_data.get("dbk_id", ""),
+        ran_id=book_data.get("ran_id", ""),
     )
 
 
@@ -446,7 +455,9 @@ def prepare_comic_metadata(book_id, db) -> ComicMetadata | None:
     comic_name = enforce_str(
         make_unicode(unaccented(sanitize(comic_data["Title"]), only_ascii=False) or "")
     )
-    publisher = comic_data.get("Publisher", "")
+    publisher = enforce_str(
+        make_unicode(unaccented(sanitize(comic_data["Publisher"]), only_ascii=False) or "")
+    )
 
     dest_path = (
         CONFIG["COMIC_DEST_FOLDER"]

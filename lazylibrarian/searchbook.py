@@ -23,7 +23,7 @@ import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.config2 import CONFIG
-from lazylibrarian.formatter import check_int, plural, thread_name
+from lazylibrarian.formatter import check_int, get_list, plural, thread_name
 from lazylibrarian.providers import (
     iterate_over_direct_sites,
     iterate_over_irc_sites,
@@ -45,6 +45,62 @@ def cron_search_book():
 
 def good_enough(match):
     return bool(match and int(match[0]) >= CONFIG.get_int('MATCH_RATIO'))
+
+
+def _has_comic_genre(book):
+    """Whether a book's genre matches the configurable comic genre list.
+
+    Splits the book's genre string on commas and compares each token against
+    the configured terms, so 'comic' does not false-positive on 'Economics'."""
+    genre = (book.get('genre') or '').lower()
+    if not genre:
+        return False
+    comic_genres = [g.strip() for g in get_list(CONFIG['COMIC_GENRES'], ',') if g.strip()]
+    if not comic_genres:
+        return False
+    genre_tokens = [g.strip() for g in genre.split(',') if g.strip()]
+    for term in comic_genres:
+        term_lower = term.lower()
+        for token in genre_tokens:
+            if term_lower == token or term_lower in token.split():
+                return True
+    return False
+
+
+def _search_providers(book, searchtype, rss_resultlist):
+    """ Search every provider mode for book, return the good enough matches """
+    logger = logging.getLogger(__name__)
+    searches = []
+    if CONFIG.use_nzb():
+        searches.append(('nzb', 'NZB', iterate_over_znab_sites))
+    if CONFIG.use_tor():
+        searches.append(('tor', 'Torrent', iterate_over_torrent_sites))
+    if CONFIG.use_direct():
+        searches.append(('direct', 'Direct', iterate_over_direct_sites))
+    if CONFIG.use_irc():
+        searches.append(('irc', 'IRC', iterate_over_irc_sites))
+    matches = []
+    for mode, name, iterate in searches:
+        resultlist, nprov = iterate(book, searchtype)
+        if not nprov:
+            warn_mode(mode, searchtype)
+        elif resultlist:
+            match = find_best_result(resultlist, book, searchtype, mode)
+            if not good_enough(match):
+                logger.info(f"{name} search for {book['library']} {book['searchterm']} returned no results.")
+            else:
+                logger.info(f"Found {name} result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
+                            f"priority {match[3]}")
+                matches.append(match)
+    if CONFIG.use_rss() and rss_resultlist:
+        match = find_best_result(rss_resultlist, book, searchtype, 'rss')
+        if not good_enough(match):
+            logger.info(f"RSS search for {book['library']} {book['searchterm']} returned no results.")
+        else:
+            logger.info(f"Found RSS result: {searchtype} {round(match[0], 2)}%, {match[1]['NZBprov']} "
+                        f"priority {match[3]}")
+            matches.append(match)
+    return matches
 
 
 def warn_mode(mode, search_type=None):
@@ -155,6 +211,12 @@ def search_book(books=None, library=None):
     library is "eBook" or "AudioBook" or None to search all book types
     """
     TELEMETRY.record_usage_data('Search/Book')
+    # Only search the requested format. Previously `library` was only used in log messages, so every
+    # per-format caller (web UI, API type=, GoodReads/HardCover sync, wishlist) searched both formats
+    # whenever a book was Wanted in both, doubling the queries sent to every provider.
+    only = library.lower() if isinstance(library, str) else ''
+    search_ebook = only != 'audiobook'
+    search_audio = only != 'ebook'
     logger = logging.getLogger(__name__)
     searchinglogger = logging.getLogger('special.searching')
     searchinglogger.debug(f"search_book: {books}")
@@ -162,27 +224,28 @@ def search_book(books=None, library=None):
     # noinspection PyBroadException
     try:
         threadname = thread_name()
-        if 'SEARCHALL' in threadname or 'API-SEARCH' in threadname or 'FORCE-SEARCH' in threadname:
-            force = True
-        else:
-            force = False
-
-        if "Thread" in threadname:
+        if "SEARCH" not in threadname:
             if not books:
                 thread_name("SEARCHALLBOOKS")
                 threadname = "SEARCHALLBOOKS"
             else:
                 thread_name("SEARCHBOOKS")
 
+        if 'SEARCHALL' in threadname or 'API-SEARCH' in threadname or 'FORCE-SEARCH' in threadname:
+            force = True
+        else:
+            force = False
+
+        logger.debug(f"Storing start time for {thread_name()}")
         db.upsert("jobs", {"Start": time.time()}, {"Name": thread_name()})
         searchlist = []
         searchbooks = []
 
         if not books:
             # We are performing a backlog search
-            cmd = ("SELECT BookID, AuthorName, Bookname, BookSub, BookAdded, books.Status, AudioStatus "
-                   "from books,authors WHERE (books.Status='Wanted' OR AudioStatus='Wanted') and "
-                   "books.AuthorID = authors.AuthorID order by BookAdded desc")
+            cmd = ("SELECT BookID, AuthorName, Bookname, BookSub, BookAdded, books.Status, AudioStatus, "
+                   "BookGenre, OtherTitles from books,authors WHERE (books.Status='Wanted' OR AudioStatus='Wanted') "
+                   "and books.AuthorID = authors.AuthorID order by BookAdded desc")
             results = db.select(cmd)
             for terms in results:
                 searchbooks.append(terms)
@@ -193,8 +256,8 @@ def search_book(books=None, library=None):
                 searchinglogger.debug(f"{books}")
             for book in books:
                 if book['bookid'] not in ['booklang', 'library', 'ignored']:
-                    cmd = ("SELECT BookID, AuthorName, BookName, BookSub, books.Status, AudioStatus "
-                           "from books,authors WHERE BookID=? AND books.AuthorID = authors.AuthorID")
+                    cmd = ("SELECT BookID, AuthorName, BookName, BookSub, books.Status, AudioStatus, "
+                           "BookGenre, OtherTitles from books,authors WHERE BookID=? AND books.AuthorID = authors.AuthorID")
                     results = db.select(cmd, (book['bookid'],))
                     if results:
                         for terms in results:
@@ -242,8 +305,8 @@ def search_book(books=None, library=None):
             f"{plural(BLOCKHANDLER.number_blocked(), 'entry')}")
 
         for searchbook in searchbooks:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLBOOKS":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLBOOKS":
+                logger.debug("STOPTHREADS Aborting SEARCHALLBOOKS")
                 break
 
             # searchterm is only used for display purposes
@@ -265,7 +328,11 @@ def search_book(books=None, library=None):
                     searchterm += ': '
                 searchterm += searchbook['BookSub']
 
-            if searchbook['Status'] == "Wanted":
+            # titles of other translations, eg the Czech one of a Slovak book, see dbk.get_author_books
+            other_titles = searchbook['OtherTitles'] if 'OtherTitles' in searchbook.keys() else ''
+            other_titles = [title for title in (other_titles or '').splitlines() if title.strip()]
+
+            if search_ebook and searchbook['Status'] == "Wanted":
                 cmd = "SELECT BookID from wanted WHERE BookID=? and AuxInfo='eBook' and Status='Snatched'"
                 snatched = db.match(cmd, (searchbook["BookID"],))
                 if snatched:
@@ -279,9 +346,11 @@ def search_book(books=None, library=None):
                          "bookSub": searchbook['BookSub'],
                          "authorName": searchbook['AuthorName'],
                          "library": "eBook",
-                         "searchterm": searchterm})
+                         "searchterm": searchterm,
+                         "otherTitles": other_titles,
+                         "genre": (searchbook['BookGenre'] if 'BookGenre' in searchbook.keys() else '')})
 
-            if searchbook['AudioStatus'] == "Wanted":
+            if search_audio and searchbook['AudioStatus'] == "Wanted":
                 cmd = "SELECT BookID from wanted WHERE BookID=? and AuxInfo='AudioBook' and Status='Snatched'"
                 snatched = db.match(cmd, (searchbook["BookID"],))
                 if snatched:
@@ -295,7 +364,9 @@ def search_book(books=None, library=None):
                          "bookSub": searchbook['BookSub'],
                          "authorName": searchbook['AuthorName'],
                          "library": "AudioBook",
-                         "searchterm": searchterm})
+                         "searchterm": searchterm,
+                         "otherTitles": other_titles,
+                         "genre": (searchbook['BookGenre'] if 'BookGenre' in searchbook.keys() else '')})
 
         # only get rss results once per run, as they are not search specific
         rss_resultlist = None
@@ -308,8 +379,8 @@ def search_book(books=None, library=None):
 
         book_count = 0
         for book in searchlist:
-            if lazylibrarian.STOPTHREADS and threadname == "SEARCHALLBOOKS":
-                logger.debug(f"Aborting {threadname}")
+            if lazylibrarian.STOPTHREADS and thread_name() == "SEARCHALLBOOKS":
+                logger.debug("STOPTHREADS Aborting SEARCHALLBOOKS")
                 break
             do_search = True
             if CONFIG.get_bool('DELAYSEARCH') and not force:
@@ -592,6 +663,44 @@ def search_book(books=None, library=None):
                                 f"priority {match[3]}")
                             matches.append(match)
 
+                # if still not found, try the titles of other translations, eg the Czech one of a
+                # Slovak book. A match is still downloaded as this book
+                for title in book.get('otherTitles', []):
+                    if matches:
+                        break
+                    other = dict(book, bookName=title, bookSub='', searchterm=f"{book['authorName']} {title}")
+                    logger.info(f"Trying {book['library']} {book['searchterm']} as {title}")
+                    matches = _search_providers(other, searchtype, rss_resultlist)
+
+                # if still not found and the book's genre suggests it is a graphic novel
+                # or comic, also try comic provider categories
+                if not matches and book.get('library') == 'eBook' and _has_comic_genre(book):
+                    logger.info(
+                        f"Genre [{book.get('genre', '')}] matches comic genres, "
+                        f"trying comic categories for {book['searchterm']}")
+                    if CONFIG.use_nzb():
+                        resultlist, nprov = iterate_over_znab_sites(book, 'comic')
+                        if not nprov:
+                            logger.debug("No NZB providers have comic categories enabled")
+                        elif resultlist:
+                            match = find_best_result(resultlist, book, searchtype, 'nzb')
+                            if good_enough(match):
+                                logger.info(
+                                    f"Found NZB comic result: {round(match[0], 2)}%, "
+                                    f"{match[1]['NZBprov']} priority {match[3]}")
+                                matches.append(match)
+                    if CONFIG.use_tor():
+                        resultlist, nprov = iterate_over_torrent_sites(book, 'comic')
+                        if not nprov:
+                            logger.debug("No torrent providers have comic categories enabled")
+                        elif resultlist:
+                            match = find_best_result(resultlist, book, searchtype, 'tor')
+                            if good_enough(match):
+                                logger.info(
+                                    f"Found Torrent comic result: {round(match[0], 2)}%, "
+                                    f"{match[1]['NZBprov']} priority {match[3]}")
+                                matches.append(match)
+
             if (not matches and do_search and book["library"] == "eBook"
                     and CONFIG.get_bool("ANNA") and not BLOCKHANDLER.is_blocked("annas")):
                 history = retryable_anna_history_candidates(book)
@@ -601,19 +710,54 @@ def search_book(books=None, library=None):
                         logger.info("Retrying a previously matched Anna source after current policy checks")
                         matches.append(match)
 
-            if matches:
-                try:
-                    highest = max(matches, key=lambda s: (s[0], s[3]))  # sort on percentage and priority
-                except TypeError:
-                    highest = max(matches, key=lambda s: (str(s[0]), str(s[3])))
 
-                logger.info(
-                    f"Requesting {book['library']} download: {round(highest[0], 2)}% {highest[1]['NZBprov']}: "
-                    f"{highest[1]['NZBtitle']}")
-                if download_result(highest, book) > 1:
-                    book_count += 1  # we found it
-                db.action("DELETE from failedsearch WHERE BookID=? AND Library=?",
-                          (book['bookid'], book['library']))
+            if matches:
+                # Try candidates best-first, falling through to the next one if a download
+                # fails (e.g. a broken/VIP-restricted release that scores well but 500s on
+                # fetch) instead of giving up after one attempt - matches holds at most one
+                # candidate per source type (nzb/tor/direct/irc/rss), so this is a small,
+                # bounded retry using results already fetched this cycle, no extra provider
+                # queries (Issue #3023). Stops as soon as something snatches successfully,
+                # or turns out to already be snatched by someone else (result 1) - not just
+                # on our own success (result 2).
+                snatched = False
+                while matches:
+                    try:
+                        highest = max(matches, key=lambda s: (weighted_score(s), check_int(s[3], 0)))
+                    except TypeError:
+                        highest = max(matches, key=lambda s: (str(s[0]), str(s[3])))
+
+                    logger.info(
+                        f"Requesting {book['library']} download: {round(highest[0], 2)}% {highest[1]['NZBprov']}: "
+                        f"{highest[1]['NZBtitle']}")
+                    result = download_result(highest, book)
+                    if result > 1:
+                        book_count += 1  # we found it
+                    if result > 0:
+                        snatched = True
+                        break  # snatched (by us, or already by someone else) - nothing more to try
+                    matches.remove(highest)
+                    if matches:
+                        TELEMETRY.record_usage_data("SearchBook/RetryNextCandidate")
+                        logger.info(
+                            f"{highest[1]['NZBprov']} release for {book['searchterm']} failed to download, "
+                            f"trying next best candidate ({len(matches)} remaining)")
+                if snatched:
+                    db.action("DELETE from failedsearch WHERE BookID=? AND Library=?",
+                              (book['bookid'], book['library']))
+                elif CONFIG.get_bool('DELAYSEARCH'):
+                    # Every candidate we tried failed to download (not "no results found" -
+                    # this book had a match, it just wouldn't fetch). Previously the
+                    # failedsearch record was deleted unconditionally whenever there was a
+                    # match at all, silently clearing the backoff counter on every failed
+                    # download and letting the next scheduled search retry immediately
+                    # instead of backing off like the "no results" case does (Issue #3024).
+                    res = db.match('SELECT * FROM failedsearch WHERE BookID=? AND Library=?',
+                                   (book['bookid'], book['library']))
+                    interval = check_int(res['Interval'], 0) if res else 0
+                    db.upsert("failedsearch",
+                             {'Count': 0, 'Interval': interval + 1, 'Time': time.time()},
+                             {'BookID': book['bookid'], 'Library': book['library']})
             elif CONFIG.get_bool('DELAYSEARCH') and not force and do_search and len(modelist):
                 res = db.match('SELECT * FROM failedsearch WHERE BookID=? AND Library=?',
                                (book['bookid'], book['library']))
@@ -633,6 +777,12 @@ def search_book(books=None, library=None):
     except Exception:
         logger.error(f'Unhandled exception in search_book: {traceback.format_exc()}')
     finally:
+        logger.debug(f"Storing finish time for {thread_name()}")
         db.upsert("jobs", {"Finish": time.time()}, {"Name": thread_name()})
         db.close()
         thread_name("WEBSERVER")
+
+def weighted_score(s):
+    # priority is already 0-100-ish per provider; normalize it down to a modest bonus
+    priority_bonus = (check_int(s[3], 0) / 100) * CONFIG.get_int('PRIORITY_WEIGHT')
+    return check_int(s[0], 0) + priority_bonus

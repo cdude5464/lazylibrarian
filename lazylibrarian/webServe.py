@@ -6030,7 +6030,7 @@ class WebInterface:
         passed = 0
         failed = 0
 
-        for arg in ['action', 'redirect']:
+        for arg in ['action', 'redirect', 'book_table_length']:
             args.pop(arg, None)
 
         if action in ['AddBook', 'AddAudio', 'AddBoth']:
@@ -6058,7 +6058,7 @@ class WebInterface:
                 )
                 status_lookup_key = provider_bookid_key if requested_source else 'BookID'
                 match = update_existing_book_status(itm, existing_wantbook, existing_wantaudio,
-                                                    preferred_key=status_lookup_key, title=result_title,
+                                                    preferred_key=status_lookup_key, title=unquote_plus(result_title),
                                                     authorid=result_author_id, include_configured=False)
                 if match:
                     passed += 1

@@ -870,6 +870,57 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         finally:
             db.close()
 
+    def test_bulk_add_ignores_table_controls_and_matches_decoded_title(self):
+        from urllib.parse import quote_plus
+        from lazylibrarian import gb, webServe
+
+        title = "Carl's Doomsday Scenario (Dungeon Crawler Carl, #2) C++"
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'canonical-punctuation', title, gb_id='GB-PUNCT')
+        finally:
+            db.close()
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(interface, 'check_permitted'),
+            mock.patch.object(webServe, 'search_for') as search,
+            mock.patch.object(webServe, '_add_search_result_book_to_db') as fallback,
+            mock.patch.object(gb.GoogleBooks, 'add_bookid_to_db') as provider_add,
+        ):
+            response = interface.mark_results_ajax(
+                action='AddBook', book_table_length='100',
+                **{'GB-PUNCT': 'author-1|Chuck+Palahniuk|' + quote_plus(title) + '|GoogleBooks'})
+
+        self.assertEqual((1, 0, 1), (response['passed'], response['failed'], response['total']))
+        search.assert_not_called()
+        fallback.assert_not_called()
+        provider_add.assert_not_called()
+        db = DBConnection()
+        try:
+            row = db.match("SELECT BookName,Status FROM books WHERE BookID='canonical-punctuation'")
+            self.assertEqual(title, row['BookName'])
+            self.assertEqual('Wanted', row['Status'])
+            self.assertFalse(db.match("SELECT AuthorID FROM authors WHERE AuthorID='100'"))
+        finally:
+            db.close()
+
+    def test_bulk_add_without_selections_ignores_table_controls(self):
+        from lazylibrarian import webServe
+
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(interface, 'check_permitted'),
+            mock.patch.object(webServe, '_author_exists') as author_lookup,
+            mock.patch.object(webServe, 'update_existing_book_status') as status_update,
+        ):
+            response = interface.mark_results_ajax(action='AddBook', book_table_length='100')
+
+        self.assertEqual(0, response['total'])
+        author_lookup.assert_not_called()
+        status_update.assert_not_called()
+
     def test_bulk_add_source_aware_failure_does_not_fall_through_to_direct_provider_add(self):
         from lazylibrarian import gb, webServe
 

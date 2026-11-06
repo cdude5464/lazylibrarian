@@ -128,7 +128,7 @@
                             destination2 = "#"
                             but_class2 = "btn-info"
                         elif 'Skipped' in value2:
-                            destination2 = "add_book?library=eBook&bookid="+result['bookid']+"&source="+result['source']
+                            destination2 = "add_book?library=eBook&bookid="+quote_plus(result['bookid'])
                             if result['authorid']:
                                 destination2 = destination2 + "&authorid="+result['authorid']
                             destination2 = destination2 + add_context
@@ -148,7 +148,7 @@
                             destination3 = "#"
                             but_class3 = "btn-info"
                         elif 'Skipped' in value3:
-                            destination3 = "add_book?library=AudioBook&bookid="+result['bookid']+"&source="+result['source']
+                            destination3 = "add_book?library=AudioBook&bookid="+quote_plus(result['bookid'])
                             if result['authorid']:
                                 destination3 = destination3 + "&authorid="+result['authorid']
                             destination3 = destination3 + add_context
@@ -158,14 +158,14 @@
                             destination3 = "#"
                             but_class3 = "btn-default"
                     else:
-                        destination2 = "add_book?library=eBook&bookid="+result['bookid']+"&source="+result['source']
+                        destination2 = "add_book?library=eBook&bookid="+quote_plus(result['bookid'])
                         if result['authorid']:
                             destination2 = destination2 + "&authorid="+result['authorid']
                         destination2 = destination2 + add_context
                         value2 = _('Add Book')
                         but_class2 = "btn-success"
 
-                        destination3 = "add_book?library=AudioBook&bookid="+result['bookid']+"&source="+result['source']
+                        destination3 = "add_book?library=AudioBook&bookid="+quote_plus(result['bookid'])
                         if result['authorid']:
                             destination3 = destination3 + "&authorid="+result['authorid']
                         destination3 = destination3 + add_context

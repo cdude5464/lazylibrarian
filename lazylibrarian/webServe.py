@@ -402,7 +402,7 @@ def info_source_enabled(source):
 
 
 def valid_search_result_source(source):
-    if not source or source not in lazylibrarian.INFOSOURCES:
+    if not isinstance(source, str) or not source or source not in lazylibrarian.INFOSOURCES:
         return None
     if source == CONFIG['BOOK_API'] or info_source_enabled(source):
         return source
@@ -4602,6 +4602,13 @@ class WebInterface:
     def add_book(self, bookid=None, authorid=None, library=None, title=None, authorname=None, source=None):
         logger = logging.getLogger(__name__)
         self.check_permitted(lazylibrarian.perm_search)
+        # Older search pages emitted source twice. Accept only identical repeats;
+        # never choose an arbitrary provider from conflicting query parameters.
+        if isinstance(source, list) and source and all(isinstance(value, str) for value in source):
+            if all(value == source[0] for value in source):
+                source = source[0]
+        if source is not None and not isinstance(source, str):
+            raise cherrypy.HTTPError(400, "Expected one unambiguous metadata source")
         TELEMETRY.record_usage_data()
         if library == 'eBook':
             ebook_status = "Wanted"

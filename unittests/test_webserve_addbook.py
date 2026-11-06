@@ -812,6 +812,35 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         start_search.assert_called_once_with(
             [{'bookid': 'canonical-book'}], library='eBook', force=True)
 
+    def test_repeated_identical_source_preserves_canonical_format_selection(self):
+        from lazylibrarian import webServe
+
+        for library in ('eBook', 'AudioBook'):
+            with self.subTest(library=library):
+                db = DBConnection()
+                try:
+                    self._insert_author(db)
+                    self._insert_book(db, 'canonical-repeat', 'Recursion', gb_id='GB-REPEAT')
+                finally:
+                    db.close()
+                interface = webServe.WebInterface()
+                with (
+                    mock.patch.object(interface, 'check_permitted'),
+                    mock.patch.object(interface, 'start_book_search') as start_search,
+                    self.assertRaises(cherrypy.HTTPRedirect),
+                ):
+                    interface.add_book(bookid='GB-REPEAT', library=library, title='Recursion',
+                                       source=['GoogleBooks', 'GoogleBooks'])
+                start_search.assert_called_once_with(
+                    [{'bookid': 'canonical-repeat'}], library=library, force=True)
+                db = DBConnection()
+                try:
+                    row = db.match("SELECT Status, AudioStatus FROM books WHERE BookID='canonical-repeat'")
+                    self.assertEqual(row['Status'], 'Wanted' if library == 'eBook' else 'Skipped')
+                    self.assertEqual(row['AudioStatus'], 'Wanted' if library == 'AudioBook' else 'Skipped')
+                finally:
+                    db.close()
+
     def test_bulk_add_uses_source_payload_for_existing_canonical_row(self):
         from lazylibrarian import webServe
 

@@ -22,6 +22,7 @@ import os
 import platform
 import random
 import re
+import shutil
 import sqlite3
 import ssl
 import string
@@ -525,11 +526,12 @@ def run_script(params):
         params.insert(0, sys.executable)
     logger.debug(str(params))
     try:
-        if os.name != 'nt':
-            p = subprocess.Popen(params, preexec_fn=lambda: os.nice(10),
-                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        else:
-            p = subprocess.Popen(params, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        # LL calls this from worker threads. Python callbacks between fork and
+        # exec are unsafe there; use the external priority wrapper instead.
+        command = list(params)
+        if os.name != 'nt' and (nice := shutil.which('nice')):
+            command = [nice, '-n', '10', *command]
+        p = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         res, err = p.communicate()
         dlcommslogger = logging.getLogger('special.dlcomms')
         dlcommslogger.debug(make_unicode(res))

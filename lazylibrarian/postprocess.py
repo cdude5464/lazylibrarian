@@ -36,7 +36,7 @@ from rapidfuzz.utils import default_process
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
-from lazylibrarian.ebook_identity import ebook_volume_conflict
+from lazylibrarian.ebook_identity import ebook_graphic_volume_unverified, ebook_volume_conflict
 from lazylibrarian.archive_utils import unpack_archive, unpack_multipart
 from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
 from lazylibrarian.box_helper_handoff import helper_owns_qbittorrent_lifecycle, wanted_row_is_durable_helper_owned
@@ -4837,6 +4837,10 @@ def _ebook_metadata_conflict(
 
     if ebook_volume_conflict(expected_title, metadata_title):
         return True, ("Embedded ebook metadata declares a different volume: "
+                      f"{metadata_title} (expected {expected_title})")
+
+    if ebook_graphic_volume_unverified(expected_title, metadata_title):
+        return True, ("Embedded ebook metadata does not confirm the requested graphic novel volume: "
                       f"{metadata_title} (expected {expected_title})")
 
     if not expected_author or not expected_title or not metadata_title or not metadata_creator:

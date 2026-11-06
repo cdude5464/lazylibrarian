@@ -31,3 +31,15 @@ def ebook_volume_conflict(expected_title, observed_title):
     expected = _volume_numbers(expected_title)
     observed = _volume_numbers(observed_title)
     return bool(expected and observed and expected != observed)
+
+
+def ebook_graphic_volume_unverified(expected_title, observed_title):
+    """An explicitly numbered graphic novel requires positive format/volume identity."""
+    def graphic_novel(value):
+        words = re.findall(r'[a-z]+', str(value or '').casefold())
+        return any(words[index:index + 2] == ['graphic', 'novel'] for index in range(len(words) - 1))
+
+    expected = _volume_numbers(expected_title)
+    if not expected or not graphic_novel(expected_title):
+        return False
+    return not graphic_novel(observed_title) or _volume_numbers(observed_title) != expected

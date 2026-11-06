@@ -3,7 +3,7 @@ from unittest import TestCase
 from unittest.mock import Mock, patch
 
 from lazylibrarian import resultlist
-from lazylibrarian.ebook_identity import ebook_volume_conflict
+from lazylibrarian.ebook_identity import ebook_graphic_volume_unverified, ebook_volume_conflict
 from lazylibrarian.postprocess import _ebook_metadata_conflict
 
 
@@ -56,6 +56,26 @@ class EbookVolumeIdentityTest(TestCase):
         db = Mock(); db.match.return_value = None; db.select.return_value = []
         with patch.object(resultlist, 'CONFIG', config), patch.object(resultlist.database, 'DBConnection', return_value=db):
             self.assertIsNone(resultlist.find_best_result([candidate(1, 100)], book, 'book', 'direct'))
-            match = resultlist.find_best_result([candidate(1, 100), candidate(3, 1)], book, 'book', 'direct')
+            generic = {**candidate(8, 200), 'tor_title': 'Matt Dinniman Dungeon Crawler Carl.epub'}
+            no_format = {**candidate(9, 150), 'tor_title': 'Matt Dinniman Dungeon Crawler Carl Vol. 3.epub'}
+            self.assertIsNone(resultlist.find_best_result([generic, no_format], book, 'book', 'direct'))
+            match = resultlist.find_best_result([generic, no_format, candidate(1, 100), candidate(3, 1)], book, 'book', 'direct')
         self.assertIsNotNone(match)
         self.assertEqual(match[2]['NZBurl'], '3' * 32)
+
+    def test_numbered_graphic_novel_requires_both_positive_markers(self):
+        expected = 'Dungeon Crawler Carl, Vol. 3 (Graphic Novel)'
+        for observed in ['Dungeon Crawler Carl', 'Dungeon Crawler Carl Vol. 3',
+                         'Dungeon Crawler Carl (Graphic Novel)',
+                         'Dungeon Crawler Carl Vol. 1 (Graphic Novel)']:
+            with self.subTest(observed=observed):
+                self.assertTrue(ebook_graphic_volume_unverified(expected, observed))
+                self.assertTrue(_ebook_metadata_conflict('Matt Dinniman', expected, observed, 'Matt Dinniman')[0])
+        self.assertFalse(ebook_graphic_volume_unverified(expected, 'Dungeon Crawler Carl Volume III Graphic-Novel'))
+
+    def test_graphic_guard_does_not_infer_normal_series_or_unnumbered_formats(self):
+        for expected in ['Dungeon Crawler Carl (Dungeon Crawler Carl, #3)',
+                         'Dungeon Crawler Carl', 'Dungeon Crawler Carl (Graphic Novel)',
+                         'Dungeon Crawler Carl Vol. 3']:
+            with self.subTest(expected=expected):
+                self.assertFalse(ebook_graphic_volume_unverified(expected, 'Dungeon Crawler Carl'))

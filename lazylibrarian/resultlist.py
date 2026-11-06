@@ -25,6 +25,7 @@ from lazylibrarian.anna_download_policy import (
     ANNA_AUTH_FAILURES, ANNA_PARTNER_UNAVAILABLE, anna_account_failure, anna_file_retry_due,
 )
 from lazylibrarian.common import only_punctuation
+from lazylibrarian.ebook_identity import ebook_volume_conflict
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.downloadmethods import (
     direct_dl_method,
@@ -448,6 +449,9 @@ def find_best_result(resultlist, book, searchtype, source):
                              f"at {res[prefix + 'prov']}")
 
             rejected = False
+            if auxinfo == 'eBook' and ebook_volume_conflict(book.get('bookName', ''), res[f"{prefix}title"]):
+                rejected = True
+                logger.debug('Rejecting ebook result with a conflicting explicit volume')
             if auxinfo == 'eBook':
                 guard_author_match = 0 if title_only_result else author_match
                 extra_words = weak_author_extra_title_words(

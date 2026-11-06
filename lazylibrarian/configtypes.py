@@ -222,6 +222,21 @@ class ConfigStr(ConfigItem):
         return self._on_type_mismatch(value, 'str/bool')
 
 
+class ConfigHTTPRoot(ConfigStr):
+    """A canonical absolute mount prefix shared by routing and rendered URLs."""
+
+    @staticmethod
+    def normalize(value: str) -> str:
+        prefix = value.strip().strip('/')
+        return f'/{prefix}' if prefix else ''
+
+    def __init__(self, section: str, key: str, default: str, **kwargs):
+        super().__init__(section, key, self.normalize(default), **kwargs)
+
+    def set_str(self, value: str) -> bool:
+        return super().set_str(self.normalize(value))
+
+
 class ConfigInt(ConfigItem):
     """ A config item that is an int """
 

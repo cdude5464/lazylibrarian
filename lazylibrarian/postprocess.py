@@ -42,6 +42,7 @@ from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
 from lazylibrarian.box_helper_handoff import helper_owns_qbittorrent_lifecycle, wanted_row_is_durable_helper_owned
 from lazylibrarian.cache import ImageType, cache_img
 from lazylibrarian.calibre_integration import CALIBRE_DUPLICATE_UNVERIFIED, send_to_calibre
+from lazylibrarian.calibre_failure_policy import calibre_command_crashed
 from lazylibrarian.common import multibook, run_script
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.download_client import (
@@ -2271,6 +2272,9 @@ def _handle_failed_processing(
     notify_snatch(notify_text(global_name, dispname, book_type_str), fail=True)
 
     orchestration_hold = isinstance(dest_file, str) and dest_file.startswith(CALIBRE_DUPLICATE_UNVERIFIED)
+    retain_direct_crash = (book_type_enum == BookType.EBOOK
+                           and str(book_state.source or '').casefold() == 'direct'
+                           and calibre_command_crashed(dest_file))
 
     # A shared result URL can represent several books/media or retries. Update
     # only this attempt, without upsert inventing a replacement wanted row.
@@ -2300,6 +2304,8 @@ def _handle_failed_processing(
     # not evidence that the new source is bad or safe to discard.
     if orchestration_hold:
         logger.warning("Retaining duplicate import source until its Calibre association is reconciled")
+    elif retain_direct_crash:
+        logger.warning("Retaining direct ebook source after a Calibre subprocess crash")
     else:
         _cleanup_failed_download(book_path, logger)
 

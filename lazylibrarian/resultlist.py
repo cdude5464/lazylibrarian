@@ -25,6 +25,7 @@ from lazylibrarian.anna_download_policy import (
     ANNA_AUTH_FAILURES, ANNA_PARTNER_UNAVAILABLE, anna_account_failure, anna_file_retry_due,
 )
 from lazylibrarian.common import only_punctuation
+from lazylibrarian.calibre_failure_policy import calibre_command_crashed
 from lazylibrarian.ebook_identity import ebook_volume_conflict
 from lazylibrarian.config2 import CONFIG
 from lazylibrarian.downloadmethods import (
@@ -221,6 +222,10 @@ def _failed_source_retryable(row, auxinfo, author='', title=''):
         result = row['DLResult'] if 'DLResult' in row.keys() else ''
     if status != 'Failed':
         return False
+    if (auxinfo == 'eBook' and str(_row_value(row, 'Source') or '').casefold() == 'direct'
+            and str(_row_value(row, 'NZBmode') or '').casefold() == 'direct'
+            and calibre_command_crashed(result)):
+        return True
     result = result.lower()
     if provider == 'annas' and result == ANNA_PARTNER_UNAVAILABLE.lower():
         return auxinfo == 'eBook' and anna_file_retry_due(row)

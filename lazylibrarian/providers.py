@@ -28,6 +28,7 @@ except ImportError:
 from bs4 import BeautifulSoup
 
 import lazylibrarian
+from lazylibrarian.subtitle_search import primary_title
 import lib.feedparser as feedparser
 from lazylibrarian import database
 from lazylibrarian.providerlogging import provider_error_category, provider_log_origin
@@ -342,7 +343,8 @@ def test_provider(name: str, host=None, api=None):
 
 def get_searchterm(book, search_type):
     authorname = clean_name(book['authorName'], "'")
-    bookname = clean_name(book['bookName'], "'")
+    primary = primary_title(book) if 'short' in search_type else ''
+    bookname = clean_name(primary or book['bookName'], "'")
     if search_type in ['book', 'audio'] or 'short' in search_type:
         if bookname == authorname and book['bookSub']:
             # books like "Spike Milligan: Man of Letters"
@@ -370,7 +372,7 @@ def get_searchterm(book, search_type):
                         authorname += ' '
                     authorname += word
 
-        if 'short' in search_type and '(' in bookname:
+        if 'short' in search_type and not primary and '(' in bookname:
             bookname = bookname.split('(')[0].strip()
 
     bookname = bookname.replace('#', '_').replace('/', '_')

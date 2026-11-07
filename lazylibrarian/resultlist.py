@@ -38,6 +38,7 @@ from lazylibrarian.formatter import check_int, get_list, now, replace_all, unacc
 from lazylibrarian.matchguard import weak_author_extra_title_words
 from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_text
 from lazylibrarian.providers import get_searchterm
+from lazylibrarian.subtitle_search import exact_primary_result
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
 from lazylibrarian.webshare import valid_ident
 
@@ -722,6 +723,14 @@ def find_best_result(resultlist, book, searchtype, source):
                 words = [x for x in words if x not in preferred_tags and x not in ('by', '/', '-')]
 
                 score -= len(words)
+                # A stored subtitle is optional only for an exact complete
+                # author + primary-title result. All guards above still use
+                # the original full book, including edition/volume/language.
+                if exact_primary_result(book, res[f"{prefix}title"], typelist):
+                    primary_language = expected_language or _expected_book_language(db, book)
+                    result_language = res.get(f"{prefix}lang") or res.get('tor_lang') or ''
+                    if not _ebook_result_language_mismatch(result_language, primary_language):
+                        score = max(score, 100)
                 # prioritise titles that include the ebook types we want
                 # add more points for booktypes nearer the left in the list
                 # eg if epub, mobi, pdf  add 3 points if epub found, 2 for mobi, 1 for pdf

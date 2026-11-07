@@ -20,6 +20,7 @@ import time
 import traceback
 
 import lazylibrarian
+from lazylibrarian.subtitle_search import primary_title
 from lazylibrarian import database
 from lazylibrarian.anna_download_policy import anna_file_retry_due
 from lazylibrarian.blockhandler import BLOCKHANDLER
@@ -550,7 +551,7 @@ def search_book(books=None, library=None):
                         matches.append(match)
 
                 # if you can't find the book, try author/title without any "(extended details, series etc)"
-                if not matches and '(' in book['bookName']:
+                if not matches and ('(' in book['bookName'] or primary_title(book)):
                     if CONFIG.use_nzb():
                         resultlist, nprov = iterate_over_znab_sites(book, f"short{searchtype}")
                         if not nprov:
@@ -644,7 +645,7 @@ def search_book(books=None, library=None):
 
                 # if still not found, try general search again without any "(extended details, series etc)"
                 # shortgeneral is the same as shortbook for torrents, irc and rss, no need to check again
-                if not matches and CONFIG.use_nzb() and '(' in book['searchterm']:
+                if not matches and CONFIG.use_nzb() and ('(' in book['searchterm'] or primary_title(book)):
                     resultlist, nprov = iterate_over_znab_sites(book, f"shortgeneral{searchtype}")
                     if not nprov:
                         warn_mode('nzb')

@@ -6,6 +6,10 @@ import time
 
 ANNA_PARTNER_UNAVAILABLE = "Anna partner download path is temporarily unavailable"
 ANNA_FILE_RETRY_SECONDS = 6 * 60 * 60
+_ANNA_FILE_RETRY_REASONS = frozenset({
+    ANNA_PARTNER_UNAVAILABLE.casefold(),
+    *(f"anna file api request failed (http {status})" for status in (502, 503, 504)),
+})
 ANNA_AUTH_FAILURES = frozenset({
     "Anna file API authentication failed (HTTP 401)",
     "Anna file API access denied (HTTP 403)",
@@ -30,7 +34,7 @@ def anna_file_retry_due(row, now=None):
     try:
         if (_field(row, "Status") != "Failed"
                 or str(_field(row, "NZBprov") or "").casefold() != "annas"
-                or str(_field(row, "DLResult") or "").casefold() != ANNA_PARTNER_UNAVAILABLE.casefold()):
+                or str(_field(row, "DLResult") or "").casefold() not in _ANNA_FILE_RETRY_REASONS):
             return False
         completed = float(_field(row, "completed"))
         current = time.time() if now is None else now

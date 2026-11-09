@@ -118,6 +118,19 @@ class AnnaCooldownTest(TestCase):
         with patch.object(policy.time,'time',return_value=1001):
             self.assertFalse(resultlist._failed_source_retryable(self.row(),'eBook'))
 
+    def test_file_api_gateway_failures_retry_after_cooldown(self):
+        for status in (502, 503, 504, 404, 500):
+            with self.subTest(status=status):
+                row = self.row()
+                row['DLResult'] = policy.anna_api_failure(status, None)
+                boundary = row['completed'] + policy.ANNA_FILE_RETRY_SECONDS
+                with patch.object(policy.time, 'time', return_value=boundary - 1):
+                    self.assertFalse(resultlist._failed_source_retryable(row, 'eBook'))
+                with patch.object(policy.time, 'time', return_value=boundary):
+                    self.assertEqual(resultlist._failed_source_retryable(row, 'eBook'),
+                                     status in (502, 503, 504))
+                    self.assertFalse(resultlist._failed_source_retryable(row, 'AudioBook'))
+
 
 class AnnaCandidateFallbackTest(TestCase):
     def setUp(self):

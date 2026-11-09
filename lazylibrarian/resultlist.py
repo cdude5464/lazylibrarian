@@ -22,7 +22,7 @@ from rapidfuzz.utils import default_process
 
 from lazylibrarian import database
 from lazylibrarian.anna_download_policy import (
-    ANNA_AUTH_FAILURES, ANNA_PARTNER_UNAVAILABLE, anna_account_failure, anna_file_retry_due,
+    ANNA_AUTH_FAILURES, anna_account_failure, anna_file_retry_due,
 )
 from lazylibrarian.common import only_punctuation
 from lazylibrarian.calibre_failure_policy import calibre_command_crashed
@@ -228,8 +228,8 @@ def _failed_source_retryable(row, auxinfo, author='', title=''):
             and calibre_command_crashed(result)):
         return True
     result = result.lower()
-    if provider == 'annas' and result == ANNA_PARTNER_UNAVAILABLE.lower():
-        return auxinfo == 'eBook' and anna_file_retry_due(row)
+    if provider == 'annas' and auxinfo == 'eBook' and anna_file_retry_due(row):
+        return True
     if provider == 'annas' and result in {text.lower() for text in ANNA_AUTH_FAILURES}:
         return auxinfo == 'eBook'
     if auxinfo == 'eBook' and result.removeprefix('destination: ').startswith(

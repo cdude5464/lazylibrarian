@@ -214,7 +214,7 @@
     @media (min-width: 1400px) {
       .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) { position: relative; }
       .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) > .flex-grow-1 { display: block; }
-      .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) > .input-group { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 460px; margin: 0; }
+      .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) > .input-group { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: var(--ll-fw, 460px); margin: 0; }
     }
     /* the "Selected: N" menu stays put in the corner while the books scroll underneath */
     .ll-main .ll-selmenu { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 1040; order: 0; }
@@ -931,6 +931,34 @@
     })();
   </script>
   %endif
+  <script>
+    /* the centred filter (>= 1400px) shrinks to the room left between the title and the controls on its right,
+       and when there is almost none the toolbar falls back to the normal flowing layout (.ll-flow) */
+    (function () {
+      var SEL = '.ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1)';
+      var mq = window.matchMedia('(min-width: 1400px)');
+      function fit(bar) {
+        var filter = bar.querySelector(':scope > .input-group'), gap = bar.querySelector(':scope > .flex-grow-1');
+        if (!filter || !gap) { return; }
+        bar.classList.remove('ll-flow'); bar.style.removeProperty('--ll-fw');
+        if (!mq.matches) { return; }
+        var b = bar.getBoundingClientRect(), g = gap.getBoundingClientRect(), mid = b.left + b.width / 2;
+        var half = Math.min(mid - g.left, g.right - mid) - 12;
+        if (half * 2 >= 460) { return; }
+        if (half * 2 < 220) { bar.classList.add('ll-flow'); return; }
+        bar.style.setProperty('--ll-fw', Math.floor(half * 2) + 'px');
+      }
+      function all() { document.querySelectorAll(SEL).forEach(fit); }
+      function start() {
+        all();
+        if (!window.ResizeObserver) { window.addEventListener('resize', all); return; }
+        var ro = new ResizeObserver(function (es) { es.forEach(function (e) { var bar = e.target.closest(SEL); if (bar) { fit(bar); } }); });
+        document.querySelectorAll(SEL).forEach(function (bar) { ro.observe(bar); var gap = bar.querySelector(':scope > .flex-grow-1'); if (gap) { ro.observe(gap); } });
+        mq.addEventListener('change', all);
+      }
+      window.addEventListener('load', start);
+    })();
+  </script>
   %if not bare:
   <script>
     setInterval(function () {

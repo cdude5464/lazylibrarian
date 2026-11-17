@@ -2101,12 +2101,15 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
     params = None
     if search_type in ["book", "shortbook", 'titlebook']:
         authorname, bookname = get_searchterm(book, search_type)
+        if search_type == 'titlebook':
+            authorname = ''
         if provider['BOOKSEARCH'] and provider['BOOKCAT']:  # if specific booksearch, use it
             if provider['BOOKSEARCH'] == 'bibliotik':
                 params = {
                     "t": provider['GENERALSEARCH'],
                     "apikey": api_key,
-                    "q": (f"@title {bookname} @authors {authorname}").encode(),
+                    "q": (f"@title {bookname} @authors {authorname}" if authorname else
+                          f"@title {bookname}").encode(),
                     "cat": provider['BOOKCAT']
                 }
             else:
@@ -2114,14 +2117,15 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
                     "t": provider['BOOKSEARCH'],
                     "apikey": api_key,
                     "title": bookname.encode("utf-8"),
-                    "author": authorname.encode("utf-8"),
                     "cat": provider['BOOKCAT']
                 }
+                if authorname:
+                    params["author"] = authorname.encode("utf-8")
         elif provider['GENERALSEARCH'] and provider['BOOKCAT']:  # if not, try general search
             params = {
                 "t": provider['GENERALSEARCH'],
                 "apikey": api_key,
-                "q": (f"{authorname} {bookname}").encode(),
+                "q": (f"{authorname} {bookname}".strip()).encode(),
                 "cat": provider['BOOKCAT']
             }
     elif search_type in ["audio", "shortaudio"]:

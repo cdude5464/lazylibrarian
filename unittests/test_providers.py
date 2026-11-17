@@ -6,7 +6,8 @@
 import unittest
 from xml.etree import ElementTree
 
-from lazylibrarian.config2 import wishlist_type
+from lazylibrarian.config2 import LLConfigHandler, wishlist_type
+from lazylibrarian.configdefs import BASE_DEFAULTS
 from lazylibrarian import providers
 from unittests.unittesthelpers import LLTestCase
 
@@ -173,6 +174,27 @@ class ProvidersTest(LLTestCase):
              'nzbtitle': 'Scientific.American.SCIAM.November.20.3', 'nzbsize': '20811405',
              'nzburl': 'https://www.usenet-crawler.com/getnzb/6814309804e3648c58a9f23345c2a28a.nzb&i=155518&r=78c0509bc6bb91742ae0a0b6231e75e4',
              'nzbprov': 'hostname', 'nzbmode': None, 'priority': 0, 'prov_page': 'https://www.usenet-crawler.com/details/6814309804e3648c58a9f23345c2a28a#comments'}, result)
+
+    def test_titlebook_search_is_title_only(self):
+        book = {'bookid': '1', 'bookName': 'Sample Title', 'bookSub': '',
+                'authorName': 'A.B. Sample Author', 'searchterm': 'A.B. Sample Author Sample Title'}
+        provider = LLConfigHandler(defaults=BASE_DEFAULTS, configfile=self.COMPLEX_INI_FILE).providers('TORZNAB')[0]
+        provider['GENERALSEARCH'] = 'search'
+        provider['BOOKCAT'] = '7020'
+
+        provider['BOOKSEARCH'] = ''
+        params = providers.return_search_structure(provider, 'key', book, 'book', 'nzb')
+        self.assertEqual(params['q'], b'Sample Author Sample Title')
+        params = providers.return_search_structure(provider, 'key', book, 'titlebook', 'nzb')
+        self.assertEqual(params['q'], b'Sample Title')
+        self.assertEqual(params['cat'], '7020')
+
+        provider['BOOKSEARCH'] = 'book'
+        params = providers.return_search_structure(provider, 'key', book, 'book', 'nzb')
+        self.assertEqual(params['author'], b'Sample Author')
+        params = providers.return_search_structure(provider, 'key', book, 'titlebook', 'nzb')
+        self.assertNotIn('author', params)
+        self.assertEqual(params['title'], b'Sample Title')
 
     def test_wishlist_type(self):
         provs = [

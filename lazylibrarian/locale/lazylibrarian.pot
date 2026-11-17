@@ -10,7 +10,7 @@ msgstr ""
 "Project-Id-Version: LazyLibrarian VERSION\n"
 "Report-Msgid-Bugs-To: "
 "https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues\n"
-"POT-Creation-Date: 2026-11-17 21:22+0000\n"
+"POT-Creation-Date: 2026-11-17 22:09+0000\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -48,7 +48,7 @@ msgstr ""
 #: data/interfaces/modern/issues.html:152
 #: data/interfaces/modern/magazines.html:143
 #: data/interfaces/modern/magazines.html:188
-#: data/interfaces/modern/modern_base.html:998
+#: data/interfaces/modern/modern_base.html:1026
 msgid "Search"
 msgstr ""
 
@@ -847,7 +847,7 @@ msgstr ""
 #: data/interfaces/modern/modern_base.html:512
 #: data/interfaces/modern/modern_base.html:626
 #: data/interfaces/modern/modern_base.html:849
-#: data/interfaces/modern/modern_base.html:977
+#: data/interfaces/modern/modern_base.html:1005
 #: data/interfaces/modern/profile.html:126
 #: data/interfaces/modern/profile.html:130
 #: data/interfaces/modern/response.html:18
@@ -7662,13 +7662,13 @@ msgstr ""
 #: data/interfaces/bookstrap/index.html:39
 #: data/interfaces/bookstrap/searchresults.html:17
 #: data/interfaces/bookstrap/series.html:46
-#: data/interfaces/modern/modern_base.html:988
+#: data/interfaces/modern/modern_base.html:1016
 #: data/interfaces/modern/searchresults.html:123
 msgid "Title / Author / ISBN"
 msgstr ""
 
 #: data/interfaces/bookstrap/index.html:41
-#: data/interfaces/modern/modern_base.html:986
+#: data/interfaces/modern/modern_base.html:1014
 msgid "Search for author/book"
 msgstr ""
 
@@ -8370,9 +8370,9 @@ msgstr ""
 #: data/interfaces/modern/comicresults.html:76
 #: data/interfaces/modern/comics.html:124
 #: data/interfaces/modern/magazines.html:133
-#: data/interfaces/modern/modern_base.html:967
-#: data/interfaces/modern/modern_base.html:976
-#: data/interfaces/modern/modern_base.html:996
+#: data/interfaces/modern/modern_base.html:995
+#: data/interfaces/modern/modern_base.html:1004
+#: data/interfaces/modern/modern_base.html:1024
 msgid "Add"
 msgstr ""
 
@@ -9749,19 +9749,19 @@ msgid_plural "%(count)s more notifications"
 msgstr[0] ""
 msgstr[1] ""
 
-#: data/interfaces/modern/modern_base.html:976 lazylibrarian/webServe.py:2227
+#: data/interfaces/modern/modern_base.html:1004 lazylibrarian/webServe.py:2227
 msgid "Add series"
 msgstr ""
 
-#: data/interfaces/modern/modern_base.html:981
+#: data/interfaces/modern/modern_base.html:1009
 msgid "Series ID or link"
 msgstr ""
 
-#: data/interfaces/modern/modern_base.html:983
+#: data/interfaces/modern/modern_base.html:1011
 msgid "HC12345 / GR12345 / OL12345"
 msgstr ""
 
-#: data/interfaces/modern/modern_base.html:984
+#: data/interfaces/modern/modern_base.html:1012
 msgid ""
 "A Hardcover, Goodreads or LibraryThing series ID, or a Goodreads or "
 "LibraryThing series link."

@@ -36,7 +36,13 @@ from rapidfuzz.utils import default_process
 import lazylibrarian
 from lazylibrarian import database
 from lazylibrarian.ebook_edition_policy import filter_edition_reject_words
-from lazylibrarian.ebook_identity import ebook_graphic_volume_unverified, ebook_volume_conflict
+from lazylibrarian.ebook_identity import (
+    ebook_audio_edition_conflict,
+    ebook_collection_unverified,
+    ebook_graphic_volume_unverified,
+    ebook_title_count_conflict,
+    ebook_volume_conflict,
+)
 from lazylibrarian.archive_utils import unpack_archive, unpack_multipart
 from lazylibrarian.bookrename import audio_rename, name_vars, stripspaces
 from lazylibrarian.box_helper_handoff import helper_owns_qbittorrent_lifecycle, wanted_row_is_durable_helper_owned
@@ -90,7 +96,7 @@ from lazylibrarian.images import create_mag_cover, createthumbs
 from lazylibrarian.importer import update_totals
 from lazylibrarian.librarysync import get_book_info
 from lazylibrarian.magazinescan import create_id
-from lazylibrarian.matchguard import match_tokens, weak_author_extra_title_words
+from lazylibrarian.matchguard import match_tokens, significant_extra_words, weak_author_extra_title_words
 from lazylibrarian.mailinglist import mailing_list
 from lazylibrarian.metadata_opf import create_comic_opf, create_mag_opf, create_opf
 from lazylibrarian.notifiers import (
@@ -4825,6 +4831,30 @@ def _find_best_format(
     return best_match, found_set
 
 
+def _ebook_named_sequel_conflict(expected_title: str, metadata_title: str) -> bool:
+    """Reject disjoint named sequels sharing an exact meaningful series prefix.
+
+    This is deliberately not a general fuzzy-title threshold. The shared
+    prefix and the two distinct suffixes must each contain at least two
+    meaningful words around the same 'and' conjunction.
+    """
+    def identity(value):
+        tokens = match_tokens(_work_title(value))
+        if "and" not in tokens:
+            return None
+        split = tokens.index("and")
+        prefix, suffix = tokens[:split], tokens[split + 1:]
+        prefix_words = significant_extra_words(" ".join(prefix))
+        suffix_words = set(significant_extra_words(" ".join(suffix)))
+        if len(prefix_words) < 2 or len(suffix_words) < 2:
+            return None
+        return prefix, suffix_words
+
+    expected, observed = identity(expected_title), identity(metadata_title)
+    return bool(expected and observed and expected[0] == observed[0]
+                and expected[1].isdisjoint(observed[1]))
+
+
 def _ebook_metadata_conflict(
     expected_author: str,
     expected_title: str,
@@ -4837,6 +4867,14 @@ def _ebook_metadata_conflict(
     metadata_title = enforce_str(make_unicode(metadata_title or "")).strip()
     metadata_creator = enforce_str(make_unicode(metadata_creator or "")).strip()
 
+    if ebook_audio_edition_conflict(expected_title):
+        return True, ("Ebook content cannot satisfy the requested audio edition: "
+                      f"{expected_title}")
+
+    if ebook_title_count_conflict(expected_title, metadata_title):
+        return True, ("Embedded ebook metadata declares a different title count: "
+                      f"{metadata_title} (expected {expected_title})")
+
     if ebook_volume_conflict(expected_title, metadata_title):
         return True, ("Embedded ebook metadata declares a different volume: "
                       f"{metadata_title} (expected {expected_title})")
@@ -4845,11 +4883,19 @@ def _ebook_metadata_conflict(
         return True, ("Embedded ebook metadata does not confirm the requested graphic novel volume: "
                       f"{metadata_title} (expected {expected_title})")
 
+    if ebook_collection_unverified(expected_title, metadata_title):
+        return True, ("Embedded ebook metadata does not confirm the requested collection: "
+                      f"{metadata_title} (expected {expected_title})")
+
     if not expected_author or not expected_title or not metadata_title or not metadata_creator:
         return False, ""
 
     author_match = fuzz.token_set_ratio(expected_author, metadata_creator)
     title_match = fuzz.token_set_ratio(expected_title, metadata_title)
+    if (author_match >= CONFIG.get_int("MATCH_RATIO")
+            and _ebook_named_sequel_conflict(expected_title, metadata_title)):
+        return True, ("Embedded ebook metadata declares a different named sequel: "
+                      f"{metadata_title} (expected {expected_title})")
     extra_words = weak_author_extra_title_words(
         metadata_title,
         author=expected_author,

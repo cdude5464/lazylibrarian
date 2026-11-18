@@ -29,12 +29,17 @@ def _field(row, name):
     return next((row[key] for key in row.keys() if key.casefold() == name.casefold()), None)
 
 
+def anna_file_availability_failure(row):
+    """Recognize file availability without treating it as a content or user block."""
+    return (_field(row, "Status") == "Failed"
+            and str(_field(row, "NZBprov") or "").casefold() == "annas"
+            and str(_field(row, "DLResult") or "").casefold() in _ANNA_FILE_RETRY_REASONS)
+
+
 def anna_file_retry_due(row, now=None):
     """Only an exact, timestamped availability failure permits a later retry."""
     try:
-        if (_field(row, "Status") != "Failed"
-                or str(_field(row, "NZBprov") or "").casefold() != "annas"
-                or str(_field(row, "DLResult") or "").casefold() not in _ANNA_FILE_RETRY_REASONS):
+        if not anna_file_availability_failure(row):
             return False
         completed = float(_field(row, "completed"))
         current = time.time() if now is None else now

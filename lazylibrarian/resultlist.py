@@ -22,7 +22,7 @@ from rapidfuzz.utils import default_process
 
 from lazylibrarian import database
 from lazylibrarian.anna_download_policy import (
-    ANNA_AUTH_FAILURES, anna_account_failure, anna_file_retry_due,
+    ANNA_AUTH_FAILURES, anna_account_failure, anna_file_retry_due, anna_file_availability_failure,
 )
 from lazylibrarian.common import only_punctuation
 from lazylibrarian.calibre_failure_policy import calibre_command_crashed
@@ -297,6 +297,29 @@ def _anna_failure_blocks(db, identifier, auxinfo, author='', title=''):
     return any(not _failed_source_retryable(row, auxinfo, author, title) for row in failures)
 
 
+
+def _title_blacklist_match(db, provider, title, identifier, source, auxinfo, failed_only=False,
+                           author='', book_title=''):
+    """Prefer blocking evidence while letting distinct unavailable Anna files fall back."""
+    query = "SELECT * FROM wanted WHERE NZBprov=? AND NZBtitle=?"
+    if failed_only:
+        query += " AND Status='Failed'"
+    if (provider != 'annas' or source != 'direct' or auxinfo != 'eBook'
+            or not re.fullmatch(r'[0-9a-f]{32}', str(identifier), re.I)):
+        return db.match(query, (provider, title))
+    retryable_match = None
+    for row in db.select(query, (provider, title)):
+        previous = str(row['NZBurl'] or '')
+        distinct_file = (re.fullmatch(r'[0-9a-f]{32}', previous, re.I)
+                         and previous.casefold() != str(identifier).casefold())
+        if distinct_file and row['AuxInfo'] == 'eBook' and anna_file_availability_failure(row):
+            continue
+        if not _failed_source_retryable(row, auxinfo, author, book_title):
+            return row
+        retryable_match = row
+    return retryable_match
+
+
 def process_result_list(resultlist, book, searchtype, source):
     """ Separated this out into two functions
         1. get the "best" match
@@ -513,9 +536,9 @@ def find_best_result(resultlist, book, searchtype, source):
                                      f"{blacklisted['NZBprov']}")
                         rejected = True
                 if not rejected:
-                    blacklisted = db.match("SELECT * from wanted WHERE NZBprov=? and NZBtitle=? "
-                                           "and Status='Failed'",
-                                           (res[f"{prefix}prov"], res[f"{prefix}title"]))
+                    blacklisted = _title_blacklist_match(
+                        db, res[f"{prefix}prov"], res[f"{prefix}title"], url, source, auxinfo, failed_only=True,
+                        author=author, book_title=title)
                     if blacklisted:
                         if _failed_source_retryable(blacklisted, auxinfo, author, title):
                             logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous title failure was "
@@ -556,8 +579,9 @@ def find_best_result(resultlist, book, searchtype, source):
                                      f"at {blacklisted['NZBprov']}")
                         rejected = True
                 if not rejected:
-                    blacklisted = db.match('SELECT * from wanted WHERE NZBprov=? and NZBtitle=?',
-                                           (res[f"{prefix}prov"], res[f"{prefix}title"]))
+                    blacklisted = _title_blacklist_match(
+                        db, res[f"{prefix}prov"], res[f"{prefix}title"], url, source, auxinfo,
+                        author=author, book_title=title)
                     if blacklisted:
                         if _failed_source_retryable(blacklisted, auxinfo, author, title):
                             logger.debug(f"Allowing retry of {res[prefix + 'title']}, previous processed-list title "

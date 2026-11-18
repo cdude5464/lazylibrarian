@@ -94,6 +94,88 @@ class ResultListMatchingTest(LLTestCaseWithStartup):
             match = find_best_result([self._torrent_result(title)], book, "book", "tor")
             self.assertTrue(match is None or match[0] < CONFIG.get_int("MATCH_RATIO"))
 
+    def test_distinct_anna_file_with_same_title_survives_unavailable_sibling(self):
+        CONFIG.set_bool('BLACKLIST_FAILED', True)
+        CONFIG.set_bool('BLACKLIST_PROCESSED', True)
+        self.db.action(
+            "INSERT INTO wanted (BookID,NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult,Completed) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            ('s0ZPEQAAQBAJ', 'a' * 32, 'Cain, Robert - The Keeper.epub', 'annas', 'Failed',
+             'eBook', 'Anna partner download path is temporarily unavailable', 9999999999))
+        match = find_best_result(
+            [self._direct_result('Cain, Robert - The Keeper.epub', url='b' * 32)],
+            self._keeper_book(), 'book', 'direct')
+        self.assertIsNotNone(match)
+        self.assertEqual('b' * 32, match[2]['NZBurl'])
+
+    def test_anna_alternative_does_not_override_manual_content_or_legacy_blocks(self):
+        CONFIG.set_bool('BLACKLIST_FAILED', True)
+        CONFIG.set_bool('BLACKLIST_PROCESSED', True)
+        title = 'Cain, Robert - The Keeper.epub'
+        cases = [
+            ('b' * 32, 'Blocked by user'),
+            ('B' * 32, 'Embedded ebook metadata declares a different volume'),
+            ('a' * 32, 'Blocked by user'),
+            ('a' * 32, 'Embedded ebook metadata declares a different volume'),
+            ('legacy-identifier', 'Anna partner download path is temporarily unavailable'),
+        ]
+        for identifier, reason in cases:
+            with self.subTest(identifier=identifier, reason=reason):
+                self.db.action("DELETE FROM wanted")
+                self.db.action(
+                    "INSERT INTO wanted (BookID,NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult,Completed) "
+                    "VALUES (?,?,?,?,?,?,?,?)",
+                    ('another-book', identifier, title, 'annas', 'Failed', 'eBook', reason, 9999999999))
+                self.assertIsNone(find_best_result(
+                    [self._direct_result(title, url='b' * 32)],
+                    self._keeper_book(), 'book', 'direct'))
+
+    def test_anna_title_lookup_checks_every_matching_block(self):
+        title = 'Cain, Robert - The Keeper.epub'
+        self.db.action(
+            "INSERT INTO wanted (NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult) VALUES (?,?,?,?,?,?)",
+            ('a' * 32, title, 'annas', 'Failed', 'eBook',
+             'Anna partner download path is temporarily unavailable'))
+        self.db.action(
+            "INSERT INTO wanted (NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult) VALUES (?,?,?,?,?,?)",
+            ('c' * 32, title, 'annas', 'Failed', 'eBook', 'Blocked by user'))
+        row = resultlist._title_blacklist_match(
+            self.db, 'annas', title, 'b' * 32, 'direct', 'eBook', failed_only=True)
+        self.assertEqual('Blocked by user', row['DLResult'])
+
+    def test_retryable_current_file_cannot_hide_other_title_block_in_either_order(self):
+        title = 'Cain, Robert - The Keeper.epub'
+        for reason in ('Blocked by user', 'Embedded ebook metadata declares a different volume'):
+            for reverse in (False, True):
+                with self.subTest(reason=reason, reverse=reverse):
+                    self.db.action("DELETE FROM wanted")
+                    rows = [
+                        ('b' * 32, title, 'annas', 'Failed', 'eBook',
+                         'Anna partner download path is temporarily unavailable', 1),
+                        ('c' * 32, title, 'annas', 'Failed', 'eBook', reason, 1),
+                    ]
+                    for row in reversed(rows) if reverse else rows:
+                        self.db.action(
+                            "INSERT INTO wanted (NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult,Completed) "
+                            "VALUES (?,?,?,?,?,?,?)", row)
+                    for failed_only in (False, True):
+                        block = resultlist._title_blacklist_match(
+                            self.db, 'annas', title, 'b' * 32, 'direct', 'eBook', failed_only=failed_only)
+                        self.assertEqual(reason, block['DLResult'])
+
+    def test_anna_sibling_exception_requires_direct_ebook_and_payload_identifiers(self):
+        title = 'Cain, Robert - The Keeper.epub'
+        self.db.action(
+            "INSERT INTO wanted (NZBurl,NZBtitle,NZBprov,Status,AuxInfo,DLResult) VALUES (?,?,?,?,?,?)",
+            ('a' * 32, title, 'annas', 'Failed', 'eBook',
+             'Anna partner download path is temporarily unavailable'))
+        for source, media, identifier in [('tor', 'eBook', 'b' * 32),
+                                          ('direct', 'AudioBook', 'b' * 32),
+                                          ('direct', 'eBook', 'legacy')]:
+            with self.subTest(source=source, media=media, identifier=identifier):
+                self.assertIsNotNone(resultlist._title_blacklist_match(
+                    self.db, 'annas', title, identifier, source, media, failed_only=True))
+
     def test_ebook_result_rejects_weak_author_subset_title(self):
         match = find_best_result(
             [self._direct_result("Scott-Norton, Robert The Remnant Keeper.epub")],

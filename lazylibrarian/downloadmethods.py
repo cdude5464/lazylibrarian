@@ -894,6 +894,7 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
     source = ''
     torrent = ''
     policy_quarantine_reason = ''
+    qbittorrent_failure = ''
     # a torrent the client already held before we asked for it is not ours to
     # delete, however this request turns out
     adopted = False
@@ -1165,6 +1166,8 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 logger.debug(f"Sending {tor_title} url to qBittorrent")
                 download_id, res, adopted = qbittorrent.add_torrent(tor_url, hashid,
                                                                     provider_options, label=qb_label)
+            if not download_id:
+                qbittorrent_failure = redact_url(res) if res else ''
             if download_id and adopted and qbittorrent.helper_owns_qbittorrent_lifecycle():
                 return False, 'Refusing fresh helper adoption of a pre-existing qBittorrent torrent'
             if download_id and qbittorrent.helper_owns_qbittorrent_lifecycle() and str(res).startswith(qbittorrent.POLICY_QUARANTINE_PREFIX):
@@ -1476,7 +1479,8 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
             logger.error(f"Error in tor_dl_method: {traceback.format_exc()}")
             db.close()
 
-    res = f"Failed to send torrent to {source}"
+    res = (qbittorrent_failure if source == 'QBITTORRENT' and qbittorrent_failure
+           else f"Failed to send torrent to {source}")
     logger.error(res)
     record_usage_data(f'Download/TOR/{source}/Failed')
     return False, res

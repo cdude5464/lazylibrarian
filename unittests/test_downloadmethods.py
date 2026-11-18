@@ -296,6 +296,49 @@ class TorDlMethodInvalidDataTest(LLTestCase):
         self.qbittorrent.add_file.assert_called_once()
         self.assertEqual(self.qbittorrent.add_file.call_args.args[1], TORRENT_HASH)
 
+    def test_qbittorrent_file_failure_preserves_sanitized_client_reason(self):
+        reason = "qBittorrent refused add from https://provider.example/get?apikey=secret-value"
+        self.qbittorrent.add_file.return_value = (False, reason, False)
+        with self.fetch(TORRENT_DATA, content_type='application/x-bittorrent'):
+            status, result = downloadmethods.tor_dl_method(
+                bookid='1', tor_title='a book', tor_url='https://provider.example/get/1.torrent')
+        self.assertFalse(status)
+        self.assertIn('qBittorrent refused add', result)
+        self.assertIn('apikey=[redacted]', result)
+        self.assertNotIn('secret-value', result)
+
+    def test_qbittorrent_magnet_failure_preserves_client_reason(self):
+        reason = 'qBittorrent torrent read-back failed: TimeoutError'
+        self.qbittorrent.add_torrent.return_value = (False, reason, False)
+        status, result = downloadmethods.tor_dl_method(
+            bookid='1', tor_title='a book', tor_url='magnet:?xt=urn:btih:' + TORRENT_HASH)
+        self.assertFalse(status)
+        self.assertEqual(reason, result)
+
+    def test_preserved_failure_does_not_broaden_retryable_classification(self):
+        from lazylibrarian.resultlist import _failed_source_retryable
+
+        refusal = 'Refusing qBittorrent add without an explicit provider share policy'
+        for reason, retryable in (
+                (refusal, True),
+                ('Client reported: ' + refusal, False),
+                ('qBittorrent torrent read-back failed: TimeoutError', False),
+                ('Rejected manual Library Admin audiobook source before transfer', False)):
+            with self.subTest(reason=reason):
+                self.qbittorrent.add_torrent.return_value = (False, reason, False)
+                status, result = downloadmethods.tor_dl_method(
+                    bookid='1', tor_title='a book', tor_url='magnet:?xt=urn:btih:' + TORRENT_HASH)
+                self.assertFalse(status)
+                self.assertEqual(retryable, _failed_source_retryable(
+                    {'Status': 'Failed', 'NZBprov': 'torznab', 'DLResult': result}, 'AudioBook'))
+
+    def test_qbittorrent_empty_failure_keeps_generic_fallback(self):
+        self.qbittorrent.add_torrent.return_value = (False, '', False)
+        status, result = downloadmethods.tor_dl_method(
+            bookid='1', tor_title='a book', tor_url='magnet:?xt=urn:btih:' + TORRENT_HASH)
+        self.assertFalse(status)
+        self.assertEqual('Failed to send torrent to QBITTORRENT', result)
+
     def test_bad_data_from_a_torrent_cache_falls_back_to_the_url(self):
         # the cache serves us an error page but names its files after the
         # infohash, so the downloader can be asked to fetch it instead

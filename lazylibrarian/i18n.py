@@ -164,7 +164,14 @@ def available_languages():
 
 
 def language_name(lang):
-    """ Human-readable name for a language code, for the config page """
+    """ Human-readable name for a language code in the current UI language, for the language pickers """
+    try:
+        from lazylibrarian.booklanguages import book_language_label
+        label = book_language_label(lang.split('_')[0])
+        if label and label != lang.split('_')[0]:
+            return label
+    except Exception:
+        pass
     try:
         from iso639 import Lang
         return Lang(lang.split('_')[0]).name

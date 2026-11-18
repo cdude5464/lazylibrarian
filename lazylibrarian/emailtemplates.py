@@ -90,7 +90,7 @@ def load_template(kind, lang):
 
 def permission_name(perms):
     """ The name of a set of permissions, in the current language """
-    if perms == lazylibrarian.perm_admin:
+    if perms == lazylibrarian.perm_all:
         return i18n.gettext('Admin')
     if perms == lazylibrarian.perm_friend:
         return i18n.gettext('Friend')

@@ -22,7 +22,7 @@ import sys
 import time
 
 import lazylibrarian
-from lazylibrarian import startup, webStart
+from lazylibrarian import startup, webServe, webStart
 from lazylibrarian.box_helper_handoff import validate_box_helper_handoff_config
 from lazylibrarian.formatter import thread_name
 from lazylibrarian.cleanup import UNBUNDLER
@@ -109,6 +109,7 @@ def main():
                                lazylibrarian.config2.CONFIG['HTTP_ROOT'])
 
     starter.start_schedulers()
+    webServe.start_precompile_templates()
 
     signal.signal(signal.SIGTERM, sig_shutdown)
 

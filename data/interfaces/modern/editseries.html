@@ -1,0 +1,170 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    page_id = 'series'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 860px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+  .lle-sub { color: var(--bs-secondary-color); margin-bottom: 1.5rem; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; }
+  .lle .form-control[readonly] { background: var(--bs-tertiary-bg); }
+  .lle-head { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: center; justify-content: space-between; margin-bottom: .9rem; }
+  .lle-head h2 { margin: 0; }
+  .lle-head .form-control { max-width: 240px; }
+  .lle-mem { list-style: none; padding: 0; margin: 0 0 .7rem; }
+  .lle-mem li { display: grid; grid-template-columns: 3.2em minmax(0, 1fr); gap: .75rem; padding: .45rem 0; border-top: 1px solid var(--bs-border-color-translucent); }
+  .lle-mem li:first-child { border-top: 0; }
+  .lle-mem .num { color: var(--bs-secondary-color); font-size: .8rem; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; padding-top: .1rem; }
+  .lle-mem .name { overflow-wrap: anywhere; }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def v(key):
+        try:
+            val = config[key]
+        except (KeyError, IndexError):
+            val = None
+        return '' if val is None else str(val)
+    seriesid = v('SeriesID')
+    members_qs = urlencode({'seriesid': seriesid})
+%>
+<div class="lle" x-data="llEditSeries">
+  <a href="series_members?${members_qs | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title}</h1>
+  <div class="lle-sub">${v('SeriesName') | h}</div>
+
+  <form x-ref="form" accept-charset="UTF-8" action="series_update" method="post" @submit.prevent="save()">
+    <input type="hidden" name="seriesid" value="${seriesid | h}">
+
+    <div class="lle-card">
+      <h2>${_('Series')}</h2>
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label" for="new_name">${_('Series Name:')}</label>
+          <input type="text" class="form-control" id="new_name" name="new_name" value="${v('SeriesName') | h}" placeholder="${_('Series Name') | h}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="new_id">${_('Series ID:')}</label>
+          <input type="text" class="form-control" id="new_id" name="new_id" x-ref="newId" value="${seriesid | h}" placeholder="${_('Series ID') | h}">
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="reason">${_('Added by:')}</label>
+          <input type="text" class="form-control" id="reason" value="${v('Reason') | h}" placeholder="${_('Reason for inclusion') | h}" readonly>
+        </div>
+      </div>
+    </div>
+
+    <div class="lle-card" x-show="members.length" x-cloak>
+      <div class="lle-head">
+        <h2>${_('Books')} <span class="fw-normal" x-text="'(' + members.length + ')'"></span></h2>
+        <input type="search" class="form-control form-control-sm rounded-pill" x-show="members.length > 10" x-model.debounce.200ms="q"
+               placeholder="${_('Filter books') | h}" aria-label="${_('Filter books') | h}" autocomplete="off">
+      </div>
+      <ul class="lle-mem">
+        <template x-for="(m, i) in shown" :key="i">
+          <li><span class="num" x-text="m.num"></span><span class="name" x-text="m.name"></span></li>
+        </template>
+      </ul>
+    </div>
+
+    %if can_edit:
+    <div class="lle-save">
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+      <button type="button" class="btn btn-outline-danger rounded-pill ms-auto" :disabled="saving" @click="askDelete()">
+        <i class="fa fa-times" aria-hidden="true"></i> ${_('Delete Series')}
+      </button>
+    </div>
+    %endif
+  </form>
+
+  <div class="modal fade" id="lle-confirm" tabindex="-1" aria-labelledby="lle-confirm-text" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-body"><p class="mb-0" id="lle-confirm-text">${_('Are you sure you want to permanently delete the series?')}</p></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">${_('No')}</button>
+        <button type="button" class="btn btn-danger rounded-pill" @click="remove()">${_('Yes')}</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    try:
+        _seriesid = str(config['SeriesID'])
+    except (KeyError, IndexError):
+        _seriesid = ''
+    _rows = [{'num': '' if m.get('SeriesNum') is None else str(m.get('SeriesNum')), 'name': m.get('BookName') or ''}
+             for m in (members or [])]
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var SERIESID = ${js(_seriesid)};
+  var ROWS = ${js(_rows)};
+  var T = {failed: ${_js('Something went wrong, try again')}};
+  function fold(s) {
+    return String(s || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+  }
+  // series_update and remove_series answer with a redirect to the series list, anything else (the login page, say) is not done
+  function elsewhere(r) {
+    return r.redirected && !/\/series$/.test(new URL(r.url).pathname);
+  }
+
+  Alpine.data('llEditSeries', function () {
+    return {
+      members: ROWS, q: '', saving: false, toastText: '',
+      get shown() {
+        var q = fold(this.q).trim();
+        if (!q) { return this.members; }
+        return this.members.filter(function (m) { return fold(m.num + ' ' + m.name).indexOf(q) >= 0; });
+      },
+      save: function () {
+        var self = this, newId = this.$refs.newId.value.trim() || SERIESID;
+        this.saving = true;
+        fetch('series_update', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            window.location = elsewhere(r) ? r.url : 'series_members?' + new URLSearchParams({seriesid: newId});
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      askDelete: function () {
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show();
+      },
+      remove: function () {
+        var self = this;
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).hide();
+        this.saving = true;
+        fetch('remove_series?' + new URLSearchParams({seriesid: SERIESID}), {credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            window.location = elsewhere(r) ? r.url : 'series';
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 3000}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

@@ -185,9 +185,8 @@ def process_mag_from_file(source_file, title, issuenum):
 
         maginfo = db.match("SELECT CoverPage from magazines WHERE Title=?", (title,))
         # create a thumbnail cover for the new issue
-        coverfile = create_mag_cover(
-            dest_file, pagenum=check_int(maginfo["CoverPage"], 1), refresh=True
-        )
+        coverfile = (create_mag_cover(dest_file, pagenum=check_int(maginfo["CoverPage"], 1), refresh=True)
+                        if CONFIG.get_bool('IMP_MAGCOVER') else '')
         if coverfile:
             myhash = uuid.uuid4().hex
             hashname = os.path.join(DIRS.CACHEDIR, "magazine", f"{myhash}.jpg")

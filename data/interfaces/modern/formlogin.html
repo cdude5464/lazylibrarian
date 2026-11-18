@@ -1,0 +1,41 @@
+<%inherit file="modern_base.html" />
+<%!
+    page_id = 'login'
+    guest_page = True
+%>
+<%doc>
+  The login form of the FORM authentication (web server user and password, no user accounts).
+  A plain form posted to auth/login, which redirects to from_page when the login works and shows this page again when not.
+  It works without any script.
+</%doc>
+<%def name="headIncludes()">
+<style>
+  .lll { max-width: 360px; margin: 3rem auto 0; }
+  @media (max-width: 575.98px) { .lll { margin-top: 1rem; } }
+  .lll-logo { width: 64px; height: 64px; }
+</style>
+</%def>
+<%def name="body()">
+<div class="lll">
+  <div class="text-center mb-4">
+    <img class="lll-logo mb-2" src="${img | h}" alt="LazyLibrarian">
+    <h1 class="h4 mb-0">LazyLibrarian</h1>
+  </div>
+  <div class="card shadow-sm">
+    <form class="card-body p-4" action="auth/login" method="post">
+      <input type="hidden" name="from_page" value="${from_page | h}">
+      <div class="mb-3">
+        <label class="visually-hidden" for="current_username">${_('username')}</label>
+        <input id="current_username" class="form-control" name="current_username" placeholder="${_('username') | h}"
+               autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="visually-hidden" for="current_password">${_('password')}</label>
+        <input id="current_password" type="password" class="form-control" name="current_password" placeholder="${_('password') | h}"
+               autocomplete="current-password" required>
+      </div>
+      <button type="submit" name="login" id="login" class="btn btn-ll btn-lg w-100 rounded-pill">${_('Sign in')}</button>
+    </form>
+  </div>
+</div>
+</%def>

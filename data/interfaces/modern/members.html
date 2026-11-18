@@ -98,27 +98,45 @@ ${bk.headIncludes()}
     %endif
     <span class="text-body-secondary small" x-text="llNgettext(T.books, books.length)"></span>
     <span class="flex-grow-1"></span>
-    <div class="btn-group btn-group-sm llb-views" role="group" aria-label="${_('View') | h}">
-      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
-              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
-      <button type="button" class="btn" :class="view === 'compact' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'compact'"
-              @click="setView('compact')" title="${_('Compact') | h}" aria-label="${_('Compact') | h}"><i class="fa fa-th" aria-hidden="true"></i></button>
-      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
-              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
+    <div class="dropdown llb-views">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('View') | h}" aria-label="${_('View') | h}">
+        <i class="fa" :class="view === 'grid' ? 'fa-th-large' : view === 'compact' ? 'fa-th' : view === 'list' ? 'fa-list' : 'fa-th-large'" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" :class="view === 'grid' && 'active'" @click="setView('grid')">
+          <i class="fa fa-fw me-2 fa-th-large" aria-hidden="true"></i>${_('Covers') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'compact' && 'active'" @click="setView('compact')">
+          <i class="fa fa-fw me-2 fa-th" aria-hidden="true"></i>${_('Compact') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'list' && 'active'" @click="setView('list')">
+          <i class="fa fa-fw me-2 fa-list" aria-hidden="true"></i>${_('List') | h}
+        </button></li>
+      </ul>
     </div>
     %if audio_on and ebook_on:
-    <div class="btn-group btn-group-sm" role="group" aria-label="${_('Library') | h}">
-      <button type="button" class="btn rounded-start-pill" :class="lib === 'eBook' ? 'btn-secondary' : 'btn-outline-secondary'" @click="lib = 'eBook'"
-              title="${_('eBook') | h}" aria-label="${_('eBook') | h}"><i class="fa fa-book" aria-hidden="true"></i></button>
-      <button type="button" class="btn rounded-end-pill" :class="lib === 'AudioBook' ? 'btn-secondary' : 'btn-outline-secondary'" @click="lib = 'AudioBook'"
-              title="${_('AudioBook') | h}" aria-label="${_('AudioBook') | h}"><i class="fa fa-headphones" aria-hidden="true"></i></button>
-    </div>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="lib = lib === 'eBook' ? 'AudioBook' : 'eBook'"
+            title="${_('Library') | h}" aria-label="${_('Library') | h}">
+      <i class="fa" :class="lib === 'eBook' ? 'fa-book' : 'fa-headphones'" aria-hidden="true"></i>
+      <span class="d-none d-sm-inline"><span x-show="lib === 'eBook'">${_('eBook') | h}</span><span x-show="lib !== 'eBook'" x-cloak>${_('AudioBook') | h}</span></span>
+    </button>
     %endif
     %if perm&lazylibrarian.perm_status:
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
             x-text="selecting ? T.done : T.select"></button>
+    <div class="dropdown dropup ll-selmenu" x-show="selecting" x-cloak>
+      <button type="button" class="btn btn-sm btn-ll rounded-pill dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+              x-text="llNgettext(T.selected, selCount)"></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" @click="selectAll()">${_('All')}</button></li>
+        <template x-for="a in ['Wanted', 'Have', 'Skipped', 'Ignored']" :key="a">
+          <li><button type="button" class="dropdown-item" @click="bulk(a)" x-text="llStatus(a)"></button></li>
+        </template>
+      </ul>
+    </div>
     %endif
-    <div class="dropdown">
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -135,7 +153,7 @@ ${bk.headIncludes()}
         <li><hr class="dropdown-divider"></li>
         %endif
         %if perm&lazylibrarian.perm_force:
-        <li><a class="dropdown-item" href="refresh_series?seriesid=${sid | u}"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Refresh Series')}</a></li>
+        <li><a class="dropdown-item" href="refresh_series?seriesid=${sid | u}"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Update series from the web')}</a></li>
         %endif
         %if perm&lazylibrarian.perm_edit:
         <li><a class="dropdown-item" href="edit_series?seriesid=${sid | u}"><i class="fa fa-pencil-alt fa-fw me-2" aria-hidden="true"></i>${_('Edit')}</a></li>
@@ -163,9 +181,16 @@ ${bk.headIncludes()}
         <span class="llb-sub llb-author text-body-secondary" x-text="${'b.author' if is_multi else 'b.sub'}"></span>
         <div class="llb-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
           <span class="badge rounded-pill llb-pill" :class="pillClass(cur(b))" x-text="llStatus(cur(b))"></span>
+          <%doc>open and send stay together, so a narrow card wraps them as a pair</%doc>
           <template x-if="cur(b) === 'Open'">
-            <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib"
-               title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa" :class="lib === 'AudioBook' ? 'fa-headphones' : 'fa-book-open'" aria-hidden="true"></i></a>
+            <span class="d-inline-flex gap-1">
+              <a class="llb-open" :href="'open_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib"
+                 title="${_('Open') | h}" aria-label="${_('Open') | h}"><i class="fa" :class="lib === 'AudioBook' ? 'fa-headphones' : 'fa-book-open'" aria-hidden="true"></i></a>
+              %if context.get('email'):
+              <a class="llb-open" :href="'send_book?bookid=' + encodeURIComponent(b.id) + '&library=' + lib"
+                 title="${_('Send') | h}" aria-label="${_('Send') | h}"><i class="fa fa-envelope" aria-hidden="true"></i></a>
+              %endif
+            </span>
           </template>
           %if perm&lazylibrarian.perm_status:
           <template x-if="['Open', 'Wanted', 'Snatched', 'Matched', 'Have'].indexOf(cur(b)) < 0">
@@ -184,16 +209,6 @@ ${bk.headIncludes()}
   </div>
   <div class="pb-5"></div>
 
-  %if perm&lazylibrarian.perm_status:
-  <div class="llb-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llb-bar-hidden'" role="region" aria-label="${_('Selected books') | h}">
-    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selectAll()">${_('All')}</button>
-    <template x-for="a in ['Wanted', 'Have', 'Skipped', 'Ignored']" :key="a">
-      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk(a)" x-text="llStatus(a)"></button>
-    </template>
-    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
-  </div>
-  %endif
 
   <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
     <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">

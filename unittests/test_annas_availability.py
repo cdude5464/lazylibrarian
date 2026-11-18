@@ -12,6 +12,9 @@ from lazylibrarian import annas, providers
 
 
 class FakeConfig(dict):
+    def get_bool(self, name):
+        return bool(self.get(name, False))
+
     def get_int(self, name):
         return int(self.get(name, 0))
 
@@ -135,16 +138,17 @@ class AnnaAvailabilityTest(TestCase):
 class AnnaProviderOutageBlockTest(TestCase):
     def test_stale_remaining_quota_does_not_extend_an_outage_block(self):
         config = FakeConfig(
-            BOK=False, SLSK=False, WEBSHARE=False, ANNA=True, ANNA_DLTYPES="E",
+            BOK=False, SLSK=False, WEBSHARE=False, MLP=False, ANNA=True, ANNA_DLTYPES="E",
             ANNA_DLLIMIT=50, BLOCKLIST_TIMER=300,
         )
         config.providers = lambda _: []
         book = {"bookid": "42", "bookName": "Book", "authorName": "Author", "searchterm": "Author Book"}
         with (
             patch.object(providers, "CONFIG", config),
+            patch.object(annas.CONFIG, "get_int", side_effect=lambda key: config[key]),
             patch.object(providers.BLOCKHANDLER, "is_blocked", return_value=False),
             patch.object(providers.BLOCKHANDLER, "block_provider") as block,
-            patch.object(providers, "anna_search", return_value=([], "Anna search unavailable")),
+            patch.object(annas, "anna_search", return_value=([], "Anna search unavailable")),
             patch.dict(providers.lazylibrarian.TIMERS, {"ANNA_REMAINING": 0}),
         ):
             result = providers.iterate_over_direct_sites(book, "generalbook")
@@ -153,20 +157,31 @@ class AnnaProviderOutageBlockTest(TestCase):
 
 
     def test_existing_search_backoff_is_not_extended_by_more_wanted_books(self):
-        config = FakeConfig(BOK=False, SLSK=False, WEBSHARE=False, ANNA=True, ANNA_DLTYPES="E", BLOCKLIST_TIMER=300)
+        config = FakeConfig(BOK=False, SLSK=False, WEBSHARE=False, MLP=False, ANNA=True, ANNA_DLTYPES="E", BLOCKLIST_TIMER=300)
         config.providers = lambda _: []
         book = {"bookid": "42", "bookName": "Book", "authorName": "Author", "searchterm": "Author Book"}
         with (
             patch.object(providers, "CONFIG", config),
+            patch.object(annas.CONFIG, "get_int", side_effect=lambda key: config[key]),
             patch.object(providers.BLOCKHANDLER, "is_blocked", side_effect=lambda key: key == "annas-search"),
             patch.object(providers.BLOCKHANDLER, "block_provider") as block,
-            patch.object(providers, "anna_search", return_value=([], "Anna HTML search is in backoff")),
+            patch.object(annas, "anna_search", return_value=([], "Anna HTML search is in backoff")),
         ):
             self.assertEqual(providers.iterate_over_direct_sites(book, "generalbook"), ([], 0))
         block.assert_not_called()
 
 
 class AnnaCredentialLoggingTest(TestCase):
+    def test_missing_key_does_not_follow_unverified_file_mirrors(self):
+        with (
+            patch.object(annas, "CONFIG", FakeConfig(ANNA_KEY="")),
+            patch.object(annas, "get") as network,
+        ):
+            success, error = annas.annas_download("a" * 32, "", "Book", ".epub")
+        self.assertFalse(success)
+        self.assertIn("key is not configured", error)
+        network.assert_not_called()
+
     def test_api_transport_exception_and_http_error_do_not_log_secret_params(self):
         config = FakeConfig(ANNA_HOST="https://annas-archive.gl", ANNA_KEY="SECRET")
         for outcome in (ReadTimeout("https://annas-archive.gl/dyn/api/fast_download.json?key=SECRET"), Mock(status_code=403)):

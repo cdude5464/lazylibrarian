@@ -1,0 +1,145 @@
+<%inherit file="modern_base.html" />
+<%!
+    from urllib.parse import unquote, unquote_plus, urlencode
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'manualsearch'
+%>
+<%def name="headIncludes()">
+<style>
+  .llms-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .llms-filter { flex: 1 1 100%; order: 5; } }
+  .llms-list { border-top: 1px solid var(--bs-border-color-translucent); }
+  .llms-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; grid-template-areas: "icon title act" "icon meta act";
+              gap: 2px 12px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--bs-border-color-translucent); }
+  .llms-row:hover { background: var(--bs-tertiary-bg); }
+  .llms-icon { grid-area: icon; width: 34px; height: 34px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+               background: var(--bs-secondary-bg); color: var(--bs-secondary-color); font-size: .9rem; }
+  .llms-title { grid-area: title; font-weight: 600; font-size: .9rem; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box;
+                -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .llms-meta { grid-area: meta; font-size: .75rem; color: var(--bs-secondary-color); display: flex; flex-wrap: wrap; gap: 0 .9rem; min-width: 0; }
+  .llms-meta span, .llms-meta a { white-space: nowrap; }
+  .llms-meta a { color: inherit; text-underline-offset: 2px; }
+  .llms-score { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .llms-act { grid-area: act; }
+  .llms-act .btn { font-size: .76rem; padding: .22rem .8rem; white-space: nowrap; }
+  @media (max-width: 480px) { .llms-title { font-size: .84rem; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_snatch = bool(perm & lazylibrarian.perm_download)
+    rows = []
+    for n, item in enumerate(results or []):
+        try:
+            size = int(float(item.get('size') or 0))
+        except (TypeError, ValueError):
+            size = 0
+        try:
+            score = round(float(item.get('score') or 0), 1)
+        except (TypeError, ValueError):
+            score = 0.0
+        snatch = ''
+        if can_snatch:
+            # search_item quotes url and url_title for templates that paste them into a link as-is,
+            # undo that here so urlencode does not encode them a second time
+            snatch = 'snatch_book?' + urlencode({'bookid': bookid or '', 'mode': item.get('mode') or '', 'provider': item.get('provider') or '',
+                                                 'title': unquote(item.get('url_title') or ''), 'size': item.get('size') or '',
+                                                 'library': library or 'eBook', 'url': unquote_plus(item.get('url') or '')})
+        rows.append({'n': n, 'title': str(item.get('title') or ''), 'provider': str(item.get('provider') or ''),
+                     'page': item.get('prov_page') or '', 'size': size, 'date': str(item.get('date') or ''),
+                     'mode': str(item.get('mode') or ''), 'score': score, 'snatch': snatch})
+%>
+<div x-data="llManualSearch" x-init="window.addEventListener('pageshow', function () { busy = null; })">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h4 mb-0 me-1">${title | h}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    <div class="input-group input-group-sm llms-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" class="form-control rounded-end-pill" x-model.debounce.200ms="q"
+             placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+    </div>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="score">${_('Match')}</option>
+      <option value="size">${_('Size')}</option>
+      <option value="date">${_('Date')}</option>
+      <option value="provider">${_('Provider')}</option>
+      <option value="title">${_('Title')}</option>
+    </select>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="mode" x-show="modes.length > 1" x-cloak aria-label="${_('Type') | h}">
+      <option value="">${_('All')}</option>
+      <template x-for="m in modes" :key="m"><option :value="m" x-text="m"></option></template>
+    </select>
+  </div>
+
+  <div class="llms-list">
+    <template x-for="r in items" :key="r.n">
+      <div class="llms-row">
+        <span class="llms-icon" :title="r.mode"><i class="fa" :class="icon(r.mode)" aria-hidden="true"></i></span>
+        <span class="llms-title" :title="r.title" x-text="r.title"></span>
+        <span class="llms-meta">
+          <span class="llms-score" title="${_('Match') | h}" x-text="r.score + '%'"></span>
+          <template x-if="r.page"><a :href="r.page" target="_blank" rel="noreferrer" x-text="r.provider"></a></template>
+          <template x-if="!r.page"><span x-text="r.provider"></span></template>
+          <span x-show="r.size" x-text="bytes(r.size)"></span>
+          <span x-show="r.date" x-text="r.date"></span>
+        </span>
+        <span class="llms-act">
+          <template x-if="r.snatch">
+            <a class="btn btn-sm btn-ll rounded-pill" :href="r.snatch" :class="busy !== null && 'disabled'" @click="busy = r.n">
+              <span class="spinner-border spinner-border-sm me-1" x-show="busy === r.n" aria-hidden="true"></span><i class="fa fa-download me-1" x-show="busy !== r.n" aria-hidden="true"></i>${_('Snatch')}
+            </a>
+          </template>
+        </span>
+      </div>
+    </template>
+    <div class="text-center text-body-secondary py-5" x-show="!items.length" x-cloak x-text="all.length ? T.noMatch : T.empty"></div>
+  </div>
+</div>
+<script>
+  var llManualRows = ${js(rows)};
+</script>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {
+    empty: ${_js('No results found')}, noMatch: ${_js('No matching results')},
+    results: ${_jsn('%(count)s result', '%(count)s results')}
+  };
+  var ICONS = {nzb: 'fa-newspaper', torrent: 'fa-magnet', magnet: 'fa-magnet', torznab: 'fa-magnet', direct: 'fa-download', irc: 'fa-comments'};
+  function fold(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, ''); }
+
+  Alpine.data('llManualSearch', function () {
+    var all = (window.llManualRows || []).map(function (r) { r.hay = fold(r.title + ' ' + r.provider + ' ' + r.date); return r; });
+    var modes = [];
+    all.forEach(function (r) { if (r.mode && modes.indexOf(r.mode) < 0) { modes.push(r.mode); } });
+    return {
+      T: T, all: all, modes: modes.sort(), q: '', sort: 'score', mode: '', busy: null,
+      get countText() { return llNgettext(T.results, this.items.length); },
+      get items() {
+        var q = fold(this.q).trim(), key = this.sort, mode = this.mode;
+        var list = this.all.filter(function (r) {
+          return (!mode || r.mode === mode) && (!q || q.split(/\s+/).every(function (w) { return r.hay.indexOf(w) >= 0; }));
+        });
+        if (key === 'provider' || key === 'title') {
+          list.sort(function (a, b) { return a[key].localeCompare(b[key]) || (b.score - a.score); });
+        } else if (key === 'date') {
+          list.sort(function (a, b) { return b.date.localeCompare(a.date); });
+        } else {
+          list.sort(function (a, b) { return (b[key] - a[key]) || (b.score - a.score); });
+        }
+        return list;
+      },
+      icon: function (m) { return ICONS[m] || 'fa-file'; },
+      bytes: function (a) {
+        if (!a) { return ''; }
+        var u = ['B', 'KB', 'MB', 'GB', 'TB'], i = Math.min(Math.floor(Math.log(a) / Math.log(1024)), u.length - 1);
+        return parseFloat((a / Math.pow(1024, i)).toFixed(i ? 1 : 0)) + ' ' + u[i];
+      }
+    };
+  });
+});
+</script>
+</%def>

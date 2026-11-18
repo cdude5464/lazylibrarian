@@ -60,6 +60,9 @@
     kicon = {'eBook': 'fa-book', 'AudioBook': 'fa-headphones'}
     klabel = {'eBook': _('eBook'), 'AudioBook': _('AudioBook')}
     kopen = {'eBook': _('Open eBook'), 'AudioBook': _('Open AudioBook')}
+    # users with a Send To address (eg kindle) can email the file, see send_book
+    mail = context.get('email') or ''
+    ksend = {'eBook': _('Send eBook'), 'AudioBook': _('Send AudioBook')}
     ksearch = {'eBook': _('Search eBook'), 'AudioBook': _('Search AudioBook')}
     karia = {'eBook': _('eBook status:'), 'AudioBook': _('AudioBook status:')}
     genres = [g.strip() for g in (book.get('BookGenre') or '').split(',') if g.strip() and g.strip() != 'Unknown']
@@ -77,7 +80,7 @@
     if not is_audio and book.get('BookPages') and str(book['BookPages']) != '0':
         facts.append((_('Pages'), book['BookPages']))
     if book.get('BookLang'):
-        facts.append((_('Language'), book['BookLang']))
+        facts.append((_('Language'), book_language_label(book['BookLang'])))
     if book.get('BookPub'):
         facts.append((_('Publisher'), book['BookPub']))
     if book.get('BookIsbn'):
@@ -151,6 +154,9 @@
         %for kind in kinds:
           %if book.get(kstat[kind]) == 'Open':
         <a class="btn btn-ll rounded-pill" href="open_book?bookid=${book['BookID'] | u}&library=${kind}"><i class="fa ${kicon[kind]}" aria-hidden="true"></i> ${kopen[kind]}</a>
+            %if mail:
+        <a class="btn btn-outline-secondary rounded-pill" href="send_book?bookid=${book['BookID'] | u}&library=${kind}"><i class="fa fa-envelope" aria-hidden="true"></i> ${ksend[kind]}</a>
+            %endif
           %endif
         %endfor
         %if perm&lazylibrarian.perm_status:
@@ -168,7 +174,7 @@
             <li><a class="dropdown-item" href="edit_book?bookid=${book['BookID'] | u}"><i class="fa fa-pencil-alt fa-fw me-2" aria-hidden="true"></i>${_('Edit')}</a></li>
             %endif
             %if perm&lazylibrarian.perm_force:
-            <li><a class="dropdown-item" href="refresh_book?bookid=${book['BookID'] | u}"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Refresh Book')}</a></li>
+            <li><a class="dropdown-item" href="refresh_book?bookid=${book['BookID'] | u}"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Update book from the web')}</a></li>
             %endif
           </ul>
         </div>
@@ -190,6 +196,15 @@
           </select>
           %else:
           <span class="badge rounded-pill ${pill.get(book.get(kstat[kind]), 'bg-secondary-subtle text-secondary-emphasis')}">${status_label(book.get(kstat[kind]) or '')}</span>
+          %endif
+          %if book.get(kstat[kind]) not in ('Open', 'Have', 'Snatched', 'Processed'):
+            %for prov, reason, lib in [f for f in not_downloaded if f[2] == kind]:
+          <div class="small mt-2"><span class="badge rounded-pill ll-found" title="${_('Found, but not downloaded') | h}"><i class="fa fa-exclamation-triangle me-1" aria-hidden="true"></i>${prov | h}</span>
+            %if reason:
+            <span class="text-body-secondary">${reason | h}</span>
+            %endif
+          </div>
+            %endfor
           %endif
         </div>
           %endif

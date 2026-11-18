@@ -8,6 +8,7 @@ import logging
 
 from lazylibrarian import configtypes
 from lazylibrarian.configenums import Access, TimeUnit, OnChangeReason
+from lazylibrarian.logconfig import LogConfig
 from unittests.unittesthelpers import LLTestCase
 
 
@@ -379,3 +380,27 @@ class Config2Test(LLTestCase):
         ci.set_str('abc')
         self.assertEqual(ci.get_str(), 'abc')
         self.assertEqual(self.changed_value, 'abc')
+
+    def test_is_secret_key(self):
+        for key in ['QBITTORRENT_PASS', 'SAB_API', 'API_KEY', 'ANNA_KEY', 'API', 'gr_secret',
+                    'PUSHOVER_TOKEN', 'TRANSMISSION_USER']:
+            self.assertTrue(configtypes.is_secret_key(key), key)
+        for key in ['BOOK_API', 'GIT_USER', 'SINGLE_USER', 'LOGLEVEL', 'EBOOK_DIR', 'HC_SYNC']:
+            self.assertFalse(configtypes.is_secret_key(key), key)
+
+    def test_configwrite_log_masks_secrets(self):
+        """ The config-write debug log must never contain a secret value """
+        secret = configtypes.ConfigStr('QBITTORRENT', 'QBITTORRENT_PASS', 'old-password')
+        plain = configtypes.ConfigStr('General', 'EBOOK_DIR', '/books')
+        writelog = LogConfig.enable_special_logger('configwrite', True)  # as with LOGLEVEL DEBUG
+        try:
+            with self.assertLogs(writelog, level=logging.DEBUG) as cm:
+                secret.set_str('hunter2-is-my-password')
+                plain.set_str('/library')
+        finally:
+            LogConfig.enable_special_logger('configwrite', False)
+        self.assertEqual(cm.output, [
+            'DEBUG:special.configwrite:Set config[QBITTORRENT_PASS]',
+            'DEBUG:special.configwrite:Set config[EBOOK_DIR]',
+        ])
+        self.assertEqual(secret.get_str(), 'hunter2-is-my-password', 'The value itself is unchanged')

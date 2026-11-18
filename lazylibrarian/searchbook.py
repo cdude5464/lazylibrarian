@@ -111,9 +111,14 @@ def warn_mode(mode, search_type=None):
     # still warn even when another provider only supports a different media type.
     if search_type and mode in ['tor', 'direct']:
         dltype = 'A' if 'audio' in search_type else 'E'
-        names = ['KAT', 'TPB', 'TDL', 'LIME', 'ABB'] if mode == 'tor' else ['BOK', 'ANNA', 'SLSK']
-        compatible = any(CONFIG.get_bool(name) and dltype in CONFIG[f'{name}_DLTYPES']
-                         for name in names)
+        if mode == 'tor':
+            compatible = any(CONFIG.get_bool(name) and dltype in CONFIG[f'{name}_DLTYPES']
+                             for name in ['KAT', 'TPB', 'TDL', 'LIME', 'ABB'])
+        else:
+            from lazylibrarian.sources.registry import direct_providers, skip_reason
+            compatible = any(CONFIG.get_bool(source.key) and
+                             not skip_reason(source, search_type, CONFIG[f'{source.key}_DLTYPES'])
+                             for source in direct_providers())
         if mode == 'direct' and not compatible:
             compatible = any(provider.get_bool('ENABLED') and dltype in provider['DLTYPES']
                              for provider in CONFIG.providers('GEN'))

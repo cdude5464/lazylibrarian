@@ -777,7 +777,8 @@ def name_vars(bookid, abridged=''):
             mydict['Author'] = 'J.R.R. Tolkien'
             # TRANSLATORS: title of the sample book in the name pattern examples, as published in your language
             mydict['Title'] = i18n.gettext('The Fellowship of the Ring')
-            mydict['SortAuthor'] = surname_first(mydict['Author'], postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')))
+            mydict['SortAuthor'] = surname_first(mydict['Author'], postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')),
+                                                 prefixes=get_list(CONFIG.get_csv('NAME_PREFIX')))
             mydict['SortTitle'] = sort_definite(mydict['Title'], articles=get_list(CONFIG.get_csv('NAME_DEFINITE')))
             mydict['Part'] = '1'
             mydict['Total'] = '3'
@@ -909,7 +910,8 @@ def name_vars(bookid, abridged=''):
                 mydict['Author'] = exists['AuthorName']
                 mydict['Title'] = exists['BookName']
                 mydict['SortAuthor'] = surname_first(mydict['Author'],
-                                                     postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')))
+                                                     postfixes=get_list(CONFIG.get_csv('NAME_POSTFIX')),
+                                                     prefixes=get_list(CONFIG.get_csv('NAME_PREFIX')))
                 mydict['SortTitle'] = sort_definite(mydict['Title'],
                                                     articles=get_list(CONFIG.get_csv('NAME_DEFINITE')))
             else:

@@ -377,7 +377,8 @@ def magazine_scan(title=None):
                         new_entry = False
                         myhash = uuid.uuid4().hex
                         if not iss_entry or iss_entry['IssueFile'] != issuefile:
-                            coverfile = create_mag_cover(issuefile, pagenum=magcoverpage, refresh=new_entry)
+                            coverfile = (create_mag_cover(issuefile, pagenum=magcoverpage, refresh=new_entry)
+                                            if CONFIG.get_bool('IMP_MAGCOVER') else '')
                             if coverfile:
                                 hashname = os.path.join(DIRS.CACHEDIR, 'magazine', f'{myhash}.jpg')
                                 copyfile(coverfile, hashname)
@@ -609,12 +610,23 @@ def get_dateparts(title_or_issue, datetype=''):
         month = months[0]
     pos = 0
 
+    # A day range over the year end, eg "31st December - 6th January, 2027", starts in
+    # December of the previous year. Sorting puts January first, so look for December instead
+    # and only use it if a day number goes with it (bi-monthly "December January" is unchanged)
+    year_end_range = False
+    if 1 in months and 12 in months:
+        positions = {}
+        for idx, word in enumerate(words):
+            positions.setdefault(month2num(word), idx)
+        year_end_range = positions.get(12, len(words)) < positions.get(1, len(words))
+
     # Radio.Times.31.May-06.June.2025 should return 31 May 2025
     # and Radio.Times.08-14.November.2025 should return 08 November 2025
     if months:
         logger.debug(f"Months:[{months}] Words:[{words}]")
+        startmonth = 12 if year_end_range else month
         while pos < len(words):
-            if pos > 0 and month2num(words[pos]) == month:
+            if pos > 0 and month2num(words[pos]) == startmonth:
                 first = check_int(re.sub(r"\D", "", words[pos - 1]), 0)
                 if first and first < 32:
                     style = 3
@@ -626,6 +638,11 @@ def get_dateparts(title_or_issue, datetype=''):
                         day = first
                 break
             pos += 1
+        if year_end_range and style == 3:
+            month = 12
+            months = [12, 1]
+        else:
+            year_end_range = False
 
     if volume and issue:
         if year:
@@ -670,6 +687,10 @@ def get_dateparts(title_or_issue, datetype=''):
                 issue = int(data)
                 # style = 14
         pos += 1
+
+    if year_end_range and style == 3 and year:
+        # the year in the title is the one the range ends in
+        year -= 1
 
     dateparts = {"year": year, "months": months, "day": day, "issue": issue, "volume": volume,
                  "month": month, "mname": mname, "inoun": inoun, "vnoun": vnoun, "style": style}

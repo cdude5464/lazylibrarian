@@ -118,6 +118,13 @@ def initialize(options=None):
             # 'tools.staticfile.filename': "images/favicon.ico"
             'tools.staticfile.filename': os.path.join(DIRS.PROG_DIR, 'data', 'images', 'favicon.ico')
         },
+        # the service worker lives at the root so its scope is the whole interface
+        '/sw.js': {
+            'tools.staticfile.on': True,
+            'tools.staticfile.filename': os.path.join(DIRS.PROG_DIR, 'data', 'js', 'sw.js'),
+            'tools.response_headers.on': True,
+            'tools.response_headers.headers': [('Cache-Control', 'no-cache')]
+        },
         '/opensearch.xml': {
             'tools.staticfile.on': True,
             'tools.staticfile.filename': os.path.join(DIRS.CACHEDIR, 'opensearch.xml')
@@ -194,7 +201,7 @@ def initialize(options=None):
                 })
             })
         # exempt api, login page and static elements from authentication requirements
-        for i in ('/api', '/auth/login', '/css', '/images', '/js', 'favicon.ico', '/rss_feed', '/nzbfile.nzb',
+        for i in ('/api', '/auth/login', '/css', '/images', '/js', 'favicon.ico', '/sw.js', '/rss_feed', '/nzbfile.nzb',
                     '/serve_img', '/serve_issue', '/serve_book', '/serve_audio', '/serve_comic'):
             if i in conf:
                 conf[i].update({'tools.auth.on': False, 'tools.auth_basic.on': False})

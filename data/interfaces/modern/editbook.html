@@ -1,0 +1,280 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'books'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 980px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+  .lle-sub { color: var(--bs-secondary-color); }
+  .lle-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 1rem 0 1.5rem; }
+  .lle-bar .form-select { width: auto; max-width: 100%; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; }
+  .lle .form-control[readonly] { background: var(--bs-tertiary-bg); }
+  .lle-covers { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .9rem; margin-bottom: 1rem; }
+  .lle-cover { display: flex; flex-direction: column; gap: .35rem; cursor: pointer; font-size: .78rem; text-align: center; }
+  .lle-cover img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: 8px; background: var(--bs-secondary-bg);
+                   outline: 2px solid transparent; outline-offset: 2px; }
+  .lle-cover input { position: absolute; opacity: 0; pointer-events: none; }
+  .lle-cover input:checked + img { outline-color: var(--ll-accent); }
+  .lle-cover input:focus-visible + img { outline-color: var(--bs-body-color); }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def v(key):
+        val = config.get(key)
+        return '' if val is None else str(val)
+    bookid = v('BookID')
+    library = v('library') or 'eBook'
+    detail = 'book_detail?' + urlencode({'bookid': bookid, 'library': library}) if library == 'AudioBook' else 'book_detail?' + urlencode({'bookid': bookid})
+    images = 'edit_book?' + urlencode({'bookid': bookid, 'images': 'True', 'library': library})
+    audio_on = CONFIG.get_int('AUDIO_TAB') != 0
+    searches = [('e_full', _('eBook Title/Author')), ('e_title', _('eBook Title')), ('e_author', _('eBook Author')), ('g_full', _('General Search'))]
+    if audio_on:
+        searches += [('a_full', _('Audio Title/Author')), ('a_title', _('Audio Title')), ('a_author', _('Audio Author'))]
+    ids = [('grid', _('GoodReads:'), v('gr_id')), ('olid', _('OpenLibrary:'), v('ol_id')), ('gbid', _('GoogleBooks:'), v('gb_id')), ('hcid', _('HardCover:'), v('hc_id'))]
+    added = (v('BookAdded') + ' ' + v('ScanResult')).strip()
+%>
+<div class="lle" x-data="llEditBook">
+  <a href="${detail | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title}</h1>
+  <div class="lle-sub">${v('BookName') | h} · ${v('AuthorName') | h}</div>
+
+  <div class="lle-bar">
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="${detail | h}"><i class="fa fa-info-circle" aria-hidden="true"></i> ${_('Detail')}</a>
+    %if perm & lazylibrarian.perm_force:
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="refresh_book?${urlencode({'bookid': bookid}) | h}"><i class="fa fa-sync" aria-hidden="true"></i> ${_('Update book from the web')}</a>
+    %endif
+    <form action="booksearch" method="get" class="d-flex gap-2 align-items-center flex-wrap" @submit="busy = true">
+      <input type="hidden" name="bookid" value="${bookid | h}">
+      <input type="hidden" name="title" value="${v('BookName') | h}">
+      <input type="hidden" name="author" value="${v('AuthorName') | h}">
+      <label class="visually-hidden" for="lle-action">${_('Searches:')}</label>
+      <select class="form-select form-select-sm rounded-pill" id="lle-action" name="action">
+        %for value, label in searches:
+        <option value="${value}">${label}</option>
+        %endfor
+      </select>
+      <button type="submit" class="btn btn-sm btn-outline-secondary rounded-pill" :disabled="busy"><i class="fa fa-search" aria-hidden="true"></i> ${_('Search')}</button>
+    </form>
+    <span class="small text-body-secondary" x-show="busy" x-cloak><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>${_('Searching, please wait...')}</span>
+  </div>
+
+  <form x-ref="form" accept-charset="UTF-8" action="book_update" method="post" @submit.prevent="save()">
+    <input type="hidden" name="bookid" value="${bookid | h}">
+
+    <div class="lle-card pt-3">
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <label class="form-label" for="bookname">${_('Book Title:')}</label>
+          <input type="text" class="form-control" id="bookname" name="bookname" value="${v('BookName') | h}">
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="booksub">${_('Subtitle:')}</label>
+          <input type="text" class="form-control" id="booksub" name="booksub" value="${v('BookSub') | h}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="authorname">${_('Change author to:')}</label>
+          <select class="form-select" id="authorname" name="authorname">
+            %for item in authors:
+            <option value="${item['AuthorName'] | h}" ${'selected' if item['AuthorName'] == config.get('AuthorName') else ''}>${item['AuthorName'] | h}</option>
+            %endfor
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="bookgenre">${_('Genre:')}</label>
+          <input type="text" class="form-control" id="bookgenre" name="bookgenre" value="${v('BookGenre') | h}" placeholder="${_('Comma separated list of genres') | h}">
+        </div>
+        %if library == 'AudioBook' and v('Narrator'):
+        <div class="col-md-6">
+          <label class="form-label" for="narrator">${_('Narrator:')}</label>
+          <input type="text" class="form-control" id="narrator" value="${v('Narrator') | h}" readonly>
+        </div>
+        %endif
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label" for="booklang">${_('Language:')}</label>
+          <input type="text" class="form-control" id="booklang" name="booklang" value="${v('BookLang') | h}">
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label" for="bookdate">${_('Publication Date:')}</label>
+          <input type="text" class="form-control" id="bookdate" name="bookdate" value="${v('BookDate') | h}" placeholder="${_('Publication Date (YYYY or YYYY-MM-DD)') | h}"
+                 title="${_('Publication Date (YYYY or YYYY-MM-DD)') | h}">
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label" for="bookisbn">${_('ISBN:')}</label>
+          <input type="text" class="form-control" id="bookisbn" name="bookisbn" value="${v('BookIsbn') | h}" placeholder="${_('ISBN10 or ISBN13') | h}">
+        </div>
+        <div class="col-md-6 col-lg-3">
+          <label class="form-label" for="workid">${_('WorkID:')}</label>
+          <input type="text" class="form-control" id="workid" name="workid" value="${v('WorkID') | h}">
+        </div>
+        %for fid, label, value in ids:
+        <div class="col-6 col-lg-3">
+          <label class="form-label" for="${fid}">${label}</label>
+          <input type="text" class="form-control" id="${fid}" value="${value | h}" readonly>
+        </div>
+        %endfor
+        <div class="col-md-6">
+          <label class="form-label" for="scanresult">${_('Added by')}</label>
+          <input type="text" class="form-control" id="scanresult" value="${added | h}" placeholder="${_('Reason for adding/rejecting') | h}" readonly>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="importfrom">${_('Import from')}</label>
+          <input type="text" class="form-control" id="importfrom" name="importfrom" value="" placeholder="${_('Manual import folder') | h}">
+        </div>
+      </div>
+    </div>
+
+    <div class="lle-card">
+      <h2>${_('Series')}</h2>
+      <div class="row g-3 mb-3">
+        %for item in seriesdict:
+        <div class="col-8 col-md-9">
+          <label class="form-label" for="series-${loop.index}">${_('Book Series %(number)s') % {'number': loop.index + 1}}</label>
+          <input type="text" class="form-control" id="series-${loop.index}" name="series[${loop.index}][name]" value="${item['SeriesName'] or '' | h}" placeholder="${_('Series Name') | h}">
+        </div>
+        <div class="col-4 col-md-3">
+          <label class="form-label" for="series-${loop.index}-num">${_('Number')}</label>
+          <input type="text" class="form-control" id="series-${loop.index}-num" name="series[${loop.index}][number]" value="${item['SeriesNum'] or '' | h}" placeholder="${_('Number') | h}">
+        </div>
+        %endfor
+        %if series:
+        <div class="col-12">
+          <label class="form-label" for="pickseries">${_('Add to Existing Author Series:')}</label>
+          <select class="form-select" id="pickseries" @change="newSeries = $event.target.value; $refs.newnum.focus()">
+            <option value=""></option>
+            %for item in series:
+            <option value="${item['SeriesName'] | h}">${item['SeriesName'] | h}</option>
+            %endfor
+          </select>
+        </div>
+        %endif
+        <div class="col-8 col-md-9">
+          <label class="form-label" for="series-new">${_('New Series')}</label>
+          <input type="text" class="form-control" id="series-new" name="series[new][name]" x-model="newSeries" placeholder="${_('Series Name') | h}">
+        </div>
+        <div class="col-4 col-md-3">
+          <label class="form-label" for="series-new-num">${_('Number')}</label>
+          <input type="text" class="form-control" id="series-new-num" name="series[new][number]" x-ref="newnum" placeholder="${_('Number') | h}">
+        </div>
+      </div>
+    </div>
+
+    <div class="lle-card">
+      <h2><label for="editordata">${_('Book Description')}</label></h2>
+      <textarea class="form-control mb-3" id="editordata" name="editordata" rows="8" placeholder="${_('Nothing to see here...') | h}">${v('BookDesc') | h}</textarea>
+    </div>
+
+    <div class="lle-card">
+      <h2>${_('Cover')}</h2>
+      %if covers:
+      <fieldset>
+        <legend class="form-label">${_('Change cover to:')}</legend>
+        <div class="lle-covers">
+          %for item in covers:
+          <label class="lle-cover position-relative">
+            <input type="radio" name="cover" value="${item[0] | h}" ${'checked' if item[0] == 'current' else ''}>
+            <img src="${item[1] | h}" alt="${_('cover') | h}" loading="lazy">
+            <span>${item[0] | h}</span>
+          </label>
+          %endfor
+        </div>
+      </fieldset>
+      %else:
+      <div class="mb-3">
+        <a class="btn btn-sm btn-outline-secondary rounded-pill" href="${images | h}" @click="busy = true"><i class="fa fa-images" aria-hidden="true"></i> ${_('Find Images')}</a>
+        <span class="small text-body-secondary ms-2" x-show="busy" x-cloak><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>${_('Searching, please wait...')}</span>
+      </div>
+      %endif
+    </div>
+
+    %if replaces:
+    <div class="lle-card">
+      <h2>${_('OPF Fields')}</h2>
+      <div class="row g-3 mb-3">
+        %for item in replaces:
+        <div class="col-md-6">
+          <label class="form-label" for="opf-${loop.index}">${item[0] | h}</label>
+          <input type="text" class="form-control" id="opf-${loop.index}" name="${item[0] | h}" value="${item[1] or '' | h}">
+        </div>
+        %endfor
+      </div>
+    </div>
+    %endif
+
+    <div class="lle-save">
+      <div class="form-check me-auto">
+        <input class="form-check-input" type="checkbox" id="manual" name="manual" value="1" ${'checked' if v('Manual') in ('1', 'True') else ''}>
+        <label class="form-check-label" for="manual">${_('Lock settings')}</label>
+      </div>
+      %if can_edit:
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+      %endif
+    </div>
+  </form>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+<%
+    from urllib.parse import urlencode as _urlencode
+    edit_qs = {'bookid': config.get('BookID') or ''}
+    if config.get('library') == 'AudioBook':
+        edit_qs['library'] = 'AudioBook'
+%>
+  // back to the edit page without images=True, so saving does not run the cover search again
+  var EDIT = ${js('edit_book?' + _urlencode(edit_qs))};
+  var T = {saved: ${_js('All changes saved')}, failed: ${_js('Something went wrong, try again')}};
+  Alpine.data('llEditBook', function () {
+    return {
+      busy: false, saving: false, newSeries: '', toastText: '',
+      init: function () {
+        var self = this;
+        // book_update answers with a redirect back to this page, the saved state comes with the reload
+        try {
+          if (sessionStorage.getItem('lle-saved') === '1') {
+            sessionStorage.removeItem('lle-saved');
+            this.$nextTick(function () { self.toast(T.saved); });
+          }
+        } catch (e) {}
+      },
+      save: function () {
+        var self = this;
+        this.saving = true;
+        fetch('book_update', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            // anything other than the edit page (the login page, say) is not a save
+            if (r.redirected && r.url.indexOf('edit_book') < 0) { window.location = r.url; return; }
+            try { sessionStorage.setItem('lle-saved', '1'); } catch (e) {}
+            window.location = EDIT;
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2500}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

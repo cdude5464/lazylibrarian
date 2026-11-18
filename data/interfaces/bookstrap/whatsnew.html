@@ -22,8 +22,15 @@
   </table>
 </%def>
 <%def name="body()">
-  <h1>${title}</h1>
-  %if changes['error']:
+  <h1>${title | h}</h1>
+  <p>
+    <a href="https://www.reddit.com/r/LazyLibrarian/" target="_blank" rel="noopener"><i class="fab fa-reddit-alien fa-fw"></i> Reddit</a> &middot;
+    <a href="https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues" target="_blank" rel="noopener"><i class="fa fa-bug fa-fw"></i> ${_('Report an issue')}</a>
+  </p>
+  %if changes.get('loading'):
+    <p><i class="fa fa-spinner fa-spin"></i> ${_('Loading')}...</p>
+    <script>setTimeout(function () { location.reload(); }, 2500);</script>
+  %elif changes['error']:
     <p>${_('Unable to get the list of changes from %(repo)s, try again later.') % {'repo': repo} | h}</p>
   %else:
     %if changes['known'] and changes['upcoming']:

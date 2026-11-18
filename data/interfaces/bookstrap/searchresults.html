@@ -28,7 +28,7 @@
 </%def>
 <%def name="body()">
 
-<h1>${title}</h1>
+<h1>${title | h}</h1>
     %if lazylibrarian.SEARCHING == 1:
       <p>
       <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Search in progress ...')}</button>
@@ -111,12 +111,11 @@
                         value3 = value
                         destination3 = "#"
                         but_class3 = "btn-info hidden"
-                    elif booklist and result['bookid'] in booklist:
-                        for item in booksearch:
-                            if item['BookID'] == result['bookid']:
-                                value2 = '<i class="fa fa-book"></i> ' + (item['Status'] or _('Unknown'))
-                                value3 = '<i class="fa fa-headphones"></i> ' + (item['AudioStatus'] or _('Unknown'))
-                                valid_id = item['BookID']
+                    elif result.get('library_book'):
+                        item = result['library_book']
+                        value2 = '<i class="fa fa-book"></i> ' + (item['Status'] or _('Unknown'))
+                        value3 = '<i class="fa fa-headphones"></i> ' + (item['AudioStatus'] or _('Unknown'))
+                        valid_id = item['BookID']
 
                         if 'Open' in value2:
                             destination2 = "open_book?library=eBook&bookid="+valid_id

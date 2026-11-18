@@ -17,7 +17,7 @@ import re
 import threading
 import time
 from copy import deepcopy
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 from xml.etree import ElementTree
 
 try:
@@ -32,12 +32,11 @@ from lazylibrarian.subtitle_search import primary_title
 import lib.feedparser as feedparser
 from lazylibrarian import database
 from lazylibrarian.providerlogging import provider_error_category, provider_log_origin
-from lazylibrarian.annas import anna_search
 from lazylibrarian.blockhandler import BLOCKHANDLER
 from lazylibrarian.cache import fetch_url
 from lazylibrarian.config2 import CONFIG, wishlist_type
 from lazylibrarian.configtypes import ConfigDict
-from lazylibrarian.directparser import bok_grabs, direct_bok, direct_gen
+from lazylibrarian.directparser import direct_gen
 from lazylibrarian.filesystem import DIRS, path_isfile, remove_file, syspath
 from lazylibrarian.formatter import (
     age,
@@ -53,7 +52,7 @@ from lazylibrarian.formatter import (
     unaccented,
 )
 from lazylibrarian.ircbot import irc_query, irc_results
-from lazylibrarian.soulseek import slsk_search
+from lazylibrarian.sources.registry import direct_provider, direct_providers, skip_reason
 from lazylibrarian.telemetry import TELEMETRY
 from lazylibrarian.torrentparser import (
     torrent_abb,
@@ -62,7 +61,6 @@ from lazylibrarian.torrentparser import (
     torrent_tdl,
     torrent_tpb,
 )
-from lazylibrarian.webshare import webshare_search
 
 
 def test_provider(name: str, host=None, api=None):
@@ -123,16 +121,10 @@ def test_provider(name: str, host=None, api=None):
                     provider['SEARCH'] = api
                 return direct_gen(book, prov=provider['NAME'].lower(), test=True), name
 
-    if name == 'BOK':
-        if host:
-            CONFIG.set_str('BOK_HOST', host)
-        if api:
-            email, pwd, langs = api.split(' : ')
-            CONFIG.set_str('BOK_EMAIL', email)
-            CONFIG.set_str('BOK_PASS', pwd)
-            CONFIG.set_str('BOK_SEARCH_LANG', langs)
-        logger.debug(f"Testing provider {name}:{provider_log_origin(CONFIG['BOK_HOST'])}")
-        return direct_bok(book, prov=name, test=True), "ZLibrary"
+    registered = direct_provider(name)
+    if registered and registered.test:
+        logger.debug(f"Testing provider {name}")
+        return registered.test(book, host, api), registered.label
 
     if name.startswith('rss_'):
         try:
@@ -145,12 +137,12 @@ def test_provider(name: str, host=None, api=None):
                     if not host:
                         host = provider['HOST']
                     if 'goodreads' in host:
-                        if 'list_rss' in host:
+                        if wishlist_type(host) == 'goodreads':
                             return goodreads(host, provider['NAME'], provider.get_int('DLPRIORITY'),
                                              provider['DISPNAME'], test=True), provider['DISPNAME']
                         if '/show/' in host or '/book/' in host:
                             # goodreads listopia html page
-                            return listopia(host, provider['NAME'], provider.get_int('DLPRIORITY'),
+                            return listopia_scraper(host, provider['NAME'], provider.get_int('DLPRIORITY'),
                                             provider['DISPNAME'], test=True), provider['DISPNAME']
                     elif 'amazon' in host and '/charts' in host:
                         return amazon(host, provider['NAME'], provider.get_int('DLPRIORITY'),
@@ -311,30 +303,6 @@ def test_provider(name: str, host=None, api=None):
             pass
         except Exception as e:
             logger.debug(f"Exception: {type(e).__name__}")
-
-    if name == 'SLSK':
-        logger.debug(f"Testing provider {name}")
-        if host:
-            CONFIG.set_str('SLSK_HOST', host)
-        if api:
-            CONFIG.set_str('SLSK_API', api)
-        return slsk_search(book, test=True), "SLSK"
-
-    if name == 'ANNA':
-        logger.debug(f"Testing provider {name}")
-        if host:
-            CONFIG.set_str('ANNA_HOST', host)
-        if api:
-            CONFIG.set_str('ANNA_KEY', api)
-        return anna_search(book, test=True), "ANNA"
-
-    if name == 'WEBSHARE':
-        logger.debug(f"Testing provider {name}")
-        if api:
-            user, pwd = api.split(' : ', 1)
-            CONFIG.set_str('WEBSHARE_USER', user)
-            CONFIG.set_str('WEBSHARE_PASS', pwd)
-        return webshare_search(book, test=True), "Webshare"
 
     msg = f"Unknown provider [{name}]"
     logger.error(msg)
@@ -812,161 +780,42 @@ def iterate_over_direct_sites(book=None, search_type=None):
                     logger.debug(f"Querying {prov['NAME']}")
                     TELEMETRY.record_usage_data(f"Query/{prov['NAME']}")
                     results, error = direct_gen(book, prov['NAME'])
+                    # keep what was found before an error, eg a later results page timing out
+                    resultslist += results
                     if error:
-                        BLOCKHANDLER.block_provider(prov['NAME'], error)
-                    else:
-                        resultslist += results
+                        # a slow or flaky mirror is retried sooner than the usual hour
+                        delay = min(CONFIG.get_int('BLOCKLIST_TIMER'), 600)
+                        BLOCKHANDLER.block_provider(prov['NAME'], error, delay=delay)
+                    if results or not error:
                         providers += 1
     except RuntimeError:
         logger.debug("Error iterating gen")
 
-    prov = 'BOK'
-    if CONFIG[prov]:
-        iterateproviderslogger.debug(f"DLTYPES: {prov}: {CONFIG[prov]} {CONFIG[prov + '_DLTYPES']}")
-        ignored = False
-        if BLOCKHANDLER.is_blocked('zlibrary'):
-            logger.debug('zlibrary is BLOCKED')
-            ignored = True
-        elif search_type in ['book', 'shortbook', 'titlebook'] and \
-                'E' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for eBook")
-            ignored = True
-        elif "audio" in search_type and 'A' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for AudioBook")
-            ignored = True
-        elif "mag" in search_type and 'M' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Magazine")
-            ignored = True
-        elif "comic" in search_type and 'C' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Comic")
-            ignored = True
-        if not ignored:
-            logger.debug(f'Querying {prov}')
-            TELEMETRY.record_usage_data(f'Query/{prov}')
-            results, error = direct_bok(book, prov)
-            if error:
+    # the direct providers in lazylibrarian/sources, see registry.py
+    for source in direct_providers():
+        if not CONFIG.get_bool(source.key):
+            continue
+        dltypes = CONFIG[f"{source.key}_DLTYPES"]
+        iterateproviderslogger.debug(f"DLTYPES: {source.key}: {CONFIG[source.key]} {dltypes}")
+        if BLOCKHANDLER.is_blocked(source.name):
+            logger.debug(f"{source.name} is BLOCKED")
+            continue
+        reason = skip_reason(source, search_type, dltypes)
+        if reason:
+            logger.debug(reason)
+            continue
+        logger.debug(f"Querying {search_type} {source.name}")
+        TELEMETRY.record_usage_data(f"Query/{source.usage_key}")
+        results, error = source.search(book, search_type)
+        if error:
+            if source.on_error:
+                source.on_error(source, error)
+            else:
                 # use a short delay for site unavailable etc
-                delay = CONFIG.get_int('BLOCKLIST_TIMER')
-                dl_limit = CONFIG.get_int('BOK_DLLIMIT')
-                count = lazylibrarian.TIMERS['BOK_TODAY']
-                if count and count >= dl_limit:
-                    # rolling 24hr delay if limit reached
-                    grabs, oldest = bok_grabs()
-                    delay = oldest + 24 * 60 * 60 - time.time()
-                    error = f"Reached Daily download limit ({grabs}/{dl_limit})"
-                BLOCKHANDLER.block_provider('zlibrary', error, delay=delay)
-            else:
-                resultslist += results
-                providers += 1
-
-    prov = 'SLSK'
-    if CONFIG[prov]:
-        iterateproviderslogger.debug(f"DLTYPES: {prov}: {CONFIG[prov]} {CONFIG[prov + '_DLTYPES']}")
-        provider = 'soulseek'
-        ignored = False
-        if BLOCKHANDLER.is_blocked(provider):
-            logger.debug('soulseek is BLOCKED')
-            ignored = True
-        elif search_type in ['book', 'shortbook', 'titlebook'] and \
-                'E' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for eBook")
-            ignored = True
-        elif "audio" in search_type and 'A' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for AudioBook")
-            ignored = True
-        elif "mag" in search_type and 'M' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Magazine")
-            ignored = True
-        elif "comic" in search_type and 'C' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Comic")
-            ignored = True
-        if not ignored:
-            logger.debug(f'Querying {search_type} {provider}')
-            searchtype = 'audio' if 'audio' in search_type else 'ebook'
-            TELEMETRY.record_usage_data(f'Query/{provider}')
-            results, error = slsk_search(book, searchtype=searchtype)
-            if error:
-                # use a short delay for site unavailable etc
-                delay = CONFIG.get_int('BLOCKLIST_TIMER')
-                BLOCKHANDLER.block_provider(provider, error, delay=delay)
-            else:
-                resultslist += results
-                providers += 1
-
-    prov = 'ANNA'
-    if CONFIG[prov]:
-        iterateproviderslogger.debug(f"DLTYPES: {prov}: {CONFIG[prov]} {CONFIG[prov + '_DLTYPES']}")
-        provider = 'annas'
-        ignored = False
-        if BLOCKHANDLER.is_blocked(provider):
-            logger.debug('annas is BLOCKED')
-            ignored = True
-        elif search_type in ['book', 'shortbook', 'titlebook'] and \
-                'E' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for eBook")
-            ignored = True
-        elif "audio" in search_type and 'A' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for AudioBook")
-            ignored = True
-        elif "mag" in search_type and 'M' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Magazine")
-            ignored = True
-        elif "comic" in search_type and 'C' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Comic")
-            ignored = True
-        if not ignored:
-            logger.debug(f'Querying {provider}')
-            TELEMETRY.record_usage_data(f'Query/{provider}')
-            searchtype = 'ebook'
-            if 'audio' in search_type:
-                searchtype = 'audio'
-            if 'mag' in search_type:
-                searchtype = 'mag'
-            results, error = anna_search(book, searchtype)
-            if error:
-                # Confirmed quota failures are blocked inside anna_search.
-                # A stale remaining counter must not turn a transport/parser
-                # outage into an 18-hour download-quota block.
-                if not BLOCKHANDLER.is_blocked("annas-search"):
-                    BLOCKHANDLER.block_provider("annas-search", error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
-            else:
-                resultslist += results
-                providers += 1
-
-    prov = 'WEBSHARE'
-    if CONFIG[prov]:
-        iterateproviderslogger.debug(f"DLTYPES: {prov}: {CONFIG[prov]} {CONFIG[prov + '_DLTYPES']}")
-        provider = 'webshare'
-        ignored = False
-        if BLOCKHANDLER.is_blocked(provider):
-            logger.debug('webshare is BLOCKED')
-            ignored = True
-        elif search_type in ['book', 'shortbook', 'titlebook'] and                 'E' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for eBook")
-            ignored = True
-        elif "audio" in search_type and 'A' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for AudioBook")
-            ignored = True
-        elif "mag" in search_type and 'M' not in CONFIG[f"{prov}_DLTYPES"]:
-            logger.debug(f"Ignoring {prov} for Magazine")
-            ignored = True
-        elif "comic" in search_type:
-            logger.debug(f"Ignoring {prov} for Comic")
-            ignored = True
-        if not ignored:
-            logger.debug(f'Querying {provider}')
-            TELEMETRY.record_usage_data(f'Query/{prov}')
-            searchtype = 'ebook'
-            if 'audio' in search_type:
-                searchtype = 'audio'
-            if 'mag' in search_type:
-                searchtype = 'mag'
-            results, error = webshare_search(book, searchtype)
-            if error:
-                BLOCKHANDLER.block_provider(provider, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
-            else:
-                resultslist += results
-                providers += 1
+                BLOCKHANDLER.block_provider(source.name, error, delay=CONFIG.get_int('BLOCKLIST_TIMER'))
+        else:
+            resultslist += results
+            providers += 1
 
     return resultslist, providers
 
@@ -1018,7 +867,7 @@ def iterate_over_wishlists():
                 else:
                     providers += 1
                     logger.debug(f"[iterate_over_wishlists] - {provider_log_origin(provider['HOST'])}")
-                    resultslist += listopia(provider['HOST'], provider['NAME'],
+                    resultslist += listopia_scraper(provider['HOST'], provider['NAME'],
                                             provider.get_int('DLPRIORITY'), provider['DISPNAME'],
                                             provider['DLTYPES'], False, provider['LABEL'])
             elif wishtype == 'amazon':
@@ -1453,7 +1302,7 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
                    f"&contentId={book_cat.lower()}&elClass=book&dataType=html&catFilter=best-sellers"
                    f"&sortType=frontlistiest_onsale")
             # page of all the book
-            result, success = fetch_url(url)
+            result, success = fetch_url(url, impersonate='chrome')
             soup = BeautifulSoup(result, 'html5lib')
             titles = soup.find_all('div', {'class': 'title'})
             authors = soup.find_all('div', {'class': 'contributor'})
@@ -1492,6 +1341,68 @@ def penguinrandomhouse(host=None, feednr=None, priority=0, dispname=None, types=
     lazylibrarian.test_data = ''
     if test:
         return len(results)
+    return results
+
+
+def listopia_scraper(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
+    logger = logging.getLogger(__name__)
+    if not test:
+        TELEMETRY.record_usage_data('Wishlist/listopia_scraper')
+    if '/show/' in host:
+        provider = host.split('/show/')[1]
+    elif '/book/' in host:
+        provider = host.split('/book/')[1]
+    else:
+        provider = host
+
+    if not dispname:
+        dispname = provider
+    lazylibrarian.test_data = f'Querying {dispname}'
+    result, success = fetch_url(host, impersonate='chrome')
+    if not success:
+        logger.error(f'Error fetching data from {host}: {result}')
+        if not test:
+            BLOCKHANDLER.block_provider(host, result)
+    results = []
+    rows = []
+    if result:
+        soup = BeautifulSoup(result, "html5lib")
+        # Find all book rows in the Listopia table
+        rows = soup.select("table.tableList tr")
+
+    for row in rows:
+        title_tag = row.find("a", class_="bookTitle")
+        author_tag = row.find("a", class_="authorName")
+        if title_tag and author_tag:
+            title = title_tag.get_text(strip=True)
+            author = author_tag.get_text(strip=True)
+            raw_href = title_tag["href"].split("?")[0]
+            # Extract numeric Goodreads Book ID
+            if '/show/' in host:
+                id_match = re.search(r"/show/(\d+)", raw_href)
+            else:
+                id_match = re.search(r"/book/(\d+)", raw_href)
+            book_id = id_match.group(1) if id_match else ""
+            if book_id:
+                results.append({
+                    'rss_prov': provider,
+                    'rss_feed': feednr,
+                    'rss_title': title,
+                    'rss_author': author,
+                    'rss_bookid': book_id,
+                    'rss_isbn': '',
+                    'priority': priority,
+                    'dispname': dispname,
+                    'types': types,
+                    'label': label,
+                })
+    if test:
+        logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {host}")
+        lazylibrarian.test_data = ''
+        print(results)
+        return len(results)
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
+    lazylibrarian.test_data = ''
     return results
 
 
@@ -1671,91 +1582,184 @@ def mam(host=None, feednr=None, priority=0, dispname=None, types='E', test=False
     return results
 
 
+GR_REVIEW_PATTERN = re.compile(r'/review/show/(\d+)')
+GR_COVER_BOOKID_PATTERN = re.compile(r'/books/\d+[a-z]/(\d+)\.')
+
+
+def goodreads_widget_url(host: str, widget_id: str) -> tuple:
+    """
+    Goodreads stopped serving the shelf rss feeds (/review/list_rss/...) in October 2026.
+    Map a shelf rss feed or shelf page url to the public bookshelf widget of the same shelf.
+    Return (widget url, user id, shelf), raise ValueError if the url can't be read through the widget
+    """
+    url = host if str(host)[:4] == 'http' else f'https://{host}'
+    parsed = urlparse(url)
+    if parsed.path.startswith('/group/bookshelf/'):
+        raise ValueError('Goodreads no longer offers feeds for group bookshelves')
+    user = ''
+    for prefix in ('/review/list_rss/', '/review/list/'):
+        if parsed.path.startswith(prefix):
+            user = parsed.path[len(prefix):]
+            break
+    user_id = re.match(r'\d*', user).group()
+    if not user_id:
+        raise ValueError('No Goodreads user id in the url')
+    shelf = parse_qs(parsed.query).get('shelf', [''])[0]
+    # Without a shelf the widget gives the read shelf, and it gives no books for #ALL#
+    if not shelf or shelf.upper() == '#ALL#':
+        raise ValueError('The url needs a single shelf, such as ?shelf=to-read')
+    params = {
+        'shelf': shelf,
+        'num_books': 100,
+        'sort': 'date_added',
+        'order': 'd',
+        'show_author': 1,
+        'show_cover': 1,
+        'show_title': 1,
+        # Goodreads caches the widget per widget_id, a new one gets the current shelf
+        'widget_id': widget_id,
+    }
+    return f'https://www.goodreads.com/review/custom_widget/{user_id}?{urlencode(params)}', user_id, shelf
+
+
+def unescape_js_string(text: str) -> str:
+    """ Read a single quoted javascript string literal, stop at the closing quote """
+    escapes = {'n': '\n', 't': '\t', 'r': '\r', 'b': '\b', 'f': '\f', 'v': '\v'}
+    out = []
+    i = 0
+    while i < len(text):
+        c = text[i]
+        if c == "'":
+            return ''.join(out)
+        if c == '\\' and i + 1 < len(text):
+            nxt = text[i + 1]
+            if nxt == 'u':
+                code = int(text[i + 2:i + 6], 16)
+                i += 6
+                # characters outside the BMP come as a surrogate pair
+                if 0xD800 <= code < 0xDC00 and text[i:i + 2] == chr(92) + 'u':
+                    low = int(text[i + 2:i + 6], 16)
+                    code = 0x10000 + ((code - 0xD800) << 10) + (low - 0xDC00)
+                    i += 6
+                out.append(chr(code))
+                continue
+            if nxt == 'x':
+                out.append(chr(int(text[i + 2:i + 4], 16)))
+                i += 4
+                continue
+            out.append(escapes.get(nxt, nxt))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    raise ValueError('Unterminated widget_code string')
+
+
+def parse_goodreads_widget(content: str, shelf: str) -> list:
+    """
+    Parse the javascript of a Goodreads bookshelf widget,
+    return a list of dicts with title, author, bookid (from the cover, can be empty)
+    Raise ValueError if the widget is not a shelf, or a different shelf
+    """
+    if "var widget_code = '" not in content:
+        raise ValueError('No widget_code in the Goodreads widget')
+    code = unescape_js_string(content.split("var widget_code = '", 1)[1])
+    soup = BeautifulSoup(code, 'html.parser')
+
+    # Class names end with the widget_id, match on their prefix
+    def cls(name):
+        return re.compile(f'^gr_custom_{name}_')
+
+    header = soup.find(class_=cls('header'))
+    link = header.find('a') if header else None
+    if not link:
+        # e.g. an unknown user gives "This Goodreads widget is not correct."
+        raise ValueError(f"Unexpected Goodreads widget: {' '.join(soup.get_text().split())[:200]}")
+    header_shelf = parse_qs(urlparse(link.get('href', '')).query).get('shelf', [''])[0]
+    if header_shelf != shelf:
+        raise ValueError(f'Goodreads widget is for shelf [{header_shelf}] instead of [{shelf}]')
+
+    books = []
+    for each in soup.find_all(class_=cls('each_container')):
+        book = each.find(class_=cls('book_container'))
+        book_link = book.find('a') if book else None
+        if not book_link or not GR_REVIEW_PATTERN.search(book_link.get('href', '')):
+            continue
+        title = book_link.get('title', '')
+        if not title:
+            title_div = each.find(class_=cls('title'))
+            title = title_div.get_text() if title_div else ''
+        author_div = each.find(class_=cls('author'))
+        author_link = author_div.find('a') if author_div else None
+        author = author_link.get_text() if author_link else ''
+        # The widget has no book id, the cover image is named after the book
+        img = book.find('img')
+        match = GR_COVER_BOOKID_PATTERN.search(img.get('src', '')) if img else None
+        books.append({
+            'title': ' '.join(title.split()),
+            'author': ' '.join(author.split()),
+            'bookid': match.group(1) if match else '',
+        })
+    return books
+
+
 def goodreads(host=None, feednr=None, priority=0, dispname=None, types='E', test=False, label=''):
     """
-    Goodreads rss query function, return all the results in a list, can handle multiple wishlists
-    but expects goodreads format (looks for goodreads category names)
+    Goodreads shelf query function, return all the books on the shelf in a list.
+    The shelf rss feeds are gone, the shelf is read through the public bookshelf widget,
+    which gives the 100 most recently added books
     """
     logger = logging.getLogger(__name__)
     if not test:
         TELEMETRY.record_usage_data('Wishlist/goodreads')
     results = []
-    basehost = host
     if not dispname:
         dispname = host
-    if str(host)[:4] != "http":
-        host = f"http://{host}"
-
-    url = host
-    maxpage = priority
-    page = 1
-    next_page = True
 
     lazylibrarian.test_data = f'Querying {dispname}'
+    try:
+        url, user_id, shelf = goodreads_widget_url(host, f'll{int(time.time() * 1000)}')
+    except ValueError as e:
+        logger.error(f'Goodreads wishlist {dispname}: {e}')
+        lazylibrarian.test_data = ''
+        return 0 if test else results
 
-    while next_page:
-        if page > 1:
-            if '?' in host:
-                url = f"{host}&page={page}"
-            else:
-                url = f"{host}?page={page}"
+    result, success = fetch_url(url, impersonate='chrome')
+    books = []
+    if not success:
+        logger.error(f'Error fetching data from {host}: {result}')
+        if not test:
+            BLOCKHANDLER.block_provider(host, result)
+    else:
+        try:
+            books = parse_goodreads_widget(make_unicode(result), shelf)
+        except ValueError as e:
+            logger.error(f'Goodreads wishlist {dispname}: {e}')
 
-        result, success = fetch_url(url, impersonate='chrome')
-        next_page = False
+    provider = f"https://www.goodreads.com/review/list/{user_id}?{urlencode({'shelf': shelf})}"
+    logger.debug(f"Goodreads shelf {provider} returned {len(books)} {plural(len(books), 'result')}")
+    for book in books:
+        if book['title'] and book['author']:
+            results.append({
+                'rss_prov': provider,
+                'rss_feed': feednr,
+                'rss_title': book['title'],
+                'rss_author': book['author'],
+                'rss_bookid': book['bookid'],
+                'rss_isbn': '',
+                'priority': priority,
+                'dispname': dispname,
+                'types': types,
+                'label': label,
+            })
+    if len(books) >= 100:
+        logger.warning(f'Goodreads wishlist {dispname}: only the 100 most recently added books are available')
 
-        if success:
-            data = feedparser.parse(result)
-        else:
-            logger.error(f'Error fetching data from {provider_log_origin(host)}: {provider_error_category(result)}')
-            if not test:
-                BLOCKHANDLER.block_provider(basehost, result)
-            data = None
-
-        if data:
-            logger.debug(f'Parsing results from {provider_log_origin(url)}')
-            provider = data['feed']['link']
-            if not dispname:
-                dispname = provider
-            logger.debug(f"rss {provider_log_origin(provider)} returned {len(data.entries)} {plural(len(data.entries), 'result')}")
-            for post in data.entries:
-                title = ''
-                book_id = ''
-                author_name = ''
-                isbn = ''
-                if 'title' in post:
-                    title = post.title
-                if 'book_id' in post:
-                    book_id = post.book_id
-                if 'author_name' in post:
-                    author_name = post.author_name
-                if 'isbn' in post:
-                    isbn = post.isbn
-                if title and author_name:
-                    results.append({
-                        'rss_prov': provider,
-                        'rss_feed': feednr,
-                        'rss_title': title,
-                        'rss_author': author_name,
-                        'rss_bookid': book_id,
-                        'rss_isbn': isbn,
-                        'priority': priority,
-                        'dispname': dispname,
-                        'types': types,
-                        'label': label,
-                    })
-                    next_page = True
-        if test:
-            logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
-            lazylibrarian.test_data = ''
-            return len(results)
-
-        page += 1
-        if maxpage and page > maxpage:
-            logger.warning('Maximum results page reached, still more results available')
-            next_page = False
-
-    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider_log_origin(host)}")
     lazylibrarian.test_data = ''
+    if test:
+        logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {host}")
+        return len(results)
+    logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {host}")
     return results
 
 
@@ -1887,7 +1891,7 @@ def cancel_search_type(search_type: str, error_msg: str, provider: ConfigDict, e
 
         match = (200 <= errorcode < 300)  # 200-299 are API call specific error codes
 
-        if not match:
+        if not match or errorcode == 202:  # drunkenslug returns 202 no such function
             errorlist = ['no such function', 'unknown parameter', 'unknown function', 'bad_gateway',
                          'bad request', 'bad_request', 'incorrect parameter', 'does not support', 'validation failed']
 
@@ -1957,7 +1961,9 @@ def newznab_plus(book: dict, provider: ConfigDict, search_type: str, search_mode
 
     rootxml = None
     logger.debug(f"URL = {provider_log_origin(url)}")
-    result, success = fetch_url(url, raw=True)
+    # its own Timeout (0 uses the general one), for a slow indexer such as one behind FlareSolverr
+    timeout = provider.get_int('TIMEOUT') if 'TIMEOUT' in provider else 0
+    result, success = fetch_url(url, raw=True, impersonate='chrome', timeout=timeout if timeout > 0 else True)
 
     if test:
         try:
@@ -2097,12 +2103,15 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
     params = None
     if search_type in ["book", "shortbook", 'titlebook']:
         authorname, bookname = get_searchterm(book, search_type)
+        if search_type == 'titlebook':
+            authorname = ''
         if provider['BOOKSEARCH'] and provider['BOOKCAT']:  # if specific booksearch, use it
             if provider['BOOKSEARCH'] == 'bibliotik':
                 params = {
                     "t": provider['GENERALSEARCH'],
                     "apikey": api_key,
-                    "q": (f"@title {bookname} @authors {authorname}").encode(),
+                    "q": (f"@title {bookname} @authors {authorname}" if authorname else
+                          f"@title {bookname}").encode(),
                     "cat": provider['BOOKCAT']
                 }
             else:
@@ -2110,14 +2119,15 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
                     "t": provider['BOOKSEARCH'],
                     "apikey": api_key,
                     "title": bookname.encode("utf-8"),
-                    "author": authorname.encode("utf-8"),
                     "cat": provider['BOOKCAT']
                 }
+                if authorname:
+                    params["author"] = authorname.encode("utf-8")
         elif provider['GENERALSEARCH'] and provider['BOOKCAT']:  # if not, try general search
             params = {
                 "t": provider['GENERALSEARCH'],
                 "apikey": api_key,
-                "q": (f"{authorname} {bookname}").encode(),
+                "q": (f"{authorname} {bookname}".strip()).encode(),
                 "cat": provider['BOOKCAT']
             }
     elif search_type in ["audio", "shortaudio"]:
@@ -2185,7 +2195,7 @@ def return_search_structure(provider: ConfigDict, api_key, book, search_type, se
         logger.debug(f'{search_mode} Search parameter count: {len(params)}')
     else:
         logger.debug(f'{search_mode} No matching search parameters for {search_type}')
-
+        logger.debug(dict(provider))
     return params
 
 

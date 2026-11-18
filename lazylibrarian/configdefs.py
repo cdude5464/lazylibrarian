@@ -25,6 +25,7 @@ from lazylibrarian.configtypes import (
 )
 from lazylibrarian.formatter import ImportPrefs
 from lazylibrarian.logconfig import LogConfig
+from lazylibrarian.sources.registry import direct_config_items
 
 BASE_DEFAULTS: list[ConfigItem] = [
     ConfigURL('General', 'OL_URL', 'https://www.openlibrary.org'),
@@ -62,11 +63,22 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('General', 'PRIORITY_WEIGHT', 0),
     ConfigInt('General', 'DISPLAYLENGTH', 10),
     ConfigInt('General', 'HIST_REFRESH', 1000),
+    ConfigInt('General', 'DL_PROGRESS_LIMIT', 10),  # downloads that get a live % in the modern downloads panel, 0 for none
     ConfigBool('General', 'NO_IPV6', 0),
     ConfigStr('General', 'BOOKSTRAP_THEME', 'slate'),
     ConfigStr('General', 'MODERN_ACCENT', ''),  # accent colour of the modern interface (#rrggbb), empty is the default
     ConfigStr('General', 'UI_LANGUAGE', 'auto'),  # 'auto' follows the browser's Accept-Language, or a code like 'en'
     ConfigStr('General', 'NOTIFY_LANGUAGE', ''),  # empty uses UI_LANGUAGE, or the language last shown when 'auto'
+    # optional links to other services in the menu, an empty address hides the link, see menulinks.py
+    ConfigBool('MenuLinks', 'MENU_LINKS', 1),
+    ConfigStr('MenuLinks', 'LINK_AUDIOBOOKSHELF_URL', ''),
+    ConfigStr('MenuLinks', 'LINK_CALIBRE_URL', ''),
+    ConfigStr('MenuLinks', 'LINK_CALIBRE_NAME', ''),
+    ConfigStr('MenuLinks', 'LINK_DOWNLOADS_URL', ''),
+    ConfigStr('MenuLinks', 'LINK_CUSTOM_URL', ''),
+    ConfigStr('MenuLinks', 'LINK_CUSTOM_NAME', ''),
+    ConfigStr('MenuLinks', 'LINK_CUSTOM_PAGE', 'history'),  # books, audio, history or logs: the page whose "..." menu has it
+    ConfigBool('General', 'SETUP_WIZARD_DONE', 0),  # the setup wizard was finished or dismissed
     ConfigBool('General', 'SERIES_TAB', 1),
     ConfigBool('General', 'AUDIO_TAB', 1),
     ConfigBool('General', 'EBOOK_TAB', 1),
@@ -79,6 +91,8 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigBool('General', 'IGNORE_PAUSED', 0),
     ConfigBool('General', 'LAUNCH_BROWSER', 1),
     ConfigCSV('General', 'NAME_POSTFIX', 'snr, jnr, jr, sr, phd', force_lower=True),
+    # titles written before the name, like Dr. or Ing., go after the forenames when showing surname first
+    ConfigCSV('General', 'NAME_PREFIX', 'mr, mrs, ms, dr, prof, sir, dame, rev', force_lower=True),
     ConfigCSV('General', 'NAME_DEFINITE', 'the, a', force_lower=True),
     ConfigCSV('General', 'MULTI_AUTHOR_SPLIT', 'and, und, with', force_lower=True),
     ConfigBool('General', 'GOOGLE_TRANS_ID', 1),
@@ -330,37 +344,6 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('TDL', 'TDL_DLPRIORITY', 0),
     ConfigDownloadTypes('TDL', 'TDL_DLTYPES', 'A,E,M'),
     ConfigInt('TDL', 'TDL_SEEDERS', 0),
-    ConfigStr('BOK', 'BOK_HOST', 'b-ok.cc'),
-    ConfigStr('BOK', 'BOK_PASS', ''),
-    ConfigStr('BOK', 'BOK_EMAIL', ''),
-    ConfigStr('BOK', 'BOK_REMIX_USERID', ''),
-    ConfigStr('BOK', 'BOK_REMIX_USERKEY', ''),
-    ConfigCSV('BOK', 'BOK_SEARCH_LANG', ''),  # comma separated language names, ANY, or empty to use IMP_PREFLANG
-    ConfigBool('BOK', 'BOK', 0),
-    ConfigInt('BOK', 'BOK_DLPRIORITY', 0),
-    ConfigInt('BOK', 'BOK_DLLIMIT', 5),
-    ConfigDownloadTypes('BOK', 'BOK_DLTYPES', 'E'),
-    ConfigStr('SLSK', 'SLSK_HOST', 'http://localhost:5030'),
-    ConfigStr('SLSK', 'SLSK_API', ''),
-    ConfigStr('SLSK', 'SLSK_URLBASE', '/'),
-    ConfigBool('SLSK', 'SLSK', 0),
-    ConfigInt('SLSK', 'SLSK_DLPRIORITY', 0),
-    ConfigStr('SLSK', 'SLSK_REMOTE', ''),
-    ConfigStr('SLSK', 'SLSK_LOCAL', ''),
-    ConfigDownloadTypes('SLSK', 'SLSK_DLTYPES', 'E'),
-    ConfigStr('ANNA', 'ANNA_HOST', 'https://annas-archive.org'),
-    ConfigStr('ANNA', 'ANNA_KEY', ''),
-    ConfigBool('ANNA', 'ANNA', 0),
-    ConfigInt('ANNA', 'ANNA_DLPRIORITY', 0),
-    ConfigInt('ANNA', 'ANNA_DLLIMIT', 0),
-    ConfigInt('ANNA', 'ANNA_MAX_SERVERS', 1),
-    ConfigStr('ANNA', 'ANNA_SEARCH_LANG', ''),  # comma separated upper case 2 letter language codes, ANY, or empty to use IMP_PREFLANG
-    ConfigDownloadTypes('ANNA', 'ANNA_DLTYPES', 'E'),
-    ConfigStr('WEBSHARE', 'WEBSHARE_USER', ''),
-    ConfigStr('WEBSHARE', 'WEBSHARE_PASS', ''),
-    ConfigBool('WEBSHARE', 'WEBSHARE', 0),
-    ConfigInt('WEBSHARE', 'WEBSHARE_DLPRIORITY', 0),
-    ConfigDownloadTypes('WEBSHARE', 'WEBSHARE_DLTYPES', 'E'),
     ConfigStr('LIME', 'LIME_HOST', 'https://www.limetorrents.cc'),
     ConfigBool('LIME', 'LIME', 0),
     ConfigInt('LIME', 'LIME_DLPRIORITY', 0),
@@ -612,6 +595,9 @@ BASE_DEFAULTS: list[ConfigItem] = [
     ConfigInt('Testing', 'Unpersisted_test', 2, persist=False)
 ]
 
+# the config items of the direct providers come from the registry
+BASE_DEFAULTS.extend(direct_config_items())
+
 # (Sectionname, SectionNameTemplate, [Items])
 DefaultArrayDef = tuple[str, str, list[ConfigItem]]
 
@@ -639,6 +625,7 @@ ARRAY_DEFS: dict[str, DefaultArrayDef] = {
         ConfigInt('', "RATELIMIT", 0),
         ConfigInt('', "DLPRIORITY", 0),
         ConfigDownloadTypes('', "DLTYPES", 'A,E,M'),
+        ConfigInt('', "TIMEOUT", 0),  # seconds, 0 uses HTTP_TIMEOUT
         ConfigInt('', "LASTUSED", 0),
     ]),
     'TORZNAB': ('HOST', 'Torznab_%s', [
@@ -667,6 +654,7 @@ ARRAY_DEFS: dict[str, DefaultArrayDef] = {
         ConfigInt('', "SEEDERS", 0),
         ConfigFloat('', "SEED_RATIO", 0),
         ConfigInt('', "SEED_DURATION", 0),
+        ConfigInt('', "TIMEOUT", 0),  # seconds, 0 uses HTTP_TIMEOUT
         ConfigInt('', "LASTUSED", 0),
     ]),
     'RSS': ('HOST', 'RSS_%s', [

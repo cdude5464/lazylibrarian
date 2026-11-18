@@ -31,26 +31,30 @@
 </style>
 </%def>
 <%def name="body()">
+<%
+    from lazylibrarian.menulinks import menu_links
+    ext_links = menu_links(perm, ['LINK_DOWNLOADER', 'LINK_PROWLARR'], 'logs')
+%>
 <div x-data="llLogs" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm llg-filter">
       <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
-      <input type="search" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+      <input type="search" class="form-control " x-model.debounce.300ms="q"
              placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+      <select class="form-select form-select-sm rounded-end-pill flex-grow-0 w-auto border-start-0" style="max-width: 9.5rem; background-color: var(--bs-secondary-bg); font-weight: 600" x-model="level" aria-label="${_('Level') | h}">
+        <option value="">${_('All levels')}</option>
+        <option value="INFO">${_('Info and above')}</option>
+        <option value="WARNING">${_('Warnings and errors')}</option>
+        <option value="ERROR">${_('Errors only')}</option>
+      </select>
     </div>
-    <select class="form-select form-select-sm w-auto rounded-pill" x-model="level" aria-label="${_('Level') | h}">
-      <option value="">${_('All levels')}</option>
-      <option value="INFO">${_('Info and above')}</option>
-      <option value="WARNING">${_('Warnings and errors')}</option>
-      <option value="ERROR">${_('Errors only')}</option>
-    </select>
-    <select class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
-      <option value="desc">${_('Newest')}</option>
-      <option value="asc">${_('Oldest')}</option>
-    </select>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="sort = sort === 'desc' ? 'asc' : 'desc'"
+            :title="sort === 'desc' ? T.newest : T.oldest" :aria-label="sort === 'desc' ? T.newest : T.oldest">
+      <i class="fa fa-fw" :class="sort === 'desc' ? 'fa-sort-amount-down' : 'fa-sort-amount-up'" aria-hidden="true"></i>
+    </button>
     <select class="form-select form-select-sm w-auto rounded-pill" x-model.number="refresh" aria-label="${_('Refresh rate') | h}">
       <option value="0">${_('No Refresh')}</option>
       <option value="5">${_('5 Seconds')}</option>
@@ -60,10 +64,14 @@
     </select>
     <button type="button" class="btn btn-sm rounded-pill" :class="details ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="details"
             @click="details = !details" title="${_('Thread, file and line') | h}"><i class="fa fa-list-ul" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('Details')}</span></button>
-    <div class="dropdown">
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
+        ${self.ext_link_items(ext_links, False)}
+        %if ext_links:
+        <li><hr class="dropdown-divider"></li>
+        %endif
         <li><button type="button" class="dropdown-item" @click="run('clear_log', false)"><i class="fa fa-broom fa-fw me-2" aria-hidden="true"></i>${_('Clear screen Log')}</button></li>
         <li><button type="button" class="dropdown-item text-danger" @click="run('delete_logs', true)"><i class="fa fa-times fa-fw me-2" aria-hidden="true"></i>${_('Delete Log Files')}</button></li>
         %if CONFIG.get_bool('LOGFILEREDACT'):
@@ -101,7 +109,7 @@ document.addEventListener('alpine:init', function () {
   var PAGE = 100;
   var T = {
     allShown: ${_js('That is all')}, failed: ${_js('Something went wrong, try again')}, done: ${_js('Done')},
-    confirmDelete: ${_js('Delete the log files on disk?')},
+    confirmDelete: ${_js('Delete the log files on disk?')}, newest: ${_js('Newest')}, oldest: ${_js('Oldest')},
     lines: ${_jsn('%(count)s line', '%(count)s lines')}
   };
   var seq = 0;

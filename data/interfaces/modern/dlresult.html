@@ -1,0 +1,76 @@
+<%inherit file="modern_base.html" />
+<%!
+    import re
+    import lazylibrarian
+    page_id = 'dlresult'
+%>
+<%def name="headIncludes()">
+<style>
+  .lld { max-width: 640px; margin: 2rem auto 0; }
+  .lld pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: .85rem; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_status = bool(perm & lazylibrarian.perm_status)
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def plain(s):
+        return re.sub(r'<br\s*/?>', '\n', str(s or ''))
+%>
+<div class="lld card shadow-sm" x-data="llDlResult">
+  <div class="card-body">
+    <h1 class="h5 card-title mb-3">${title | h}</h1>
+    <pre class="bg-body-tertiary rounded p-3"><strong>${plain(prefix) | h}</strong> ${plain(message) | h}</pre>
+  </div>
+  <div class="card-footer bg-transparent border-0 d-flex flex-wrap gap-2 pb-3">
+    %if can_status and rowid:
+    <button type="button" class="btn btn-sm btn-outline-warning rounded-pill" :disabled="busy" @click="act('markhistory', T.markedFailed)">${_('Mark Failed')}</button>
+    %endif
+    %if can_edit and rowid:
+    <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" :disabled="busy" @click="remove()">${_('Delete')}</button>
+    %endif
+    <span class="flex-grow-1"></span>
+    <button type="button" class="btn btn-ll rounded-pill px-4" onclick="window.history.back()" autofocus>${_('Close')}</button>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var ROWID = ${js(str(rowid or ''))};
+  var T = {
+    failed: ${_js('Something went wrong, try again')}, markedFailed: ${_js('Marked Failed')}, deleted: ${_js('Deleted')},
+    confirmDelete: ${_js('Delete this history entry?')}
+  };
+  Alpine.data('llDlResult', function () {
+    return {
+      T: T, busy: false, toastText: '',
+      act: function (url, done) {
+        var self = this;
+        this.busy = true;
+        fetch(url + '?rowid=' + encodeURIComponent(ROWID), {credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            self.toast(done);
+            setTimeout(function () { window.history.back(); }, 900);
+          })
+          .catch(function () { self.busy = false; self.toast(T.failed); });
+      },
+      remove: function () {
+        if (window.confirm(T.confirmDelete)) { this.act('deletehistory', T.deleted); }
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

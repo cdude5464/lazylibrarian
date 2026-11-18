@@ -545,6 +545,8 @@ def parse_result(raw_content: Tag) -> SearchResult | None:
 def annas_download(md5, folder, title, extn, domain_index=0):
     logger = logging.getLogger(__name__)
     downloadlogger = logging.getLogger('special.dlcomms')
+    if not CONFIG['ANNA_KEY']:
+        return False, 'Anna individual-file API key is not configured'
     params = {'md5': md5, 'key': CONFIG['ANNA_KEY']}
     if domain_index:
         params['domain_index'] = domain_index

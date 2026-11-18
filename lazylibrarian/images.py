@@ -45,7 +45,6 @@ from lazylibrarian.filesystem import (
 from lazylibrarian.formatter import (
     check_int,
     get_list,
-    is_valid_type,
     make_unicode,
     make_utf8bytes,
     plural,
@@ -1028,13 +1027,6 @@ def shrink_mag(issuefile, dpi=0):
 
 def create_mag_cover(issuefile=None, refresh=False, pagenum=1):
     logger = logging.getLogger(__name__)
-    if is_valid_type(issuefile, extensions=get_list(CONFIG['MAG_TYPE'])) and (not CONFIG.get_bool('IMP_MAGCOVER')
-                                                                              or not pagenum):
-        logger.warning(f'No cover required for {issuefile}')
-        return ''
-    if is_valid_type(issuefile, extensions=get_list(CONFIG['COMIC_TYPE'])) and not CONFIG.get_bool('IMP_COMICCOVER'):
-        logger.warning(f'No cover required for {issuefile}')
-        return ''
     if not issuefile or not path_isfile(issuefile):
         logger.warning(f'No issuefile {issuefile}')
         return ''

@@ -8,7 +8,10 @@
 <%def name="headIncludes()">
 ${bk.headIncludes()}
 <style>
-  .llmg-row .llb-dates { grid-area: dates; font-size: .72rem; color: var(--bs-secondary-color); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .llmg-row .llb-dates { font-size: .72rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .llb-v-grid .llmg-row .llb-dates { margin-top: auto; padding-top: .25rem; }
+  .llb-v-compact .llmg-row .llb-dates { display: none; }
+  .llb-v-list .llmg-row .llb-dates { grid-area: dates; text-align: right; overflow: visible; }
   .llb-v-list .llmg-row { grid-template-columns: 28px minmax(0, max-content) minmax(0, 1fr) auto !important;
                           grid-template-areas: "cover title title dates" "cover author series dates" !important; }
   @media (max-width: 480px) {
@@ -26,20 +29,14 @@ ${bk.headIncludes()}
     ebook_on = CONFIG.get_int('EBOOK_TAB') > 0
     audio_on = CONFIG.get_int('AUDIO_TAB') > 0
     status_now = whichStatus or 'Wanted'
+    lib_icon = {'eBook': 'fa-book', 'AudioBook': 'fa-headphones'}
     chips = [(s, status_label(s)) for s in ['All', 'Wanted', 'Snatched', 'Open', 'Have', 'Skipped', 'Ignored']]
     if CONFIG['USER_ACCOUNTS']:
         chips += [('ToRead', _('To Read')), ('Reading', _('Reading')), ('Read', _('Read')), ('Abandoned', _('Abandoned'))]
+    # status marks: with both libraries on, pills choose eBook, audiobook or both (see fmtAction in the script)
+    both_on = ebook_on and audio_on
+    marks = [] if status_now == 'Snatched' else ['Wanted', 'Have', 'Skipped', 'Ignored']
     actions = []
-    if status_now != 'Wanted':
-        if ebook_on:
-            actions.append(('WantEbook', _('eBook Wanted')))
-        if audio_on:
-            actions.append(('WantAudio', _('Audio Wanted')))
-    if status_now not in ('Wanted', 'Snatched') and ebook_on and audio_on:
-        actions.append(('WantBoth', _('both Wanted')))
-    if status_now != 'Snatched':
-        for s in ['Skipped', 'Have', 'Ignored']:
-            actions.append((s, status_label(s)))
     if CONFIG['USER_ACCOUNTS']:
         actions += [('Unread', _('Unread')), ('Read', _('Read')), ('ToRead', _('To Read')), ('Reading', _('Reading')), ('Abandoned', _('Abandoned'))]
     if CONFIG['DELAYSEARCH']:
@@ -48,38 +45,81 @@ ${bk.headIncludes()}
 %>
 <div x-data="llManage" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm llb-search">
       <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
-      <input type="search" id="llmg-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+      <input type="search" id="llmg-q" class="form-control " x-model.debounce.300ms="q"
              placeholder="${_('Filter books') | h}" autocomplete="off" aria-label="${_('Filter books') | h}">
+      %if len(types) > 1 and perm&lazylibrarian.perm_audio:
+      <%
+        _next_lib = types[(types.index(library) + 1) % len(types)] if library in types else types[0]
+      %>
+      <a style="min-width: 3.25rem" class="btn btn-sm btn-secondary px-3" href="manage?whichStatus=${status_now | u}&library=${_next_lib | u}"
+         title="${_('Switch to') | h} ${status_label(_next_lib) | h}" aria-label="${_('Switch to') | h} ${status_label(_next_lib) | h}">
+        <i class="fa ${lib_icon.get(library, 'fa-book')}" aria-hidden="true"></i><span class="d-none d-sm-inline"> ${status_label(library)}</span></a>
+      %endif
+      <div class="dropdown llb-status">
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-end-pill border-start-0" data-bs-toggle="dropdown" aria-expanded="false"
+                title="${_('Status') | h}" aria-label="${_('Status') | h}">
+          <i class="fa fa-tasks" aria-hidden="true"></i> ${dict(chips).get(status_now, status_label(status_now))}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          %for st, label in chips:
+          <li><a class="dropdown-item ${'active' if st == status_now else ''}" href="manage?whichStatus=${st | u}&library=${library | u}">${label}</a></li>
+          %endfor
+        </ul>
+      </div>
     </div>
     <select id="llmg-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
       <option value="2:asc">${_('Author')}</option>
       <option value="3:asc">${_('Title')}</option>
       <option value="6:desc">${_('Released')}</option>
       <option value="7:desc">${_('Listed')}</option>
+      <option value="15:desc">${_('Last Search')}</option>
     </select>
-    %if len(types) > 1 and perm&lazylibrarian.perm_audio:
-    <select class="form-select form-select-sm w-auto rounded-pill" aria-label="${_('Library') | h}"
-            onchange="window.location = 'manage?whichStatus=${status_now | u}&library=' + this.value">
-      %for t in types:
-      <option value="${t}" ${'selected' if t == library else ''}>${status_label(t)}</option>
-      %endfor
-    </select>
-    %endif
+    <div class="dropdown llb-views">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('View') | h}" aria-label="${_('View') | h}">
+        <i class="fa" :class="(views.find(function (v) { return v.id === view; }) || views[0]).icon" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <template x-for="v in views" :key="v.id">
+          <li><button type="button" class="dropdown-item" :class="view === v.id && 'active'" @click="setView(v.id)">
+            <i class="fa fa-fw me-2" :class="v.icon" aria-hidden="true"></i><span x-text="v.label"></span>
+          </button></li>
+        </template>
+      </ul>
+    </div>
     %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" x-show="selecting" x-cloak @click="selectAll()">${_('Select all')}</button>
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
             x-text="selecting ? T.done : T.select"></button>
+    <div class="dropdown dropup ll-selmenu" x-show="selecting" x-cloak>
+      <button type="button" class="btn btn-sm btn-ll rounded-pill dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+              x-text="llNgettext(T.selected, selCount)"></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if perm&lazylibrarian.perm_status and marks:
+        %if both_on:
+        <li><button type="button" class="dropdown-item" :class="fmt.eBook && 'active'" @click.stop="toggleFmt('eBook')"><i class="fa fa-book fa-fw me-2" aria-hidden="true"></i>${_('eBook')}</button></li>
+        <li><button type="button" class="dropdown-item" :class="fmt.AudioBook && 'active'" @click.stop="toggleFmt('AudioBook')"><i class="fa fa-headphones fa-fw me-2" aria-hidden="true"></i>${_('AudioBook')}</button></li>
+        <li><hr class="dropdown-divider"></li>
+        %endif
+        %for st in marks:
+        <li><button type="button" class="dropdown-item" @click="bulk(fmtAction('${st}'))">${status_label(st)}</button></li>
+        %endfor
+        %endif
+        %for code, label in actions:
+        <li><button type="button" class="dropdown-item" @click="bulk('${code}')">${label}</button></li>
+        %endfor
+      </ul>
+    </div>
     %endif
     %if perm&lazylibrarian.perm_force:
-    <div class="dropdown">
-      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false">
-        <i class="fa fa-cogs" aria-hidden="true"></i> ${_('Tools')}
-      </button>
+    <div class="dropdown ll-top">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
         %if library != 'AudioBook':
         <li><a class="dropdown-item" href="import_alternate"><i class="fa fa-book fa-fw me-2" aria-hidden="true"></i>${_('Import eBooks')}</a></li>
@@ -109,20 +149,17 @@ ${bk.headIncludes()}
     %endif
   </div>
 
-  <div class="d-flex gap-2 llmg-chips pb-1 mb-3" role="group" aria-label="${_('Status') | h}">
-    %for st, label in chips:
-    <a class="btn btn-sm rounded-pill text-nowrap ${'btn-secondary' if st == status_now else 'btn-outline-secondary'}"
-       href="manage?whichStatus=${st | u}&library=${library | u}" ${'aria-current="true"' if st == status_now else ''}>${label}</a>
-    %endfor
-  </div>
-
-  <div class="llb-grid llb-v-list">
+  <div class="llb-grid" :class="'llb-v-' + view">
     <template x-for="b in books" :key="b.id">
-      <article class="llb-card llmg-row" :class="sel[b.id] && 'llb-sel'" tabindex="0"
+      <article class="llb-card llmg-row d-flex flex-column gap-1" :class="sel[b.id] && 'llb-sel'" tabindex="0"
                @click="open(b, $event)" @keydown.enter.prevent="open(b, $event)" @keydown.space.prevent="open(b, $event)">
         <div class="llb-cover">
           <template x-if="b.cover"><img loading="lazy" :src="b.cover" alt=""></template>
-          <template x-if="!b.cover"><div class="llb-gen" :style="'background:hsl(' + b.hue + ' 38% 32%)'"><span></span></div></template>
+          <template x-if="!b.cover">
+            <div class="llb-gen" :style="'background:hsl(' + b.hue + ' 38% 32%)'">
+              <span class="llb-ca" x-text="b.author"></span><span class="llb-ct" x-text="b.title"></span>
+            </div>
+          </template>
           <span class="llb-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
         </div>
         <span class="llb-title" :title="b.title" x-text="b.title"></span>
@@ -138,7 +175,9 @@ ${bk.headIncludes()}
         </template>
         <div class="llb-dates">
           <div x-text="b.date"></div>
+          <div x-show="b.found.length" class="d-flex flex-wrap gap-1"><template x-for="fp in b.found" :key="fp.lib + fp.name"><span class="badge rounded-pill ll-found" :title="fp.tip"><i class="fa fa-exclamation-triangle me-1" aria-hidden="true"></i><span x-text="fp.name"></span></span></template></div>
           <div x-show="b.listed" :title="T.listed" x-text="b.listed"></div>
+          <div x-show="sort === '15:desc' && b.lastSearch" :title="T.lastSearch"><i class="fa fa-search me-1" aria-hidden="true"></i><span x-text="b.lastSearch"></span></div>
           %if show_delay:
           <div class="llmg-delay" x-show="b.delay && b.delay !== '0'" :title="T.lastSearch + ' ' + b.lastSearch"><i class="fa fa-clock me-1" aria-hidden="true"></i><span x-text="b.delay"></span></div>
           %endif
@@ -152,15 +191,6 @@ ${bk.headIncludes()}
   </div>
   <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && books.length ? T.allShown : ''"></div>
 
-  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
-  <div class="llb-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llb-bar-hidden'" role="region" aria-label="${_('Selected books') | h}">
-    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
-    %for code, label in actions:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('${code}')">${label}</button>
-    %endfor
-    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
-  </div>
-  %endif
 
   <div class="modal fade" id="llmg-result" tabindex="-1" aria-labelledby="llmg-result-title" aria-hidden="true" x-ref="resultModal">
     <div class="modal-dialog modal-dialog-centered modal-lg modal-dialog-scrollable"><div class="modal-content">
@@ -169,7 +199,7 @@ ${bk.headIncludes()}
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}" x-show="!resultBusy"></button>
       </div>
       <div class="modal-body">
-        <div class="d-flex align-items-center gap-2" x-show="resultBusy"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span>${_('Processing...')}</div>
+        <div x-show="resultBusy"><div class="d-flex align-items-center gap-2"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span>${_('Processing...')}</div></div>
         <div class="llmg-out" x-show="!resultBusy" x-text="resultText"></div>
       </div>
       <div class="modal-footer" x-show="!resultBusy">
@@ -196,6 +226,7 @@ document.addEventListener('alpine:init', function () {
   window.LIB = LIB;
   var QUERY = 'source=Manage&whichStatus=' + encodeURIComponent(${js(whichStatus or 'Wanted')}) + '&library=' + encodeURIComponent(LIB);
   var T = {
+    grid: ${_js('Covers')}, compact: ${_js('Compact')}, list: ${_js('List')},
     select: ${_js('Select')}, done: ${_js('Done')}, allShown: ${_js('That is all')}, listed: ${_js('Listed')}, lastSearch: ${_js('Last Search')},
     pickFirst: ${_js('Select at least one book first')}, failed: ${_js('Something went wrong, try again')},
     hcTitle: ${_js('HardCover Sync Result')}, hcConfirm: ${_js('HardCover Sync Confirmation Required')},
@@ -217,7 +248,7 @@ document.addEventListener('alpine:init', function () {
     var listed = r[10] && r[10] !== 'null' ? r[10] : '';
     return {
       id: String(r[9]), title: title, author: r[2] || '', authorId: r[8], date: r[6] || '', listed: listed, series: series,
-      delay: r[14] || '', lastSearch: r[15] || '', cover: (img && !/nocover|no_cover|nophoto/i.test(img)) ? img : '', hue: hue(title)
+      delay: r[14] || '', lastSearch: r[15] || '', found: llFound(r, LIB, r[11]), cover: (img && !/nocover|no_cover|nophoto/i.test(img)) ? img : '', hue: hue(title)
     };
   }
   function textOf(html) { var t = document.createElement('div'); t.innerHTML = html || ''; return t.textContent; }
@@ -225,12 +256,16 @@ document.addEventListener('alpine:init', function () {
   Alpine.data('llManage', function () {
     return {
       T: T, books: [], total: 0, start_: 0, loading: false, done: false, gen: 0,
-      q: '', sort: '2:asc', selecting: false, sel: {}, toastText: '',
-      resultTitle: '', resultText: '', resultBusy: false, resultButtons: [],
+      q: '', sort: '2:asc', selecting: false, sel: {}, toastText: '', fmt: {eBook: LIB !== 'AudioBook', AudioBook: LIB === 'AudioBook'},
+      resultTitle: '', resultText: '', resultBusy: false, resultButtons: [], view: 'list',
+      views: [{id: 'grid', icon: 'fa-th-large', label: T.grid}, {id: 'compact', icon: 'fa-th', label: T.compact},
+              {id: 'list', icon: 'fa-list', label: T.list}],
       get countText() { return this.total || this.done ? llNgettext(T.books, this.total) : ''; },
       get selCount() { return Object.keys(this.sel).length; },
       start: function () {
         var self = this;
+        // its own key: the manage page keeps the list view unless changed here
+        try { var v = localStorage.getItem('llmg-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('llmg-manage') || 'null');
           if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
@@ -280,10 +315,32 @@ document.addEventListener('alpine:init', function () {
         if (e.target.closest('a')) { return; }
         bookinfo(b.id, LIB);
       },
+      setView: function (v) {
+        this.view = v;
+        try { localStorage.setItem('llmg-view', v); } catch (e) {}
+        var self = this;
+        // a smaller view can leave the end of the list on screen, so fetch more if needed
+        this.$nextTick(function () {
+          if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
+        });
+      },
       selectAll: function () {
         var all = {};
         this.books.forEach(function (b) { all[b.id] = true; });
         this.sel = all;
+      },
+      // at least one library stays chosen, clicking the only one switches to the other
+      toggleFmt: function (lib) {
+        var other = lib === 'eBook' ? 'AudioBook' : 'eBook';
+        this.fmt[lib] = !this.fmt[lib];
+        if (!this.fmt[lib] && !this.fmt[other]) { this.fmt[other] = true; }
+      },
+      // mark_books_ajax names: WantEbook / HaveAudio / SkipBoth ..., the plain name for this page's library alone
+      fmtAction: function (st) {
+        var e = this.fmt.eBook, a = this.fmt.AudioBook;
+        if (e === (LIB !== 'AudioBook') && a === (LIB === 'AudioBook')) { return st; }
+        var stem = {Wanted: 'Want', Have: 'Have', Skipped: 'Skip', Ignored: 'Ignore'}[st];
+        return stem + (e && a ? 'Both' : (a ? 'Audio' : 'Ebook'));
       },
       stopSelect: function () { this.selecting = false; this.sel = {}; },
       bulk: function (action) {

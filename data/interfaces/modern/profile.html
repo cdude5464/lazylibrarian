@@ -1,0 +1,198 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    page_id = 'profile'
+%>
+<%def name="headIncludes()">
+<style>
+  .llp-wrap { max-width: 720px; margin: 0 auto; }
+  .llp-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 16px; padding: 1.25rem; background: var(--bs-body-bg); }
+  @media (max-width: 575.98px) { .llp-card { padding: 1rem; border-radius: 12px; } }
+  .llp-card .form-label { font-size: .8rem; font-weight: 600; margin-bottom: .3rem; }
+  .llp-sep { border-top: 1px solid var(--bs-border-color-translucent); margin: 1.1rem 0; }
+  .llp-subs { list-style: none; margin: 0; padding: 0; font-size: .85rem; }
+  .llp-subs li { padding: .35rem 0; border-bottom: 1px solid var(--bs-border-color-translucent); overflow-wrap: anywhere; }
+  .llp-subs li:last-child { border-bottom: 0; }
+  .llp-pre { font-family: var(--bs-font-monospace); font-size: .82rem; white-space: pre-wrap; margin: 0; overflow-wrap: anywhere; }
+  .llp-toast { white-space: pre-line; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    # the themes user_update accepts: '' (the global interface), modern and bookstrap_<style>
+    cur_theme = user['Theme'] or ''
+    themes = [('', _('Default')), ('modern', 'modern')]
+    for name in themelist:
+        if name not in ('Default', 'modern'):
+            themes.append((name, name))
+    if cur_theme not in [t[0] for t in themes]:
+        themes.append((cur_theme, cur_theme))
+    booktypes = list(typelist)
+    if user['BookType'] and user['BookType'] not in booktypes:
+        booktypes.append(user['BookType'])
+    sub_lines = [line for line in (subs or '').split('\n') if line.strip()]
+    form = {'username': user['UserName'] or '', 'fullname': user['Name'] or '', 'email': user['Email'] or '',
+            'sendto': user['SendTo'] or '', 'booktype': user['BookType'] or '', 'theme': cur_theme,
+            'hc_token': user.get('hc_token') or ''}
+%>
+<div class="llp-wrap" x-data="llProfile(${js(form) | h}, ${js(user['UserID'] or '') | h})">
+  <h1 class="h3 mb-3">${_('LazyLibrarian User Profile')}</h1>
+  <form class="llp-card" @submit.prevent="save()" autocomplete="off" novalidate>
+    <div class="row g-3">
+      <div class="col-12">
+        <label class="form-label" for="llp-username">${_('Username (UserID=%(userid)s)') % {'userid': user['UserID']} | h}</label>
+        <input id="llp-username" class="form-control" x-model="f.username" autocomplete="username">
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-fullname">${_('Full Name')}</label>
+        <input id="llp-fullname" class="form-control" x-model="f.fullname" autocomplete="name">
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-email">${_('Email')}</label>
+        <input id="llp-email" type="email" class="form-control" x-model="f.email" autocomplete="email">
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="llp-sendto">${_('Send To (eg kindle)')}</label>
+        <input id="llp-sendto" type="email" class="form-control" x-model="f.sendto">
+      </div>
+    </div>
+
+    <div class="llp-sep"></div>
+    <div class="row g-3">
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-theme">${_('Theme')}</label>
+        <select id="llp-theme" class="form-select" x-model="f.theme">
+          %for value, label in themes:
+          <option value="${value | h}">${label | h}</option>
+          %endfor
+        </select>
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-booktype">${_('Preferred BookType to open/email')}</label>
+        <select id="llp-booktype" class="form-select" x-model="f.booktype">
+          %for btype in booktypes:
+          <option value="${btype | h}">${btype | h}</option>
+          %endfor
+        </select>
+      </div>
+      <div class="col-12">
+        <label class="form-label" for="llp-hc">${_('HardCover Token')}</label>
+        <div class="input-group">
+          <input id="llp-hc" class="form-control font-monospace" x-model="f.hc_token" placeholder="${_('Bearer token') | h}" spellcheck="false">
+          <button type="button" class="btn btn-outline-secondary" @click="testToken()" :disabled="busy">${_('Test')}</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="llp-sep"></div>
+    <div class="row g-3">
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-pwd">${_('Password')}</label>
+        <input id="llp-pwd" type="password" class="form-control" x-model="password" autocomplete="new-password"
+               placeholder="${_('Leave empty to keep existing password') | h}">
+      </div>
+      <div class="col-sm-6">
+        <label class="form-label" for="llp-pwd2">${_('Confirm Password')}</label>
+        <input id="llp-pwd2" type="password" class="form-control" x-model="password2" autocomplete="new-password"
+               :class="mismatch ? 'is-invalid' : ''" aria-describedby="llp-pwd2-msg"
+               placeholder="${_('If changing password, enter new password  again here') | h}">
+        <div id="llp-pwd2-msg" class="invalid-feedback">${_('Passwords do not match')}</div>
+      </div>
+    </div>
+
+    <div class="llp-sep"></div>
+    <div class="form-label">${_('Subscriptions (for information only)')}</div>
+    %if sub_lines:
+    <ul class="llp-subs">
+      %for line in sub_lines:
+      <li>${line | h}</li>
+      %endfor
+    </ul>
+    %else:
+    <div class="text-body-secondary small">${_('Nothing to see here...')}</div>
+    %endif
+
+    <div class="d-grid mt-4">
+      <button type="submit" class="btn btn-ll btn-lg rounded-pill" :disabled="busy">
+        <span class="spinner-border spinner-border-sm me-1" x-show="busy" x-cloak aria-hidden="true"></span>${_('Update')}
+      </button>
+    </div>
+  </form>
+
+  <div class="modal fade" id="llp-modal" tabindex="-1" aria-labelledby="llp-modal-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title h5" id="llp-modal-title" x-text="modal.title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+      </div>
+      <div class="modal-body"><pre class="llp-pre" x-text="modal.text"></pre></div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-dismiss="modal">${_('Close')}</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body llp-toast" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {
+    failed: ${_js('Something went wrong, try again')}, mismatch: ${_js('Passwords do not match')},
+    update: ${_js('Update User')}, testToken: ${_js('Test HardCover Token')}
+  };
+  function text(html) { var d = document.createElement('div'); d.innerHTML = String(html == null ? '' : html).replace(/<br\s*\/?>/gi, '\n'); return (d.textContent || '').trim(); }
+
+  Alpine.data('llProfile', function (form, userid) {
+    return {
+      f: form, saved: Object.assign({}, form), userid: userid, password: '', password2: '',
+      busy: false, toastText: '', modal: {title: '', text: ''},
+      get mismatch() { return this.password2 !== '' && this.password !== this.password2; },
+      save: function () {
+        var self = this;
+        if (this.password && this.password !== this.password2) { this.toast(T.mismatch); return; }
+        // user_update reads every field, so all of them are sent
+        var data = {password: this.password, password2: this.password2};
+        Object.keys(this.f).forEach(function (k) { data[k] = String(self.f[k] == null ? '' : self.f[k]).trim(); });
+        this.busy = true;
+        fetch('user_update', {method: 'POST', body: new URLSearchParams(data), credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); })
+          .then(function (t) {
+            var themeChanged = data.theme !== self.saved.theme;
+            self.saved = Object.assign({}, self.f);
+            self.password = ''; self.password2 = '';
+            if (themeChanged) {
+              // another interface or style: the page has to be rendered again
+              self.toast(text(t));
+              setTimeout(function () { window.location.reload(); }, 1200);
+            } else {
+              self.toast(text(t) || T.update);
+            }
+          })
+          .catch(function () { self.toast(T.failed); })
+          .finally(function () { self.busy = false; });
+      },
+      testToken: function () {
+        var self = this;
+        this.busy = true;
+        var q = new URLSearchParams({hc_token: String(this.f.hc_token || '').trim(), userid: this.userid});
+        fetch('test_hcauth?' + q.toString(), {credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); })
+          .then(function (t) { self.modal = {title: T.testToken, text: text(t) || '-'}; bootstrap.Modal.getOrCreateInstance(self.$refs.modal).show(); })
+          .catch(function () { self.toast(T.failed); })
+          .finally(function () { self.busy = false; });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 3500}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

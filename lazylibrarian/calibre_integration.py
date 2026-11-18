@@ -274,7 +274,7 @@ def send_to_calibre(booktype, global_name, folder, data):
                 except Exception as e:
                     logger.warning(f"Failed to copy jpeg file: {str(e)}")
                     return False, str(e), folder
-            elif magfile:
+            elif magfile and CONFIG.get_bool('IMP_MAGCOVER'):
                 if not coverpage:
                     coverpage = 1  # if not set, default to page 1
                 jpgfile = create_mag_cover(magfile, pagenum=coverpage, refresh=True)

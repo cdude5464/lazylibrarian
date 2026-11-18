@@ -13,7 +13,7 @@
     <div class="configtable">
         <input name="utf8" type="hidden" value="&#x2713;" />
         <fieldset>
-            <legend>${title}</legend>
+            <legend>${title | h}</legend>
             <div class="form-group">
                 <input type="text" id="comicid" name="comicid" value="${config['ComicID']}" class="hidden">
             </div>
@@ -38,7 +38,9 @@
 </fieldset>
 <div class="table_wrapper_button">
   <input type="submit" value="${_('Save changes') | h}" id="add" class="btn btn-primary">
+%if perm & lazylibrarian.perm_status:
 <button class="pull-right button btn btn-primary" type="button" value="removeme" id="removeme"><i class="fa fa-times"></i> ${_('Delete Comic')}</button>
+%endif
 </div>
 <p>&nbsp;</p>
 </div>
@@ -68,8 +70,10 @@
                 },
                 callback: function (result) {
                   if (result) {
-                      $.get("remove_comic", {'comicid': '${config['ComicID']}' });
-                      window.location = "comics";
+                      // mark_comics takes the comic IDs as field names, Delete also removes the issue files
+                      var data = {'action': 'Delete'};
+                      data[${js(str(config['ComicID']))}] = 'on';
+                      $.get("mark_comics", data).always(function () { window.location = "comics"; });
                   }
                 }
             });

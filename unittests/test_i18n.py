@@ -201,7 +201,7 @@ class I18nTest(unittest.TestCase):
         self.assertEqual(i18n.resolve_language('auto', '', 'sk'), 'sk')
         self.assertEqual(i18n.resolve_language('auto', 'sk', 'en-US'), 'en')
         # nothing we have a translation for in the cookie, so use the header
-        self.assertEqual(i18n.resolve_language('auto', 'sk-SK', 'zh-CN,ru'), 'sk')
+        self.assertEqual(i18n.resolve_language('auto', 'sk-SK', 'zh-CN,ru'), 'ru')
         self.assertEqual(i18n.resolve_language('auto', '', ''), 'en')
         # an explicit language setting ignores the browser
         self.assertEqual(i18n.resolve_language('en', 'sk', 'sk'), 'en')

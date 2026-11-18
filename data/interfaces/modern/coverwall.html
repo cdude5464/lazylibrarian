@@ -1,0 +1,78 @@
+<%inherit file="modern_base.html" />
+<%!
+    from urllib.parse import urlencode
+    page_id = 'coverwall'
+%>
+<%def name="headIncludes()">
+<style>
+  .llw-grid { display: grid; grid-template-columns: repeat(var(--llw-cols, 6), minmax(0, 1fr)); gap: 1rem .75rem; }
+  @media (max-width: 575.98px) { .llw-grid { grid-template-columns: repeat(min(var(--llw-cols, 6), 3), minmax(0, 1fr)); } }
+  .llw-item { text-align: center; font-size: .85rem; overflow-wrap: anywhere; }
+  .llw-item img { width: 100%; aspect-ratio: 2 / 3; object-fit: cover; border-radius: .375rem; box-shadow: 0 1px 3px rgba(0,0,0,.2); background: var(--bs-secondary-bg); }
+  .llw-item .llw-sub { color: var(--bs-secondary-color); font-size: .78rem; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    mode = redirect or ''
+    have_ = context.get('have', '') or ''
+    cols = columns or 6
+    q = {'redirect': mode}
+    if mode in ('books', 'authors'):
+        q['have'] = have_
+    if title:
+        q['title'] = title
+
+    def link(count):
+        d = dict(q)
+        d['count'] = count
+        return 'wall_columns?' + urlencode(d)
+
+    def item(r):
+        # (href, image, line 1, extra lines)
+        if mode == 'books':
+            href = ('open_book?' + urlencode({'bookid': r['BookID'], 'library': 'eBook'})) if have_ == '1' else (r['BookLink'] or '')
+            return href, r['BookImg'], r['BookName'], []
+        if mode == 'audio':
+            return 'open_book?' + urlencode({'bookid': r['BookID'], 'library': 'AudioBook'}), r['BookImg'], r['BookName'], []
+        if mode == 'comic':
+            return 'open_comic?' + urlencode({'comicid': r['ComicID'], 'issueid': r['IssueID']}), r['Cover'], r['Title'], [(r['IssueID'], False)]
+        if mode == 'magazines':
+            return 'open_mag?' + urlencode({'bookid': r['IssueID']}), r['Cover'], r['Title'], [(r['IssueDate'], False)]
+        if mode == 'authors':
+            return ('author_page?' + urlencode({'authorid': r['AuthorID']}), r['AuthorImg'], r['AuthorName'],
+                    [(status_label(r['Status']), True), ('%s/%s' % (r['HaveBooks'], r['TotalBooks']), False)])
+        return '', '', '', []
+%>
+<div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+  <h1 class="h4 mb-0 me-auto">${title or '' | h}</h1>
+  <span class="text-body-secondary small">${_('Columns')}</span>
+  <div class="btn-group btn-group-sm" role="group" aria-label="${_('Columns') | h}">
+    <a class="btn btn-outline-secondary" href="${link('down') | h}" aria-label="-"><i class="fa fa-minus" aria-hidden="true"></i></a>
+    <span class="btn btn-outline-secondary disabled">${cols}</span>
+    <a class="btn btn-outline-secondary" href="${link('up') | h}" aria-label="+"><i class="fa fa-plus" aria-hidden="true"></i></a>
+  </div>
+</div>
+<div class="llw-grid" style="--llw-cols: ${cols | h}">
+  %for r in (results or []):
+  <% href, img, name, extra = item(r) %>
+  <div class="llw-item">
+    %if href:
+    <a href="${href | h}" target="_blank" rel="noreferrer"><img loading="lazy" src="${img or '' | h}" alt="${_('cover') | h}"></a>
+    %else:
+    <img loading="lazy" src="${img or '' | h}" alt="${_('cover') | h}">
+    %endif
+    <div class="mt-1">${name or '' | h}</div>
+    %for e, raw in extra:
+    %if raw:
+    <div class="llw-sub">${e}</div>
+    %else:
+    <div class="llw-sub">${e if e is not None else '' | h}</div>
+    %endif
+    %endfor
+  </div>
+  %endfor
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+</%def>

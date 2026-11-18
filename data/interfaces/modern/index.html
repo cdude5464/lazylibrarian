@@ -41,6 +41,11 @@
   }
 
   /* list: one compact row per author */
+  /* compact: smaller pictures, name only */
+  .lla-v-compact.lla-grid { grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 16px 10px; }
+  .lla-v-compact .lla-latest, .lla-v-compact .lla-prog, .lla-v-compact .lla-status { display: none !important; }
+  .lla-v-compact .lla-name { font-size: .8rem; -webkit-line-clamp: 1; }
+  .lla-v-compact .lla-check { width: 22px; height: 22px; }
   .lla-v-list.lla-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .lla-v-list .lla-card { display: grid; text-align: left; align-items: center; border-radius: 0; padding: 7px 4px; gap: 0 12px;
                           grid-template-columns: 36px minmax(0, 1fr) 120px auto;
@@ -76,7 +81,7 @@
 %>
 <div x-data="llAuthors" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm lla-filter">
@@ -84,28 +89,53 @@
       <input type="search" id="lla-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
              placeholder="${_('Filter authors') | h}" autocomplete="off" aria-label="${_('Filter authors') | h}">
     </div>
-    <div class="btn-group btn-group-sm lla-views" role="group" aria-label="${_('View') | h}">
-      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
-              @click="setView('grid')" title="${_('Pictures') | h}" aria-label="${_('Pictures') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
-      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
-              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
-    </div>
     <select id="lla-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
       <option value="2:asc">${_('Name')}</option>
       <option value="3:desc">${_('Added')}</option>
       <option value="5:desc">${_('Latest release')}</option>
       <option value="6:desc">${_('Downloaded')}</option>
     </select>
+    <div class="dropdown lla-views">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('View') | h}" aria-label="${_('View') | h}">
+        <i class="fa" :class="view === 'grid' ? 'fa-th-large' : view === 'compact' ? 'fa-th' : view === 'list' ? 'fa-list' : 'fa-th-large'" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" :class="view === 'grid' && 'active'" @click="setView('grid')">
+          <i class="fa fa-fw me-2 fa-th-large" aria-hidden="true"></i>${_('Pictures') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'compact' && 'active'" @click="setView('compact')">
+          <i class="fa fa-fw me-2 fa-th" aria-hidden="true"></i>${_('Compact') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'list' && 'active'" @click="setView('list')">
+          <i class="fa fa-fw me-2 fa-list" aria-hidden="true"></i>${_('List') | h}
+        </button></li>
+      </ul>
+    </div>
     %if perm&lazylibrarian.perm_status:
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
             x-text="selecting ? T.done : T.select"></button>
+    <div class="dropdown dropup ll-selmenu" x-show="selecting" x-cloak>
+      <button type="button" class="btn btn-sm btn-ll rounded-pill dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+              x-text="llNgettext(T.selected, selCount)"></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %for st in statuses:
+        <li><button type="button" class="dropdown-item" @click="bulk('${st}')">${_(st)}</button></li>
+        %endfor
+        <li><button type="button" class="dropdown-item" @click="bulk('Remove')">${_('Remove from library')}</button></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><button type="button" class="dropdown-item text-danger" @click="bulk('Delete')">${_('Delete from disk')}</button></li>
+        %if CONFIG['USER_ACCOUNTS']:
+        <li><button type="button" class="dropdown-item" @click="bulk('Subscribe')">${_('Subscribe')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button></li>
+        %endif
+      </ul>
+    </div>
     %endif
     %if perm&lazylibrarian.perm_search:
-    <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-toggle="modal" data-bs-target="#lla-add">
-      <i class="fa fa-plus" aria-hidden="true"></i> ${_('Add author')}
-    </button>
+    ${self.add_button()}
     %endif
-    <div class="dropdown">
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -136,7 +166,7 @@
         %endif
         %if perm&lazylibrarian.perm_force:
         <li><hr class="dropdown-divider"></li>
-        <li><a class="dropdown-item" href="force_update"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Refresh Authors')}</a></li>
+        <li><a class="dropdown-item" href="force_update"><i class="fa fa-sync fa-fw me-2" aria-hidden="true"></i>${_('Update all authors from the web')}</a></li>
         %endif
       </ul>
     </div>
@@ -184,43 +214,9 @@
   </div>
   <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && authors.length ? T.allShown : ''"></div>
 
-  %if perm&lazylibrarian.perm_status:
-  <div class="lla-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'lla-bar-hidden'" role="region" aria-label="${_('Selected authors') | h}">
-    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
-    %for st in statuses:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('${st}')">${_(st)}</button>
-    %endfor
-    %if CONFIG['USER_ACCOUNTS']:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Subscribe')">${_('Subscribe')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button>
-    %endif
-    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
-  </div>
-  %endif
 
   %if perm&lazylibrarian.perm_search:
-  <div class="modal fade" id="lla-add" tabindex="-1" aria-labelledby="lla-add-title" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-      <form action="search" method="get" @submit="adding = true">
-        <div class="modal-header border-0 pb-0">
-          <h2 class="modal-title h5" id="lla-add-title">${_('Add author')}</h2>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
-        </div>
-        <div class="modal-body">
-          <label for="lla-searchfor" class="form-label small text-body-secondary">${_('Search for author/book')}</label>
-          <input type="search" class="form-control" id="lla-searchfor" name="searchfor" required
-                 placeholder="${_('Title / Author / ISBN') | h}" autocomplete="off">
-          <input type="hidden" name="btnsearch" value="index">
-        </div>
-        <div class="modal-footer border-0 pt-0">
-          <button type="submit" class="btn btn-ll rounded-pill" :disabled="adding">
-            <span class="spinner-border spinner-border-sm me-1" x-show="adding" x-cloak aria-hidden="true"></span>
-            <i class="fa fa-search me-1" x-show="!adding" aria-hidden="true"></i>${_('Search')}
-          </button>
-        </div>
-      </form>
-    </div></div>
-  </div>
+  ${self.add_modal()}
   %endif
 
   <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
@@ -240,7 +236,8 @@ document.addEventListener('alpine:init', function () {
     refreshing: ${_js('Author Refresh in progress ...')}, searching: ${_js('Search in progress ...')},
     selected: ${_jsn('%(count)s selected', '%(count)s selected')},
     authors: ${_jsn('%(count)s author', '%(count)s authors')},
-    booksOf: ${_jsn('%(have)s of %(count)s book', '%(have)s of %(count)s books')}
+    booksOf: ${_jsn('%(have)s of %(count)s book', '%(have)s of %(count)s books')},
+    confirmDel: ${_jsn('Are you sure you want to permanently delete the selected author and their files?', 'Are you sure you want to permanently delete the %(count)s selected authors and their files?')}
   };
 
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
@@ -266,13 +263,13 @@ document.addEventListener('alpine:init', function () {
   Alpine.data('llAuthors', function () {
     return {
       T: T, authors: [], total: 0, start_: 0, loading: false, done: false, gen: 0, busy: false, busyText: '',
-      q: '', sort: '2:asc', view: 'grid', selecting: false, sel: {}, toastText: '', adding: false, pollTimer: 0,
+      q: '', sort: '2:asc', view: 'grid', selecting: false, sel: {}, toastText: '', pollTimer: 0,
       get countText() { return this.total || this.done ? llNgettext(T.authors, this.total) : ''; },
       get selCount() { return Object.keys(this.sel).length; },
 
       start: function () {
         var self = this;
-        try { var v = localStorage.getItem('lla-view'); if (v === 'grid' || v === 'list') { this.view = v; } } catch (e) {}
+        try { var v = localStorage.getItem('lla-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('lla-authors') || 'null');
           if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
@@ -280,8 +277,6 @@ document.addEventListener('alpine:init', function () {
         ['q', 'sort'].forEach(function (k) { self.$watch(k, function () { self.reset(); }); });
         new IntersectionObserver(function (e) { if (e[0].isIntersecting) { self.load(); } }, {rootMargin: '400px'})
           .observe(this.$refs.sentinel);
-        var add = document.getElementById('lla-add');
-        if (add) { add.addEventListener('shown.bs.modal', function () { document.getElementById('lla-searchfor').focus(); }); }
         this.load();
       },
 
@@ -357,6 +352,7 @@ document.addEventListener('alpine:init', function () {
       bulk: function (action) {
         var ids = Object.keys(this.sel);
         if (!ids.length) { this.toast(T.pickFirst); return; }
+        if (action === 'Delete' && !window.confirm(llNgettext(T.confirmDel, ids.length))) { return; }
         var self = this;
         var body = new URLSearchParams({action: action});
         ids.forEach(function (id) { body.append(id, 'on'); });

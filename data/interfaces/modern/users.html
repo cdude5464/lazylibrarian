@@ -1,0 +1,413 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.formatter import get_list
+    page_id = 'config'
+%>
+<%def name="headIncludes()">
+<style>
+  .llu-side { position: sticky; top: 5rem; }
+  @media (max-width: 991.98px) { .llu-side { position: static; } }
+  .llu-list { max-height: calc(100vh - 14rem); overflow-y: auto; border: 1px solid var(--bs-border-color-translucent); border-radius: 12px; }
+  @media (max-width: 991.98px) { .llu-list { max-height: 15rem; } }
+  .llu-user { display: flex; align-items: center; gap: .6rem; width: 100%; border: 0; background: none; text-align: left;
+              padding: .55rem .8rem; border-bottom: 1px solid var(--bs-border-color-translucent); color: inherit; font-size: .9rem; }
+  .llu-user:last-child { border-bottom: 0; }
+  .llu-user:hover { background: var(--bs-tertiary-bg); }
+  .llu-user.active { background: var(--bs-secondary-bg); font-weight: 600; }
+  .llu-user:focus-visible { outline: 2px solid var(--ll-accent); outline-offset: -2px; }
+  .llu-user span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .llu-avatar { width: 30px; height: 30px; flex: none; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+                background: color-mix(in srgb, var(--ll-accent) 16%, transparent); color: var(--ll-accent); font-size: .8rem; font-weight: 700; }
+  .llu-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 16px; padding: 1.25rem; background: var(--bs-body-bg); }
+  @media (max-width: 575.98px) { .llu-card { padding: 1rem; border-radius: 12px; } }
+  .llu-card .form-label { font-size: .8rem; font-weight: 600; margin-bottom: .3rem; }
+  .llu-sep { border-top: 1px solid var(--bs-border-color-translucent); margin: 1.1rem 0; }
+  .llu-info { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .8rem 1rem; margin: 0; }
+  .llu-info dt { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--bs-secondary-color); font-weight: 500; }
+  .llu-info dd { margin: 0; font-size: .88rem; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+  .llu-subs { list-style: none; margin: 0; padding: 0; font-size: .85rem; }
+  .llu-subs li { padding: .35rem 0; border-bottom: 1px solid var(--bs-border-color-translucent); overflow-wrap: anywhere; }
+  .llu-subs li:last-child { border-bottom: 0; }
+  .llu-pre { font-family: var(--bs-font-monospace); font-size: .82rem; white-space: pre-wrap; margin: 0; overflow-wrap: anywhere; }
+  .llu-toast { white-space: pre-line; }
+</style>
+</%def>
+<%def name="body()">
+<h1 class="h3 mb-3">${title}</h1>
+%if perm & lazylibrarian.perm_all == lazylibrarian.perm_all:
+<%
+    names = sorted([u['UserName'] for u in users if u['UserName']], key=lambda name: name.lower())
+    presets = [('admin', _('Admin'), lazylibrarian.perm_all), ('friend', _('Friend'), lazylibrarian.perm_friend),
+               ('guest', _('Guest'), lazylibrarian.perm_guest)]
+    # the themes admin_users accepts: '' (the global interface), modern and bookstrap_<style>
+    themes = [('', _('Default')), ('modern', 'modern')] + \
+        [('bookstrap_' + style, 'bookstrap_' + style) for style in lazylibrarian.BOOKSTRAP_THEMELIST]
+    booktypes = get_list(CONFIG['EBOOK_TYPE'])
+    try:
+        from lazylibrarian import i18n
+        langs = [('', _('Default')), (i18n.AUTO, _('Automatic (browser language)'))] + \
+            [(code, i18n.language_name(code)) for code in i18n.available_languages()]
+    except Exception:
+        langs = [('', _('Default'))]
+    setup = {'names': names, 'presets': [[p[0], p[1], p[2]] for p in presets],
+             'themes': [t[0] for t in themes], 'booktypes': booktypes, 'langs': [lang[0] for lang in langs]}
+%>
+<div x-data="llUsers(${js(setup) | h})" x-init="start()">
+  <div class="row g-4">
+    <div class="col-lg-4">
+      <div class="llu-side">
+        <div class="d-flex gap-2 mb-2">
+          <div class="input-group input-group-sm flex-grow-1">
+            <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+            <input type="search" class="form-control rounded-end-pill" x-model="q" placeholder="${_('Results filter') | h}"
+                   autocomplete="off" aria-label="${_('Results filter') | h}">
+          </div>
+          <div class="dropdown">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+                    title="${_('Import/Export Users/edit feeds') | h}" aria-label="${_('Import/Export Users/edit feeds') | h}">
+              <i class="fa fa-ellipsis-h" aria-hidden="true"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><button type="button" class="dropdown-item" @click="exportUsers()"><i class="fa fa-file-export fa-fw me-2" aria-hidden="true"></i>${_('Export Users')}</button></li>
+              <li><button type="button" class="dropdown-item text-danger" @click="importUsers()"><i class="fa fa-file-import fa-fw me-2" aria-hidden="true"></i>${_('Import Users')}</button></li>
+            </ul>
+          </div>
+        </div>
+        <div class="llu-list" role="listbox" aria-label="${_('Select user') | h}">
+          <button type="button" class="llu-user" :class="sel === '' ? 'active' : ''" @click="select('')" role="option" :aria-selected="sel === ''">
+            <span class="llu-avatar"><i class="fa fa-plus" aria-hidden="true"></i></span><span>${_('-- add a new user --')}</span>
+          </button>
+          <template x-for="name in shown" :key="name">
+            <button type="button" class="llu-user" :class="sel === name ? 'active' : ''" @click="select(name)" role="option" :aria-selected="sel === name">
+              <span class="llu-avatar" x-text="name.charAt(0).toUpperCase()"></span><span x-text="name" :title="name"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-8">
+      <form class="llu-card" @submit.prevent="save()" autocomplete="off" novalidate>
+        <div class="text-center py-4" x-show="loading" x-cloak><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></div>
+        <div x-show="!loading">
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-username">${_('Username')}</label>
+              <input id="llu-username" class="form-control" x-model="f.username" autocomplete="off">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-fullname">${_('Full Name')}</label>
+              <input id="llu-fullname" class="form-control" x-model="f.fullname" autocomplete="off">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-email">${_('Email (for messages)')}</label>
+              <input id="llu-email" type="email" class="form-control" x-model="f.email" autocomplete="off">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-sendto">${_('Send To (eg kindle email)')}</label>
+              <input id="llu-sendto" type="email" class="form-control" x-model="f.sendto" autocomplete="off">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-perms">${_('Permissions')}</label>
+              <input id="llu-perms" class="form-control font-monospace" inputmode="numeric" x-model="f.perms">
+              <div class="btn-group btn-group-sm w-100 mt-2" role="group" aria-label="${_('Permissions') | h}">
+                <template x-for="p in presets" :key="p[0]">
+                  <button type="button" class="btn" :class="String(f.perms) === String(p[2]) ? 'btn-ll' : 'btn-outline-secondary'"
+                          @click="f.perms = String(p[2])" x-text="p[1]"></button>
+                </template>
+              </div>
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-pwd">${_('Password')}</label>
+              <div class="input-group">
+                <input id="llu-pwd" class="form-control font-monospace" x-model="f.password" autocomplete="new-password" spellcheck="false"
+                       :placeholder="sel ? T.keep : ''">
+                <button type="button" class="btn btn-outline-secondary" @click="generate()" title="${_('Generate Password') | h}"
+                        aria-label="${_('Generate Password') | h}"><i class="fa fa-key" aria-hidden="true"></i></button>
+              </div>
+            </div>
+          </div>
+
+          <div class="llu-sep"></div>
+          <div class="row g-3">
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-calread">${_('Calibre Read Column')}</label>
+              <input id="llu-calread" class="form-control" x-model="f.calread">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label" for="llu-caltoread">${_('Calibre ToRead Column')}</label>
+              <input id="llu-caltoread" class="form-control" x-model="f.caltoread">
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" for="llu-booktype">${_('Preferred BookType to open/email')}</label>
+              <select id="llu-booktype" class="form-select" x-model="f.booktype">
+                <option value=""></option>
+                <template x-for="b in opts.booktypes" :key="b"><option :value="b" x-text="b" :selected="b === f.booktype"></option></template>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" for="llu-theme">${_('Theme')}</label>
+              <select id="llu-theme" class="form-select" x-model="f.theme">
+                <template x-for="t in opts.themes" :key="t"><option :value="t" x-text="themeLabel(t)" :selected="t === f.theme"></option></template>
+              </select>
+            </div>
+            <div class="col-sm-4">
+              <label class="form-label" for="llu-lang">${_('UI Language')}</label>
+              <select id="llu-lang" class="form-select" x-model="f.ui_lang">
+                <template x-for="l in opts.langs" :key="l"><option :value="l" x-text="langLabel(l)" :selected="l === f.ui_lang"></option></template>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label" for="llu-hc">${_('HardCover Token')}</label>
+              <div class="input-group">
+                <input id="llu-hc" class="form-control font-monospace" x-model="f.hc_token" placeholder="${_('Bearer token') | h}" spellcheck="false">
+                <button type="button" class="btn btn-outline-secondary" @click="testToken()" :disabled="!info.userid || busy">${_('Test')}</button>
+              </div>
+            </div>
+          </div>
+
+          <template x-if="sel">
+            <div>
+              <div class="llu-sep"></div>
+              <dl class="llu-info">
+                <div><dt>${_('UserID')}</dt><dd x-text="info.userid || '-'"></dd></div>
+                <div><dt>${_('HardCoverID')}</dt><dd x-text="info.hc_id || '-'"></dd></div>
+                <div><dt>${_('Last Login')}</dt><dd x-text="info.lastlogin || '-'"></dd></div>
+                <div><dt>${_('Logins')}</dt><dd x-text="info.logins"></dd></div>
+                <div><dt>${_('Downloads')}</dt><dd x-text="info.downloads"></dd></div>
+              </dl>
+              <div class="form-label mt-3">${_('Subscriptions')}</div>
+              <ul class="llu-subs" x-show="info.subs.length">
+                <template x-for="(s, n) in info.subs" :key="n"><li x-text="s"></li></template>
+              </ul>
+              <div class="text-body-secondary small" x-show="!info.subs.length">${_('Nothing to see here...')}</div>
+            </div>
+          </template>
+
+          <div class="d-flex flex-wrap gap-2 mt-4">
+            <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="busy">
+              <span class="spinner-border spinner-border-sm me-1" x-show="busy" x-cloak aria-hidden="true"></span>${_('Save')}
+            </button>
+            <button type="button" class="btn btn-outline-secondary rounded-pill" x-show="sel" @click="feeds()" :disabled="busy || !info.userid">
+              <i class="fa fa-rss me-1" aria-hidden="true"></i>${_('Feeds')}
+            </button>
+            <span class="flex-grow-1"></span>
+            <button type="button" class="btn btn-outline-danger rounded-pill" x-show="sel" @click="remove()" :disabled="busy">${_('Delete')}</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal fade" id="llu-modal" tabindex="-1" aria-labelledby="llu-modal-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title h5" id="llu-modal-title" x-text="modal.title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+      </div>
+      <div class="modal-body">
+        <pre class="llu-pre" x-show="modal.kind === 'result'" x-text="modal.text"></pre>
+        <p class="mb-0" x-show="modal.kind === 'confirm'" x-text="modal.text"></p>
+        <template x-if="modal.kind === 'feeds'">
+          <div>
+            <template x-for="fd in modal.feeds" :key="fd.value">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" :id="'llu-feed-' + fd.value" :value="fd.value" x-model="modal.checked">
+                <label class="form-check-label" :for="'llu-feed-' + fd.value" x-text="fd.text"></label>
+              </div>
+            </template>
+          </div>
+        </template>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <template x-if="modal.kind === 'confirm'">
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-dismiss="modal">${_('No')}</button>
+            <button type="button" class="btn btn-sm btn-danger rounded-pill" @click="confirmYes()">${_('Yes')}</button>
+          </div>
+        </template>
+        <template x-if="modal.kind === 'feeds'">
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-dismiss="modal">${_('Cancel')}</button>
+            <button type="button" class="btn btn-sm btn-ll rounded-pill" @click="saveFeeds()">${_('Save')}</button>
+          </div>
+        </template>
+        <template x-if="modal.kind === 'result'">
+          <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-dismiss="modal">${_('Close')}</button>
+        </template>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body llu-toast" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+<%
+    lang_names = dict(langs)
+%>
+<script>
+  var LLU_LANG_NAMES = ${js(lang_names)};
+</script>
+%endif
+</%def>
+<%def name="javascriptIncludes()">
+%if perm & lazylibrarian.perm_all == lazylibrarian.perm_all:
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {
+    failed: ${_js('Something went wrong, try again')}, keep: ${_js('keep existing password')}, def: ${_js('Default')},
+    update: ${_js('Update User')}, testToken: ${_js('Test HardCover Token')}, userFeeds: ${_js('User Feeds')},
+    updated: ${_js('Updated User')}, noFeeds: ${_js('No wishlists found')}, exportUsers: ${_js('Export Users')},
+    importUsers: ${_js('Import Users')}, deleteUser: ${_js('Delete User')},
+    confirmDelete: ${_js('Are you sure you want to permanently delete %(user)s?')}
+  };
+  var KEY = 'llu-selected';
+  function text(html) { var d = document.createElement('div'); d.innerHTML = String(html == null ? '' : html).replace(/<br\s*\/?>/gi, '\n'); return (d.textContent || '').trim(); }
+  function str(v) { return v == null ? '' : String(v); }
+  function blank() {
+    return {username: '', fullname: '', email: '', sendto: '', perms: '', password: '', calread: '', caltoread: '',
+            booktype: '', theme: '', ui_lang: '', hc_token: ''};
+  }
+  function get(url) {
+    return fetch(url, {credentials: 'same-origin'}).then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); });
+  }
+  function post(url, data) {
+    return fetch(url, {method: 'POST', body: new URLSearchParams(data), credentials: 'same-origin'})
+      .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); });
+  }
+
+  Alpine.data('llUsers', function (setup) {
+    return {
+      T: T, names: setup.names, presets: setup.presets,
+      opts: {themes: setup.themes.slice(), booktypes: setup.booktypes.slice(), langs: setup.langs.slice()},
+      q: '', sel: '', f: blank(), info: {userid: '', hc_id: '', lastlogin: '', logins: 0, downloads: 0, subs: []},
+      loading: false, busy: false, gen: 0, toastText: '', reloadOnClose: false,
+      modal: {kind: '', title: '', text: '', feeds: [], checked: [], yes: null},
+      get shown() {
+        var q = this.q.trim().toLowerCase();
+        return q ? this.names.filter(function (n) { return n.toLowerCase().indexOf(q) >= 0; }) : this.names;
+      },
+      start: function () {
+        var self = this, last = '';
+        try { last = sessionStorage.getItem(KEY) || ''; sessionStorage.removeItem(KEY); } catch (e) {}
+        this.$refs.modal.addEventListener('hidden.bs.modal', function () {
+          if (self.reloadOnClose) { window.location.reload(); }
+        });
+        this.select(this.names.indexOf(last) >= 0 ? last : '');
+      },
+      // a value the lists do not have (an old theme, a removed book type) is still shown, so saving keeps it
+      keepOption: function (list, value) { if (value && this.opts[list].indexOf(value) < 0) { this.opts[list].push(value); } },
+      themeLabel: function (t) { return t ? t : T.def; },
+      langLabel: function (l) { return LLU_LANG_NAMES[l] || l; },
+      select: function (name) {
+        var self = this, gen = ++this.gen;
+        this.sel = name;
+        this.f = blank();
+        this.info = {userid: '', hc_id: '', lastlogin: '', logins: 0, downloads: 0, subs: []};
+        if (!name) { this.loading = false; return; }
+        this.loading = true;
+        get('get_user_profile?user=' + encodeURIComponent(name)).then(function (t) {
+          if (gen !== self.gen) { return; }
+          var o = JSON.parse(t);
+          self.f = {username: name, fullname: str(o.name), email: str(o.email), sendto: str(o.sendto), perms: str(o.perms),
+                    password: '', calread: str(o.calread), caltoread: str(o.caltoread), booktype: str(o.booktype),
+                    theme: str(o.theme), ui_lang: str(o.ui_lang), hc_token: str(o.hc_token)};
+          self.keepOption('themes', self.f.theme); self.keepOption('booktypes', self.f.booktype); self.keepOption('langs', self.f.ui_lang);
+          self.info = {userid: str(o.userid), hc_id: str(o.hc_id), lastlogin: str(o.lastlogin), logins: o.logins || 0,
+                       downloads: o.downloads || 0, subs: str(o.subs).split('\n').filter(function (s) { return s.trim(); })};
+        }).catch(function () {
+          if (gen === self.gen) { self.toast(T.failed); }
+        }).finally(function () {
+          if (gen === self.gen) { self.loading = false; }
+        });
+      },
+      save: function () {
+        var self = this, data = {user: this.sel};
+        // admin_users reads every field, so all of them are sent
+        Object.keys(this.f).forEach(function (k) { data[k] = str(self.f[k]).trim(); });
+        this.busy = true;
+        post('admin_users', data).then(function (t) {
+          try { sessionStorage.setItem(KEY, data.username || self.sel); } catch (e) {}
+          self.result(T.update, text(t), true);
+        }).catch(function () { self.toast(T.failed); }).finally(function () { self.busy = false; });
+      },
+      generate: function () {
+        var self = this;
+        get('generatepwd').then(function (t) { self.f.password = t.trim(); }).catch(function () { self.toast(T.failed); });
+      },
+      testToken: function () {
+        var self = this;
+        this.busy = true;
+        get('test_hcauth?' + new URLSearchParams({hc_token: str(this.f.hc_token).trim(), userid: this.info.userid}).toString())
+          .then(function (t) { self.result(T.testToken, text(t), false); })
+          .catch(function () { self.toast(T.failed); })
+          .finally(function () { self.busy = false; });
+      },
+      remove: function () {
+        var self = this, name = this.sel;
+        this.confirm(T.deleteUser, T.confirmDelete.replace('%(user)s', name), function () {
+          post('admin_delete', {user: name}).then(function (t) { self.result(T.deleteUser, text(t), true); })
+            .catch(function () { self.toast(T.failed); });
+        });
+      },
+      feeds: function () {
+        var self = this, userid = this.info.userid;
+        get('user_feeds?user=' + encodeURIComponent(userid)).then(function (t) {
+          var o = JSON.parse(t), list = Array.isArray(o.feeds) ? o.feeds : [];
+          if (!list.length) { self.toast(T.noFeeds); return; }
+          self.modal = {kind: 'feeds', title: T.userFeeds, text: '', feeds: list, checked: (o.value || []).map(String), yes: null, userid: userid};
+          self.show();
+        }).catch(function () { self.toast(T.failed); });
+      },
+      saveFeeds: function () {
+        var self = this, m = this.modal;
+        // the same fields bootbox sent: value[] (one string, get_list splits it), and every feed as feeds[n][text] / feeds[n][value]
+        var data = {user: m.userid, 'value[]': m.checked.join(',')};
+        m.feeds.forEach(function (fd, n) { data['feeds[' + n + '][text]'] = fd.text; data['feeds[' + n + '][value]'] = fd.value; });
+        post('update_feeds', data).then(function (t) {
+          try { sessionStorage.setItem(KEY, self.sel); } catch (e) {}
+          self.result(T.updated, text(t), true);
+        }).catch(function () { self.toast(T.failed); });
+      },
+      exportUsers: function () {
+        var self = this;
+        get('save_users').then(function (t) { self.result(T.exportUsers, text(t), false); }).catch(function () { self.toast(T.failed); });
+      },
+      importUsers: function () {
+        var self = this;
+        // the import replaces the users table, so it asks first
+        this.confirm(T.importUsers, '', function () {
+          get('load_users').then(function (t) { self.result(T.importUsers, text(t), true); }).catch(function () { self.toast(T.failed); });
+        });
+      },
+      confirm: function (title, msg, yes) {
+        this.modal = {kind: 'confirm', title: title, text: msg, feeds: [], checked: [], yes: yes};
+        this.show();
+      },
+      confirmYes: function () {
+        var yes = this.modal.yes;
+        this.modal.yes = null;
+        if (yes) { yes(); }
+      },
+      // the answer of the server, the page is loaded again on close when the user list may have changed
+      result: function (title, msg, reload) {
+        this.reloadOnClose = reload;
+        this.modal = {kind: 'result', title: title, text: msg || '-', feeds: [], checked: [], yes: null};
+        this.show();
+      },
+      show: function () { bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show(); },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 3500}).show();
+      }
+    };
+  });
+});
+</script>
+%endif
+</%def>

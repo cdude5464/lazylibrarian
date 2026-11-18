@@ -1,0 +1,337 @@
+<%inherit file="modern_base.html" />
+<%!
+    from urllib.parse import urlencode
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'search'
+%>
+<%def name="headIncludes()">
+<style>
+  .llsr-filter { flex: 0 1 260px; min-width: 0; }
+  .llsr-search { flex: 0 1 320px; min-width: 0; }
+  @media (max-width: 640px) { .llsr-filter, .llsr-search { flex: 1 1 100%; order: 5; } }
+  .llsr-list { border-top: 1px solid var(--bs-border-color-translucent); }
+  .llsr-row { position: relative; display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; grid-template-areas: "cover main acts";
+              gap: 0 14px; align-items: center; padding: 10px 6px; border-bottom: 1px solid var(--bs-border-color-translucent); }
+  .llsr-row:hover { background: var(--bs-tertiary-bg); }
+  .llsr-sel-on .llsr-row { cursor: pointer; }
+  .llsr-row.llsr-sel { background: color-mix(in srgb, var(--ll-accent) 10%, transparent); }
+  .llsr-cover { grid-area: cover; width: 54px; aspect-ratio: 2 / 3; border-radius: 5px; overflow: hidden; background: var(--bs-secondary-bg);
+                display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color);
+                box-shadow: 0 1px 2px rgba(0,0,0,.08), 0 8px 16px -10px rgba(0,0,0,.45); }
+  .llsr-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .llsr-check { position: absolute; top: 6px; left: 2px; width: 22px; height: 22px; border-radius: 50%; background: rgba(255,255,255,.95);
+                border: 2px solid #fff; display: flex; align-items: center; justify-content: center; font-size: .65rem;
+                color: var(--ll-accent); box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+  .llsr-row.llsr-sel .llsr-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
+  .llsr-main { grid-area: main; min-width: 0; }
+  .llsr-title { font-weight: 600; font-size: .95rem; line-height: 1.3; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical; overflow: hidden; }
+  .llsr-title a { color: inherit; text-decoration: none; }
+  .llsr-title a:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .llsr-author { font-size: .85rem; color: var(--bs-secondary-color); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .llsr-meta { font-size: .75rem; color: var(--bs-secondary-color); display: flex; flex-wrap: wrap; gap: 0 .9rem; margin-top: 2px; }
+  .llsr-meta span { white-space: nowrap; }
+  .llsr-stars { color: #e0a100; letter-spacing: 1px; }
+  .llsr-stars .off { opacity: .25; }
+  .llsr-match { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .llsr-acts { grid-area: acts; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .llsr-acts .btn, .llsr-acts .badge { font-size: .74rem; white-space: nowrap; }
+  .llsr-acts .btn { padding: .2rem .7rem; }
+  .llsr-acts .badge { padding: 5px 10px; font-weight: 600; }
+  @media (max-width: 575.98px) {
+    .llsr-row { grid-template-columns: 46px minmax(0, 1fr); grid-template-areas: "cover main" "cover acts"; gap: 6px 12px; }
+    .llsr-cover { width: 46px; }
+    .llsr-acts { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+  }
+  .llsr-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1030; background: var(--bs-body-bg); border-top: 1px solid var(--bs-border-color);
+              padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); transition: transform .25s ease; }
+  .llsr-bar-hidden { transform: translateY(110%); }
+  @media (prefers-reduced-motion: reduce) { .llsr-bar { transition: none; } }
+</style>
+</%def>
+<%def name="body()">
+<%
+    ebook_tab = bool(CONFIG.get_int('EBOOK_TAB'))
+    audio_tab = bool(CONFIG.get_int('AUDIO_TAB'))
+    authors = authorlist or []
+    loading = loadlist or []
+    books = booklist or []
+    def book_action(result, library, status, canonical_id=None):
+        # what the eBook or AudioBook button of a result does: (kind, label, href)
+        add = 'add_book?' + urlencode([('library', library), ('bookid', result['bookid']), ('source', result['source']), ('title', result['bookname'] or ''),
+                                      ('authorname', result['authorname'] or '')] +
+                                      ([('authorid', result['authorid'])] if result['authorid'] else []))
+        add_label = _('Add Book') if library == 'eBook' else _('Add Audio')
+        if status is None:
+            return ['add', add_label, add]
+        status = status or 'Unknown'
+        if 'Open' in status:
+            return ['open', status, 'open_book?' + urlencode({'library': library, 'bookid': canonical_id or result['bookid']})]
+        if 'Wanted' in status:
+            return ['wanted', status, 'search_for_book?' + urlencode({'library': library, 'bookid': canonical_id or result['bookid']})]
+        if 'Skipped' in status:
+            return ['add', add_label, add]
+        return ['status', status, '']
+
+    rows = []
+    for result in (searchresults or []):
+        aid = result['authorid']
+        if aid and aid in authors:
+            author_act = ['have', _('Have Author'), 'author_page?' + urlencode({'authorid': aid})]
+        elif aid and aid in loading:
+            author_act = ['loading', _('Loading'), '']
+        elif aid:
+            author_act = ['add', _('Add Author'), 'add_author_id?' + urlencode({'authorid': aid, 'authorname': result['authorname']})]
+        else:
+            author_act = ['add', _('Add Author'), 'add_author?' + urlencode({'authorname': result['authorname']})]
+        ebook = audio = None
+        # while the author is still loading their books are on the way, nothing to add yet
+        if author_act[0] != 'loading':
+            known = result.get('library_book')
+            if ebook_tab:
+                ebook = book_action(result, 'eBook', known['Status'] if known else None, known['BookID'] if known else None)
+            if audio_tab:
+                audio = book_action(result, 'AudioBook', known['AudioStatus'] if known else None, known['BookID'] if known else None)
+        try:
+            rate = float(result.get('bookrate') or 0)
+        except (TypeError, ValueError):
+            rate = 0.0
+        try:
+            fuzz = round(float(result.get('highest_fuzz') or 0), 1)
+        except (TypeError, ValueError):
+            fuzz = 0.0
+        rows.append({
+            'id': str(result['bookid']), 'aid': str(aid or ''), 'title': result['bookname'] or '', 'author': result['authorname'] or '',
+            'img': result.get('bookimg') or '', 'link': result.get('booklink') or '', 'date': str(result.get('bookdate') or ''),
+            'rate': rate, 'count': result.get('bookrate_count') or 0, 'fuzz': fuzz, 'source': result.get('source') or '',
+            'author_act': author_act, 'ebook': ebook, 'audio': audio,
+        })
+    can_search = bool(perm & lazylibrarian.perm_search)
+%>
+<div x-data="llSearchResults" x-init="start()" :class="selecting && 'llsr-sel-on'">
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
+    <h1 class="h4 mb-0 me-1">${title | h}</h1>
+    <span class="text-body-secondary small" x-text="countText"></span>
+    <span class="flex-grow-1"></span>
+    %if can_search:
+    <form class="input-group input-group-sm llsr-search" action="search" method="get" @submit="searching = true" role="search">
+      <input type="search" class="form-control rounded-start-pill" name="searchfor" required autocomplete="off"
+             placeholder="${_('Title / Author / ISBN') | h}" aria-label="${_('Search for book') | h}">
+      <input type="hidden" name="btnsearch" value="Results">
+      <button type="submit" class="btn btn-ll rounded-end-pill" :disabled="searching" title="${_('Search for book') | h}" aria-label="${_('Search for book') | h}">
+        <span class="spinner-border spinner-border-sm" x-show="searching" x-cloak aria-hidden="true"></span>
+        <i class="fa fa-search" x-show="!searching" aria-hidden="true"></i>
+      </button>
+    </form>
+    %endif
+  </div>
+  <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+    <div class="input-group input-group-sm llsr-filter">
+      <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
+      <input type="search" class="form-control rounded-end-pill" x-model.debounce.200ms="q"
+             placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
+    </div>
+    <select class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
+      <option value="fuzz">${_('Match')}</option>
+      <option value="title">${_('Title')}</option>
+      <option value="author">${_('Author')}</option>
+      <option value="date">${_('Released')}</option>
+      <option value="rate">${_('Rating')}</option>
+      <option value="count">${_('Rating count')}</option>
+    </select>
+    <span class="flex-grow-1"></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" x-show="all.length" x-cloak
+            @click="selecting ? stopSelect() : (selecting = true)" x-text="selecting ? T.done : T.select"></button>
+  </div>
+
+  <div x-show="searching" x-cloak role="status">
+    <div class="alert alert-info d-flex align-items-center gap-2 py-2 small">
+      <span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span>${_('Search in progress ...')}</span>
+    </div>
+  </div>
+
+  <div class="llsr-list">
+    <template x-for="(r, i) in items" :key="i + '|' + r.id + '|' + r.source">
+      <div class="llsr-row" :class="sel[r.key] && 'llsr-sel'" @click="pick(r, $event)">
+        <span class="llsr-check" x-show="selecting" x-cloak aria-hidden="true"><i class="fa fa-check"></i></span>
+        <span class="llsr-cover">
+          <template x-if="r.img"><img loading="lazy" :src="r.img" alt="" @error="r.img = ''"></template>
+          <template x-if="!r.img"><i class="fa fa-book" aria-hidden="true"></i></template>
+        </span>
+        <div class="llsr-main">
+          <div class="llsr-title" :title="r.title">
+            <template x-if="r.link"><a :href="r.link" target="_blank" rel="noreferrer" x-text="r.title" @click="if (selecting) { $event.preventDefault(); toggle(r); }"></a></template>
+            <template x-if="!r.link"><span x-text="r.title"></span></template>
+          </div>
+          <div class="llsr-author" :title="r.author" x-text="r.author"></div>
+          <div class="llsr-meta">
+            <span class="llsr-match" :title="T.match" x-text="r.fuzz + '%'"></span>
+            <span x-show="r.date" :title="T.released" x-text="r.date"></span>
+            <span x-show="r.rate > 0 || r.count > 0" :title="T.rating + ': ' + r.rate + ' (' + r.count + ')'">
+              <span class="llsr-stars" aria-hidden="true"><template x-for="n in 5" :key="n"><i class="fa fa-star" :class="n > Math.round(r.rate) && 'off'"></i></template></span>
+              <span x-text="r.count"></span>
+            </span>
+            <span x-show="r.source" x-text="r.source"></span>
+          </div>
+        </div>
+        <div class="llsr-acts">
+          <template x-for="a in r.acts" :key="a.key">
+            <span>
+              <template x-if="a.href"><a class="btn btn-sm rounded-pill" :class="a.cls" :href="a.href" @click="go(r, a, $event)">
+                <span class="spinner-border spinner-border-sm me-1" x-show="a.busy" aria-hidden="true"></span><i class="fa me-1" :class="a.icon" x-show="!a.busy" aria-hidden="true"></i><span x-text="a.label"></span>
+              </a></template>
+              <template x-if="!a.href"><span class="badge rounded-pill" :class="a.cls"><i class="fa me-1" :class="a.icon" aria-hidden="true"></i><span x-text="a.label"></span></span></template>
+            </span>
+          </template>
+        </div>
+      </div>
+    </template>
+    <div class="text-center text-body-secondary py-5" x-show="!items.length" x-cloak x-text="all.length ? T.noMatch : T.empty"></div>
+  </div>
+
+  <div class="llsr-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llsr-bar-hidden'" role="region" aria-label="${_('Change selected items to:') | h}">
+    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('AddAuthor')">${_('Add Author')}</button>
+    %if CONFIG.get_int('EBOOK_TAB'):
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('AddBook')">${_('Want eBook')}</button>
+    %endif
+    %if CONFIG.get_int('AUDIO_TAB'):
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('AddAudio')">${_('Want Audio')}</button>
+    %endif
+    %if CONFIG.get_int('EBOOK_TAB') and CONFIG.get_int('AUDIO_TAB'):
+    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('AddBoth')">${_('Want eBook and Audio')}</button>
+    %endif
+    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
+  </div>
+
+  <div class="modal fade" id="llsr-modal" tabindex="-1" aria-labelledby="llsr-modal-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title h5" id="llsr-modal-title" x-text="modal.title"></h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}" x-show="!modal.busy"></button>
+      </div>
+      <div class="modal-body">
+        <div x-show="modal.busy"><span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span><span>${_('Processing...')}</span></div>
+        <p class="mb-2" x-show="!modal.busy" x-text="modal.text"></p>
+        <div x-show="!modal.busy && (modal.passed || modal.failed)">
+          <span class="badge rounded-pill text-bg-success me-1" x-text="T.passed + ' ' + modal.passed"></span>
+          <span class="badge rounded-pill text-bg-danger" x-show="modal.failed" x-text="T.failedN + ' ' + modal.failed"></span>
+        </div>
+      </div>
+      <div class="modal-footer border-0 pt-0" x-show="!modal.busy">
+        <button type="button" class="btn btn-sm btn-ll rounded-pill" @click="window.location.reload()">${_('OK')}</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+<script>
+  var llSearchRows = ${js(rows)};
+</script>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {
+    select: ${_js('Select')}, done: ${_js('Done')}, failed: ${_js('Something went wrong, try again')},
+    collision: ${_js('Select only one metadata source for each book ID, or use its individual Add button.')},
+    empty: ${_js('No books found')}, noMatch: ${_js('No matching results')},
+    match: ${_js('Match')}, released: ${_js('Released')}, rating: ${_js('Rating')},
+    complete: ${_js('Operation Complete')}, error: ${_js('Error')}, passed: ${_js('Successful:')}, failedN: ${_js('Failed:')},
+    nothing: ${_js('Nothing selected')},
+    results: ${_jsn('%(count)s result', '%(count)s results')},
+    selected: ${_jsn('%(count)s selected', '%(count)s selected')}
+  };
+  // eBook and AudioBook buttons: what each kind looks like
+  var LOOK = {
+    add: ['btn-ll', 'fa-plus'], have: ['btn-outline-secondary', 'fa-user'], open: ['btn-outline-warning', 'fa-book-open'],
+    wanted: ['btn-outline-success', 'fa-search'], loading: ['text-bg-warning', 'fa-circle-notch fa-spin'],
+    status: ['bg-secondary-subtle text-secondary-emphasis', 'fa-check']
+  };
+  function act(key, a, icon) {
+    if (!a) { return null; }
+    var look = LOOK[a[0]] || LOOK.status;
+    var label = (a[0] === 'add' || a[0] === 'have' || a[0] === 'loading') ? a[1] : llStatus(a[1]);
+    return {key: key, kind: a[0], label: label, href: a[2], cls: look[0], icon: a[0] === 'status' || a[0] === 'wanted' || a[0] === 'open' ? icon : look[1], busy: false};
+  }
+  function fold(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, ''); }
+
+  Alpine.data('llSearchResults', function () {
+    var all = (window.llSearchRows || []).map(function (r) {
+      r.key = JSON.stringify([r.source, r.id]);
+      r.acts = [act('author', r.author_act, 'fa-user'), act('ebook', r.ebook, 'fa-book'), act('audio', r.audio, 'fa-headphones')].filter(Boolean);
+      r.hay = fold(r.title + ' ' + r.author + ' ' + r.date + ' ' + r.source);
+      return r;
+    });
+    return {
+      T: T, all: all, q: '', sort: 'fuzz', selecting: false, sel: {}, searching: false, toastText: '',
+      modal: {title: '', text: '', busy: false, passed: 0, failed: 0},
+      get countText() { return llNgettext(T.results, this.items.length); },
+      get selCount() { return Object.keys(this.sel).length; },
+      get items() {
+        var q = fold(this.q).trim(), key = this.sort;
+        var list = q ? this.all.filter(function (r) { return q.split(/\s+/).every(function (w) { return r.hay.indexOf(w) >= 0; }); }) : this.all.slice();
+        if (key === 'title' || key === 'author') {
+          list.sort(function (a, b) { return String(a[key]).localeCompare(String(b[key])); });
+        } else if (key === 'date') {
+          list.sort(function (a, b) { return String(b.date).localeCompare(String(a.date)); });
+        } else {
+          list.sort(function (a, b) { return (b[key] - a[key]) || (b.count - a.count); });
+        }
+        return list;
+      },
+      start: function () {
+        var self = this;
+        try { var s = sessionStorage.getItem('llsr-sort'); if (s) { this.sort = s; } } catch (e) {}
+        this.$watch('sort', function (v) { try { sessionStorage.setItem('llsr-sort', v); } catch (e) {} });
+        window.addEventListener('pageshow', function () { self.searching = false; });
+      },
+      toggle: function (r) {
+        var s = Object.assign({}, this.sel);
+        if (s[r.key]) { delete s[r.key]; } else { s[r.key] = true; }
+        this.sel = s;
+      },
+      pick: function (r, e) {
+        if (this.selecting && !e.target.closest('a')) { this.toggle(r); }
+      },
+      go: function (r, a, e) {
+        if (this.selecting) { e.preventDefault(); this.toggle(r); return; }
+        a.busy = true;  // the page reloads when it is done
+      },
+      stopSelect: function () { this.selecting = false; this.sel = {}; },
+      modalEl: function () { return bootstrap.Modal.getOrCreateInstance(this.$refs.modal, {backdrop: 'static', keyboard: false}); },
+      bulk: function (action) {
+        var self = this, selected = this.all.filter(function (r) { return self.sel[r.key]; });
+        if (!selected.length) { this.toast(T.nothing); return; }
+        var body = new URLSearchParams({action: action}), payloads = {}, collision = false;
+        selected.forEach(function (r) {
+          var id = action === 'AddAuthor' ? r.aid : r.id;
+          if (!id) { return; }
+          var payload = [r.aid, encodeURIComponent(r.author), action === 'AddAuthor' ? '' : encodeURIComponent(r.title), encodeURIComponent(r.source)].join('|');
+          if (payloads[id] && payloads[id] !== payload) { collision = true; }
+          payloads[id] = payload;
+        });
+        if (collision) { this.toast(T.collision); return; }
+        Object.keys(payloads).forEach(function (id) { body.append(id, payloads[id]); });
+        this.modal = {title: T.complete, text: '', busy: true, passed: 0, failed: 0};
+        this.modalEl().show();
+        fetch('mark_results_ajax', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+          .then(function (d) { self.modal = {title: T.complete, text: d.summary || '', busy: false, passed: d.passed || 0, failed: d.failed || 0}; })
+          .catch(function (err) { self.modal = {title: T.error, text: T.failed + ' (' + err.message + ')', busy: false, passed: 0, failed: 0}; });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2200}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

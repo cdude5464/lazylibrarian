@@ -62,7 +62,7 @@
           <div class="col-sm-4"><p><b>${_('Rating:')}</b> ${book['BookRate']}</p></div>
           %endif
           %if book.get('BookLang'):
-          <div class="col-sm-4"><p><b>${_('Language:')}</b> ${book['BookLang']}</p></div>
+          <div class="col-sm-4"><p><b>${_('Language:')}</b> ${book_language_label(book['BookLang'])}</p></div>
           %endif
           %if book.get('Narrator'):
           <div class="col-sm-4"><p><b>${_('Narrator:')}</b> ${book['Narrator']}</p></div>

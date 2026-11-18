@@ -257,7 +257,8 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
                 if names:
                     names += " &amp; "
                 names += _xesc(surname_first(
-                    name, postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX"))
+                    name, postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX")),
+                    prefixes=get_list(CONFIG.get_csv("NAME_PREFIX"))
                 ))
         for entry in entries:
             opfinfo += f'        <dc:creator opf:file-as="{names}" opf:role="{_xesc(entry[1])}">{_xesc(entry[0])}</dc:creator>\n'
@@ -267,7 +268,8 @@ def create_opf(dest_path, data_row, global_name=None, overwrite=False):
             f"{_xesc(data_dict.get('FileAs'))}</dc:creator>\n"
         )
     else:
-        aname = surname_first(data_dict.get("AuthorName", ""), postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX")))
+        aname = surname_first(data_dict.get("AuthorName", ""), postfixes=get_list(CONFIG.get_csv("NAME_POSTFIX")),
+                              prefixes=get_list(CONFIG.get_csv("NAME_PREFIX")))
         opfinfo += (
             f'        <dc:creator opf:file-as="{_xesc(aname)}" opf:role="aut">{_xesc(data_dict.get("AuthorName"))}</dc:creator>\n'
         )

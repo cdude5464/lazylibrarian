@@ -17,6 +17,7 @@
 
 import contextlib
 import importlib
+import json
 import logging
 import os
 import platform
@@ -57,7 +58,7 @@ from lazylibrarian.filesystem import (
     setperm,
     splitext,
 )
-from lazylibrarian.formatter import get_list, make_unicode
+from lazylibrarian.formatter import get_list, make_unicode, unaccented
 from lazylibrarian.logconfig import LOGCONFIG
 
 reading_status = {'toread': 1, 'reading': 2, 'haveread': 3, 'read': 3, 'owned': 4, 'abandoned': 5, 'dnf': 5, }
@@ -653,4 +654,17 @@ def validate_monthtable(table):
         if len(item) != length:
             logger.error('monthnames.json lengths are not consistent')
             return False
+    return True
+
+
+def save_monthtable(table) -> bool:
+    """ Save a new month name table to monthnames.json and use it, False if the table is not valid """
+    if not validate_monthtable(table):
+        return False
+    json_file = os.path.join(DIRS.DATADIR, 'monthnames.json')
+    with open(json_file, 'w', encoding='utf-8') as f:
+        json.dump(table, f, ensure_ascii=False)
+    # A second copy of the monthnames without accents and lowercased to speed up matching
+    cleantable = [[unaccented(itm).lower().strip('.') for itm in lyne] for lyne in table]
+    lazylibrarian.MONTHNAMES = [table, cleantable]
     return True

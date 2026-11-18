@@ -11,7 +11,7 @@ from unittests.unittesthelpers import LLTestCase
 from lazylibrarian.config2 import LLConfigHandler
 from lazylibrarian.configarray import ArrayConfig
 from lazylibrarian.configdefs import BASE_DEFAULTS
-from lazylibrarian.blockhandler import BlockHandler
+from lazylibrarian.blockhandler import BlockHandler, tidy_reason
 
 
 class BlockhandlerTest(LLTestCase):
@@ -137,6 +137,30 @@ class BlockhandlerTest(LLTestCase):
             'second blocked for 2 hours, 46 minutes, 40 seconds: hello',
             'googleapi blocked for 1 hours: xyz',
         ])
+
+
+class BlockReasonTest(LLTestCase):
+    """ An error page in a block reason is cut down to something readable """
+
+    CLOUDFLARE_PAGE = ('Response status 523: <!DOCTYPE html> <!--[if lt IE 7]> <html class="no-js ie6 oldie" '
+                       'lang="en-US"> <![endif]--> <head><title>kickass.to | 523: Origin is unreachable</title>'
+                       '</head><body><h1>Error</h1></body></html>')
+
+    def test_tidy_reason(self):
+        self.assertEqual(tidy_reason(self.CLOUDFLARE_PAGE), 'Response status 523: kickass.to | 523: Origin is unreachable')
+        self.assertEqual(tidy_reason('Response status 503: <html><body><h1>Down &amp; out</h1></body></html>'),
+                         'Response status 503: Down & out')
+        self.assertEqual(tidy_reason('Response status 401:  Unauthorized\n'), 'Response status 401: Unauthorized')
+        self.assertEqual(tidy_reason('size < 10 and > 5'), 'size < 10 and > 5', 'Not html, keep it')
+        self.assertEqual(tidy_reason('Response status 523: <!DOCTYPE html> <!--[if lt IE 7]> <html class="no-js ie6 ol'),
+                         'Response status 523', 'A page cut short by an older version')
+        self.assertEqual(tidy_reason(None), '')
+
+    def test_block_provider_stores_tidy_reason(self):
+        handler = BlockHandler()
+        handler.block_provider('KAT', self.CLOUDFLARE_PAGE, delay=120)
+        self.assertEqual(handler.active_blocks()['KAT']['reason'],
+                         'Response status 523: kickass.to | 523: Origin is unreachable')
 
 
 class BlockhandlerBackoffTest(LLTestCase):

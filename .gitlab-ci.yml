@@ -25,8 +25,13 @@
 # Create a pipeline for master and for merge requests. Other pushes get none: without this,
 # every push got a pipeline with no jobs, which GitLab shows as failed. translations-check
 # runs in every merge request pipeline, so those pipelines are never empty.
+# Merge requests from weblate* branches get none: they only carry .po files written by
+# Hosted Weblate, which validates them itself, and from the Weblate fork the pipeline
+# would run on the shared weblate account's compute minutes (ci_quota_exceeded).
 workflow:
   rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_BRANCH_NAME =~ /^weblate/'
+      when: never
     - if: '$CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH'
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
 
@@ -96,11 +101,15 @@ update-pot:
     - git config user.name "LazyLibrarian CI"
     - git config user.email "noreply@gitlab.com"
     - 'git commit -m "i18n: update lazylibrarian.pot [skip ci]" -- lazylibrarian/locale/lazylibrarian.pot'
-    # push over ssh with the deploy key; the variable is a file, ssh needs it to be private
+      # push over ssh with the deploy key; the variable is a file, ssh needs it to be private
     - chmod 600 "$POT_DEPLOY_KEY"
-    - mkdir -p ~/.ssh && ssh-keyscan -t ed25519,rsa "$CI_SERVER_HOST" >> ~/.ssh/known_hosts 2> /dev/null
-    - export GIT_SSH_COMMAND="ssh -i $POT_DEPLOY_KEY -o IdentitiesOnly=yes"
-    - git push "git@${CI_SERVER_HOST}:${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
+    - mkdir -p ~/.ssh
+    - SSH_HOST="${CI_SERVER_SHELL_SSH_HOST:-$CI_SERVER_HOST}"
+    - SSH_PORT="${CI_SERVER_SHELL_SSH_PORT:-22}"
+    - ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts
+    - test -s ~/.ssh/known_hosts
+    - export GIT_SSH_COMMAND="ssh -i $POT_DEPLOY_KEY -p $SSH_PORT -o IdentitiesOnly=yes"
+    - git push "git@${SSH_HOST}:${CI_PROJECT_PATH}.git" "HEAD:${CI_DEFAULT_BRANCH}"
 
 # Runs after update-pot, and fetches master again so the pot commit it may have pushed is the latest.
 # That commit says [skip ci] and gets no pipeline of its own.

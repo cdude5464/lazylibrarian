@@ -1,0 +1,115 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from lazylibrarian.config2 import CONFIG
+    page_id = 'login'
+    guest_page = True
+%>
+<%def name="headIncludes()">
+<style>
+  .lll { max-width: 400px; margin: 3rem auto 0; }
+  @media (max-width: 575.98px) { .lll { margin-top: 1rem; } }
+  .lll-logo { width: 64px; height: 64px; }
+</style>
+</%def>
+<%def name="body()">
+<div class="lll" x-data="llLogin">
+  <div class="text-center mb-4">
+    <img class="lll-logo mb-2" src="${img | h}" alt="">
+    <h1 class="h4 mb-0">${_('LazyLibrarian User Login')}</h1>
+  </div>
+  <div class="card shadow-sm">
+    <form class="card-body p-4" @submit.prevent="login()" novalidate>
+      <div class="mb-3">
+        <label class="form-label" for="username">${_('Username')}</label>
+        <input id="username" class="form-control" name="username" x-model="username" x-ref="username"
+               autocomplete="username" autocapitalize="none" spellcheck="false" autofocus>
+      </div>
+      <div class="mb-3">
+        <label class="form-label" for="password">${_('Password')}</label>
+        <input id="password" type="password" class="form-control" name="password" x-model="password" autocomplete="current-password">
+      </div>
+      <div class="alert alert-danger py-2 small" role="alert" x-show="error" x-cloak x-text="error"></div>
+      <button type="submit" class="btn btn-ll btn-lg w-100 rounded-pill" :disabled="busy">
+        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true" x-show="busy" x-cloak></span>${_('Login')}
+      </button>
+      %if lazylibrarian.LOGIN_MSG:
+      <p class="text-body-secondary small text-center mt-3 mb-0" id="message">${lazylibrarian.LOGIN_MSG | h}</p>
+      %endif
+    </form>
+  </div>
+  <div class="d-flex justify-content-between align-items-center mt-3">
+    <button type="button" class="btn btn-link btn-sm px-0" @click="openReset()">${_('Reset Password')}</button>
+    %if CONFIG['ADMIN_EMAIL'] != '':
+    <a class="btn btn-link btn-sm px-0" href="user_register">${_('Register')}</a>
+    %endif
+  </div>
+
+  <div class="modal fade" id="lll-reset" tabindex="-1" aria-labelledby="lll-reset-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered"><form class="modal-content" @submit.prevent="reset()" novalidate>
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title h5" id="lll-reset-title">${_('Password Reset')}</h2>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-body-secondary">${_('Please enter your email address for confirmation')}</p>
+        <div class="mb-3">
+          <label class="form-label" for="reset-username">${_('Username')}</label>
+          <input id="reset-username" class="form-control" x-model="username" autocomplete="username" autocapitalize="none" spellcheck="false">
+        </div>
+        <div class="mb-2">
+          <label class="form-label" for="reset-email">${_('Email')}</label>
+          <input id="reset-email" type="email" class="form-control" x-model="email" x-ref="email" autocomplete="email">
+        </div>
+        <div class="alert py-2 small mb-0 mt-3" :class="resetOk ? 'alert-success' : 'alert-warning'" role="status"
+             x-show="resetMsg" x-cloak x-text="resetMsg"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-dismiss="modal">${_('Close')}</button>
+        <button type="submit" class="btn btn-sm btn-ll rounded-pill" :disabled="busy">${_('Reset Password')}</button>
+      </div>
+    </form></div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {failed: ${_js('Something went wrong, try again')}};
+  function post(url, data) {
+    return fetch(url, {method: 'POST', body: new URLSearchParams(data), credentials: 'same-origin'})
+      .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.text(); });
+  }
+  Alpine.data('llLogin', function () {
+    return {
+      username: '', password: '', email: '', error: '', busy: false, resetMsg: '', resetOk: false,
+      // user_login answers nothing when the login worked, otherwise why it did not
+      login: function () {
+        var self = this;
+        this.busy = true; this.error = '';
+        post('user_login', {username: this.username.trim(), password: this.password}).then(function (t) {
+          t = String(t).trim();
+          if (t) { self.error = t; self.password = ''; self.busy = false; } else { window.location = 'index'; }
+        }).catch(function () { self.error = T.failed; self.busy = false; });
+      },
+      openReset: function () {
+        var self = this;
+        this.resetMsg = ''; this.resetOk = false;
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show();
+        this.$refs.modal.addEventListener('shown.bs.modal', function () { self.$refs.email.focus(); }, {once: true});
+      },
+      // password_reset answers a sentence either way, green only for the one that says it worked
+      reset: function () {
+        var self = this;
+        this.busy = true; this.resetMsg = '';
+        post('password_reset', {username: this.username.trim(), email: this.email.trim()}).then(function (t) {
+          self.resetMsg = String(t).trim() || T.failed;
+          self.resetOk = self.resetMsg === ${_js('Password reset, check your email')};
+        }).catch(function () { self.resetMsg = T.failed; self.resetOk = false; })
+          .finally(function () { self.busy = false; });
+      }
+    };
+  });
+});
+</script>
+</%def>

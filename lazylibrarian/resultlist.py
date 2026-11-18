@@ -40,7 +40,7 @@ from lazylibrarian.notifiers import custom_notify_snatch, notify_snatch, notify_
 from lazylibrarian.providers import get_searchterm
 from lazylibrarian.subtitle_search import exact_primary_result
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
-from lazylibrarian.webshare import valid_ident
+from lazylibrarian.sources.registry import url_checker
 
 
 _AUDIOBOOK_FORMAT_TAGS = (
@@ -609,8 +609,8 @@ def find_best_result(resultlist, book, searchtype, source):
                 elif res[prefix + 'prov'] in ['zlibrary', 'soulseek']:
                     if '^' not in url:
                         rejected = True
-                elif res[prefix + 'prov'] == 'webshare':
-                    rejected = not valid_ident(url)
+                elif url_checker(res[prefix + 'prov']):
+                    rejected = not url_checker(res[prefix + 'prov'])(url)
                 elif res[prefix + 'prov'] == 'annas':
                     # annas gives us an id in hex, verify we got hex digits
                     try:
@@ -756,6 +756,7 @@ def find_best_result(resultlist, book, searchtype, source):
                             score += 1
                             break
 
+                # annas without a secret key falls back to the mirrors listed on the book's page
                 matches.append([score, new_value_dict, control_value_dict, res['priority'],
                                 check_int(res.get('seeders', 0), 0)])
 

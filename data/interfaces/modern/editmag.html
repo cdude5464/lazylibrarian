@@ -1,0 +1,155 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    page_id = 'magazines'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 760px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0 0 1.5rem; text-wrap: balance; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+  .lle-prog { display: flex; align-items: center; gap: .75rem; margin-top: .9rem; font-size: .82rem; color: var(--bs-secondary-color); font-variant-numeric: tabular-nums; }
+  .lle-prog .bar { flex: 1; height: 6px; border-radius: 6px; background: var(--bs-secondary-bg); overflow: hidden; }
+  .lle-prog .bar i { display: block; height: 100%; background: var(--ll-accent); transition: width .3s ease; }
+  .lle-res { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def v(key):
+        try:
+            val = config[key]
+        except (KeyError, IndexError):
+            val = None
+        return '' if val is None else str(val)
+    mag = v('Title')
+%>
+<div class="lle" x-data="llEditMag">
+  <a href="issue_page?${urlencode({'title': mag}) | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title | h}</h1>
+
+  <form x-ref="form" accept-charset="UTF-8" action="magazine_update_ajax" method="post" @submit.prevent="save()">
+    <input type="hidden" name="old_title" value="${mag | h}">
+    <div class="lle-card">
+      <h2>${_('Magazine')}</h2>
+      <div class="mb-3">
+        <label class="form-label" for="new_title">${_('New Magazine Title:')}</label>
+        <input type="text" class="form-control" id="new_title" name="new_title" x-ref="newTitle" value="${mag | h}" placeholder="${_('Title') | h}" :readonly="saving">
+      </div>
+    </div>
+
+    %if can_edit:
+    <div class="lle-save">
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+    </div>
+    %endif
+  </form>
+
+  <div class="modal fade" id="lle-result" tabindex="-1" aria-labelledby="lle-result-title" aria-hidden="true" x-ref="modal"
+       data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title fs-6 fw-semibold" id="lle-result-title" x-text="done ? (error ? T.error : T.complete) : T.processing"></h2>
+      </div>
+      <div class="modal-body" role="status" aria-live="polite">
+        <template x-if="!done">
+          <div>
+            <div class="d-flex align-items-center gap-2"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span x-text="T.processing"></span></div>
+            <div class="lle-prog" x-show="total > 0">
+              <span class="bar"><i :style="'width:' + percent + '%'"></i></span><span x-text="current + '/' + total"></span>
+            </div>
+          </div>
+        </template>
+        <template x-if="done">
+          <div>
+            <p class="mb-0"><strong x-text="error ? T.errorAt : T.summary"></strong> <span x-text="message"></span></p>
+            <div x-show="passed > 0 || failed > 0">
+              <div class="small text-body-secondary mt-3" x-text="T.renamed"></div>
+              <div class="lle-res">
+                <span class="badge rounded-pill bg-success-subtle text-success-emphasis" x-text="T.ok + ' ' + passed"></span>
+                <span class="badge rounded-pill bg-danger-subtle text-danger-emphasis" x-show="failed > 0" x-text="T.bad + ' ' + failed"></span>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <div class="modal-footer border-0" x-show="done">
+        <button type="button" class="btn rounded-pill px-4" :class="error ? 'btn-outline-secondary' : 'btn-ll'" @click="close()" x-text="T.okBtn"></button>
+      </div>
+    </div></div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    try:
+        _mag = str(config['Title'])
+    except (KeyError, IndexError):
+        _mag = ''
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var OLD_TITLE = ${js(_mag)};
+  var T = {
+    processing: ${_js('Processing...')}, summary: ${_js('Summary:')}, renamed: ${_js('Issues Renamed')},
+    ok: ${_js('Successful:')}, bad: ${_js('Failed:')}, complete: ${_js('Operation Complete')}, okBtn: ${_js('OK')},
+    error: ${_js('Error')}, errorAt: ${_js('An error occurred:')}
+  };
+
+  Alpine.data('llEditMag', function () {
+    return {
+      T: T, saving: false, done: false, error: false, message: '', passed: 0, failed: 0,
+      current: 0, total: 0, percent: 0, timer: null, target: null,
+      save: function () {
+        var self = this, newTitle = this.$refs.newTitle.value.trim();
+        this.saving = true; this.done = false; this.error = false; this.total = 0; this.target = null;
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show();
+        this.timer = setInterval(function () { self.poll(); }, 1000);
+        fetch('magazine_update_ajax', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            // a redirect (the login page, say) is not an answer from the rename
+            if (r.redirected) { window.location = r.url; return null; }
+            return r.json();
+          })
+          .then(function (d) {
+            if (!d) { return; }
+            self.message = d.summary || ''; self.passed = d.passed || 0; self.failed = d.failed || 0;
+            // the answer looks the same when the title was refused, so ask whether the magazine is there under its new title
+            if (!newTitle || newTitle === OLD_TITLE) { self.finish(); return; }
+            var url = 'issue_page?' + new URLSearchParams({title: newTitle});
+            return fetch(url, {credentials: 'same-origin'})
+              .then(function (r) { if (r.ok && !r.redirected) { self.target = url; } })
+              .catch(function () {})
+              .finally(function () { self.finish(); });
+          })
+          .catch(function (e) { self.error = true; self.message = e.message; self.finish(); });
+      },
+      poll: function () {
+        var self = this;
+        fetch('issues_progress', {credentials: 'same-origin'}).then(function (r) { return r.text(); }).then(function (t) {
+          var m = /(\d+)\/(\d+)<\/span>/.exec(t);
+          if (m) { self.current = +m[1]; self.total = +m[2]; self.percent = self.total ? Math.round(self.current * 100 / self.total) : 0; }
+        }).catch(function () {});
+      },
+      finish: function () {
+        clearInterval(this.timer); this.timer = null;
+        this.done = true; this.saving = false;
+      },
+      close: function () {
+        if (this.target) { window.location = this.target; return; }
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).hide();
+      }
+    };
+  });
+});
+</script>
+</%def>

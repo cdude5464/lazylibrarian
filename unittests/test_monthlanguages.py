@@ -104,12 +104,17 @@ class MonthLanguagesTest(unittest.TestCase):
     def test_language_words(self):
         self.assertEqual(set(LANGUAGE_WORDS), {locale for locale, _, _ in MONTH_LANGUAGES})
         for locale, lists in LANGUAGE_WORDS.items():
-            self.assertEqual(set(lists), {'issue_nouns', 'volume_nouns', 'mag_nouns', 'name_postfix', 'name_definite'})
+            self.assertEqual(set(lists), {'issue_nouns', 'volume_nouns', 'mag_nouns', 'name_postfix', 'name_prefix',
+                                          'name_definite', 'multi_author_split', 'reject_words', 'comic_genres'})
             for field, words in lists.items():
                 self.assertEqual(len(words), len(set(words)), f'{locale} {field}')
                 for word in words:
-                    # stored the way they are compared, so one form matches titles with and without accents
-                    self.assertEqual(word, word_key(word), f'{locale} {field}')
+                    if field in ('multi_author_split', 'reject_words', 'comic_genres'):
+                        # compared lowercase with accents, see LANGUAGE_WORDS
+                        self.assertEqual(word, word.lower().strip(), f'{locale} {field}')
+                    else:
+                        # stored the way they are compared, so one form matches titles with and without accents
+                        self.assertEqual(word, word_key(word), f'{locale} {field}')
                     self.assertNotIn(',', word, f'{locale} {field}')
 
     def test_words_match_without_accents(self):

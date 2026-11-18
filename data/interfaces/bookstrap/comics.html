@@ -46,7 +46,7 @@
   </div>
 </%def>
 <%def name="body()">
-  <h1>${title}</h1>
+  <h1>${title | h}</h1>
   %if lazylibrarian.COMIC_UPDATE == True:
     <p>
     <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Libraryscan in progress ...')}</button>

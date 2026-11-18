@@ -678,6 +678,95 @@ def add_series_members(seriesid, refresh=False):
         lazylibrarian.SERIES_UPDATE = False
 
 
+SERIES_SOURCES = {'GR': 'GoodReads', 'HC': 'HardCover', 'OL': 'OpenLibrary', 'LT': 'LibraryThing'}
+
+
+def parse_series_id(text):
+    """ Turn user input into a prefixed series id we know how to fetch members for.
+        Accepts HC123 / GR123 / OL123 / LT123, a goodreads or librarything series url,
+        or a bare number (taken to be from the current BOOK_API source).
+        Return the id, or '' if not recognised """
+    text = (text or '').strip()
+    m = re.search(r'goodreads\.com/series/(\d+)', text, re.IGNORECASE)
+    if m:
+        return f"GR{m.group(1)}"
+    m = re.search(r'librarything\.com/n?series/(\d+)', text, re.IGNORECASE)
+    if m:
+        return f"OL{m.group(1)}"
+    m = re.fullmatch(r'(GR|HC|OL|LT)\s*(\d+)', text, re.IGNORECASE)
+    if m:
+        return f"{m.group(1).upper()}{m.group(2)}"
+    if text.isdigit():
+        src = lazylibrarian.INFOSOURCES.get(CONFIG['BOOK_API'], {}).get('src', '')
+        if src in SERIES_SOURCES:
+            return f"{src}{text}"
+    return ''
+
+
+def get_series_name(seriesid):
+    """ Ask the source of a series id for the series name. Return '' if not found """
+    logger = logging.getLogger(__name__)
+    source = seriesid[:2]
+    try:
+        if source == 'HC':
+            return lazylibrarian.hc.HardCover().get_series_name(seriesid)
+        if source in ['OL', 'LT']:
+            return lazylibrarian.ol.OpenLibrary().get_series_name(seriesid)
+        if source == 'GR' and CONFIG['GR_API']:
+            params = {"format": "xml", "key": CONFIG['GR_API']}
+            url = '/'.join([CONFIG['GR_URL'], f'series/{seriesid[2:]}?{urlencode(params)}'])
+            rootxml, _ = gr_xml_request(url)
+            if rootxml is not None:
+                title = rootxml.find('series/title')
+                if title is not None and title.text:
+                    return title.text.strip()
+    except Exception as e:
+        logger.error(f"{type(e).__name__} getting name for series {seriesid}: {str(e)}")
+    return ''
+
+
+def add_series_by_id(seriesid, reason=''):
+    """ Add a series the user asked for by id, then fetch its members.
+        A new series gets the NEWSERIES_STATUS status, members are fetched regardless.
+        Return the series name, or '' if the series could not be found """
+    logger = logging.getLogger(__name__)
+    db = database.DBConnection()
+    try:
+        match = db.match('SELECT SeriesName from series WHERE SeriesID=?', (seriesid,))
+        if match:
+            seriesname = match['SeriesName']
+            logger.debug(f"Series {seriesid}:{seriesname} already in database, refreshing members")
+        else:
+            seriesname = get_series_name(seriesid)
+            if not seriesname:
+                logger.warning(f"Series {seriesid} not found at {SERIES_SOURCES.get(seriesid[:2], seriesid[:2])}")
+                return ''
+            logger.debug(f"New series: {seriesid}:{seriesname}: {CONFIG['NEWSERIES_STATUS']}")
+            db.action('INSERT INTO series (SeriesID, SeriesName, Status, Updated, Reason) VALUES (?, ?, ?, ?, ?)',
+                      (seriesid, seriesname, CONFIG['NEWSERIES_STATUS'], time.time(), reason or seriesname))
+    finally:
+        db.close()
+    # members can take a while (each new book is imported), so don't hold up the caller
+    threading.Thread(target=_add_series_members_and_authors, name='SERIESMEMBERS', args=[seriesid]).start()
+    return seriesname
+
+
+def _add_series_members_and_authors(seriesid):
+    """ Fetch members of a newly added series and link the series to their authors.
+        Books that were already in the database only get a member row from add_series_members,
+        but the series pages need seriesauthors to show the series at all """
+    add_series_members(seriesid, refresh=True)
+    db = database.DBConnection()
+    try:
+        authors = db.select("SELECT DISTINCT books.AuthorID from member,books WHERE "
+                            "member.BookID=books.BookID and member.SeriesID=?", (seriesid,))
+        for author in authors:
+            db.action('INSERT INTO seriesauthors (SeriesID, AuthorID) VALUES (?, ?)',
+                      (seriesid, author['AuthorID']), suppress='UNIQUE')
+    finally:
+        db.close()
+
+
 def get_series_authors(seriesid):
     """ Get a list of authors contributing to a series
         and import those authors (but NOT their books) into the database

@@ -193,7 +193,7 @@ class AuthController:
                                 'UserID': pwd_generator(),
                                 'Name': username,
                                 'Password': md5_utf8(password),
-                                'Perms': lazylibrarian.perm_admin
+                                'Perms': lazylibrarian.perm_all
                                 }, {'UserName': username})
             logger.debug(f"{username} added as a new admin user")
             res = db.match('SELECT UserID,Prefs from users where UserName=?', (username,))

@@ -611,6 +611,18 @@ query FindAuthor { authors_by_pk(id: [authorid])
                     BLOCKHANDLER.block_provider(self.provider, msg, delay=delay)
         return res, valid_cache
 
+    def get_series_name(self, series_ident=None):
+        """Look up the name of a HardCover series by its id (HC prefixed).
+        Uses the same query as get_series_members so the members fetch that follows is cached."""
+        searchcmd = self.HC_BOOK_SERIES_BY_PK.replace('[seriesid]', str(series_ident)[2:])
+        results, _ = self.result_from_cache(searchcmd)
+        if 'error' in results:
+            self.logger.error(str(results['error']))
+        try:
+            return results['data']['series_by_pk']['name'] or ''
+        except (KeyError, TypeError):
+            return ''
+
     def get_series_members(self, series_ident=None, series_title='', queue=None, refresh=False):
         """Get all books in a series from HardCover."""
         resultlist = []

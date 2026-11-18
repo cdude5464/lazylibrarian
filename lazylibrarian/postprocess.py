@@ -117,6 +117,7 @@ from lazylibrarian.preprocessor import (
     preprocess_magazine,
 )
 from lazylibrarian.scheduling import SchedulerCommand, schedule_job
+from lazylibrarian.sources.registry import direct_providers
 from lazylibrarian.telemetry import TELEMETRY
 
 
@@ -437,7 +438,8 @@ class BookState:
                     self.download_folder = os.path.join(general_folder, soulseek.get("name", '').rsplit('/', 1)[1])
                 except (KeyError, IndexError):
                     self.download_folder = general_folder
-            elif res and (res['NZBprov'] in ['annas', 'zlibrary', 'webshare'] or res['NZBprov'].startswith('libgen')):
+            elif res and (res['NZBprov'] in [s.name for s in direct_providers() if s.download_dir]
+                          or res['NZBprov'].startswith('libgen')):
                 # these download into first download directory
                 self.download_folder = get_directory('Download')
             elif self.source == "QBITTORRENT" and general_folder:
@@ -3014,7 +3016,8 @@ def _process_comic_post(
         older = int(mostrecentissue) > int(issueid) if mostrecentissue else False
 
         # Create and cache cover
-        coverfile = _create_and_cache_cover(dest_file, BookType.COMIC, pagenum=1) or ""
+        coverfile = (_create_and_cache_cover(dest_file, BookType.COMIC, pagenum=1)
+                        if CONFIG.get_bool('IMP_COMICCOVER') else "")
 
         # Update database
         _update_issue_database(
@@ -3056,9 +3059,8 @@ def _process_magazine_post(
     else:
         coverpage = metadata.cover_page if metadata.cover_page else 1
 
-    coverfile = (
-        _create_and_cache_cover(dest_file, BookType.MAGAZINE, pagenum=coverpage) or ""
-    )
+    coverfile = (_create_and_cache_cover(dest_file, BookType.MAGAZINE, pagenum=coverpage)
+            if CONFIG.get_bool('IMP_MAGCOVER') else "")
 
     # Update database
     _update_issue_database(

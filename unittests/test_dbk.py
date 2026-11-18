@@ -409,7 +409,10 @@ class DBKTest(LLTestCaseWithStartup):
     def test_get_author_info(self):
         with mock.patch.object(dbk.DBK, '_fetch', return_value=(AUTHOR_PAGE, False)) as fetch:
             author = dbk.DBK().get_author_info(authorid='DBK101')
-            self.assertEqual(fetch.call_args[0][0], 'https://www.databazeknih.cz/autori/autor-101')
+            # the description ends with ... so the biography page is read after the author page
+            self.assertEqual([c[0][0] for c in fetch.call_args_list],
+                             ['https://www.databazeknih.cz/autori/autor-101',
+                              'https://www.databazeknih.cz/zivotopis/autor-101'])
         self.assertEqual(author['authorid'], 'DBK101')
         # format_author_name stores names decomposed
         self.assertEqual(unicodedata.normalize('NFC', author['authorname']), 'Karel Čapek')
@@ -419,6 +422,21 @@ class DBKTest(LLTestCaseWithStartup):
         self.assertEqual(author['authorborn'], '1890-01-09')
         self.assertEqual(author['authordeath'], '1938-12-25')
         self.assertTrue(author['about'].startswith('Český prozaik, dramatik'))
+
+    def test_get_author_info_full_bio(self):
+        bio = ('<h2 class="lora">Životopis <em class="nobold">Karel Čapek</em></h2>'
+               '<p class="new2">Český prozaik,\n dramatik a novinář.<br>Bratr Josefa Čapka &amp; spisovatel.\n'
+               '<span class="odl pozn">(zdroj životopisu: wikipedie)</span></p><p class="new2">Jiný text</p>')
+        pages = {'https://www.databazeknih.cz/autori/autor-101': AUTHOR_PAGE,
+                 'https://www.databazeknih.cz/zivotopis/autor-101': bio}
+        with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), False)):
+            author = dbk.DBK().get_author_info(authorid='DBK101')
+        self.assertEqual(author['about'], 'Český prozaik, dramatik a novinář.<br>Bratr Josefa Čapka &amp; '
+                                          'spisovatel. (zdroj životopisu: wikipedie)')
+        # no biography page, keep the short text
+        pages.pop('https://www.databazeknih.cz/zivotopis/autor-101')
+        with mock.patch.object(dbk.DBK, '_fetch', side_effect=lambda url: (pages.get(url, ''), False)):
+            self.assertTrue(dbk.DBK().get_author_info(authorid='DBK101')['about'].endswith('...'))
 
     def test_get_author_info_no_photo_or_page(self):
         page = AUTHOR_PAGE.replace(r'https:\/\/www.databazeknih.cz\/img\/authors\/10_\/101\/karel-capek'

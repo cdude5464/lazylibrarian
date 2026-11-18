@@ -42,7 +42,7 @@
 <form accept-charset="UTF-8" action="book_update" method="post">
     <div class="configtable">
         <input name="utf8" type="hidden" value="&#x2713;" />
-        <legend>${title}</legend>
+        <legend>${title | h}</legend>
         <div class="form-group">
             <label for="moveBook" class="control-label">${_('Change author to:')} </label>
             <select id="moveBook" class="moveBook form-control input" name="authorname">

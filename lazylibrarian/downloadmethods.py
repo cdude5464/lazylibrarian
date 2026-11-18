@@ -21,7 +21,7 @@ import traceback
 import unicodedata
 from base64 import b16encode, b32decode, b64encode
 from hashlib import sha1, sha256
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 # noinspection PyBroadException
 try:
@@ -85,9 +85,8 @@ from lazylibrarian.formatter import (
 )
 from lazylibrarian.ircbot import irc_query
 from lazylibrarian.soulseek import SLSKD
+from lazylibrarian.sources.registry import direct_provider
 from lazylibrarian.telemetry import record_usage_data
-from lazylibrarian.webshare import valid_ident, webshare_download
-
 from lib.bencode import BencodeDecodeError, bdecode, bencode
 
 from .magnet2torrent import magnet2torrent
@@ -526,19 +525,20 @@ def direct_dl_method(bookid=None, dl_title=None, dl_url=None, library='eBook', p
         db.close()
         return False, fname
 
-    if provider == 'webshare':
-        if not valid_ident(dl_url):
-            return False, f"Invalid webshare ident [{dl_url}]"
+    registered = direct_provider(provider)
+    if registered and registered.download:
+        if registered.valid_url and not registered.valid_url(dl_url):
+            return False, f"Invalid {provider} url [{dl_url}]"
         folder = ''
         db = database.DBConnection()
         res = db.match('SELECT bookname from books WHERE bookid=?', (bookid,))
         if res and res['bookname']:
             folder = sanitize(res['bookname'], is_folder_or_file=True)
         try:
-            success, fname = webshare_download(dl_url, folder, dl_title)
+            success, fname = registered.download(dl_url, folder, dl_title)
         except Exception as e:
             success = False
-            fname = f"Webshare download error: {e}"
+            fname = f"{registered.label} download error: {e}"
         if not success:
             logger.error(fname)
 
@@ -860,6 +860,32 @@ def previously_rejected_archive(bookid, hashid):
         db.close()
 
 
+# how many http redirects to follow by hand looking for a magnet link
+MAX_MAGNET_REDIRECTS = 5
+
+
+def find_magnet_redirect(url, headers, proxies) -> str:
+    """ Follow the redirects from url one at a time and return the magnet link
+    they end at, or '' if they don't. The magnet can be more than one hop away,
+    eg Prowlarr redirects to a Jackett indexer which redirects to the magnet. """
+    for _ in range(MAX_MAGNET_REDIRECTS):
+        if url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
+            verify = CONFIG['SSL_CERTS'] if CONFIG['SSL_CERTS'] else True
+        else:
+            verify = False
+        r = requests.get(url, headers=headers, timeout=90, proxies=proxies, impersonate='chrome',
+                         verify=verify, allow_redirects=False)
+        location = r.headers.get('Location', '')
+        if location.startswith('magnet:?'):
+            return location
+        if not location:
+            return ''
+        url = urljoin(url, location)
+        if not url.startswith(('http://', 'https://')):
+            return ''
+    return ''
+
+
 def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', label='', provider='',
                   requested_author='', requested_title=''):
     logger = logging.getLogger(__name__)
@@ -945,15 +971,9 @@ def tor_dl_method(bookid=None, tor_title=None, tor_url=None, library='eBook', la
                 # curl_cffi doesn't include the redirect target in its error,
                 # so ask again without following redirects to find it
                 try:
-                    if tor_url.startswith('https') and CONFIG.get_bool('SSL_VERIFY'):
-                        verify = CONFIG['SSL_CERTS'] if CONFIG['SSL_CERTS'] else True
-                    else:
-                        verify = False
-                    r = requests.get(tor_url, headers=headers, timeout=90, proxies=proxies, impersonate='chrome',
-                                     verify=verify, allow_redirects=False)
-                    location = r.headers.get('Location', '')
-                    if location.startswith('magnet:?'):
-                        e = Exception(location)
+                    magnet = find_magnet_redirect(tor_url, headers, proxies)
+                    if magnet:
+                        e = Exception(magnet)
                 except Exception:
                     pass
             if "magnet:?" in str(e):

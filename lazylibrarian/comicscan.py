@@ -230,7 +230,7 @@ def comic_scan(comicid=None):
                             }
                             if not iss_entry:
                                 logger.debug(f"Adding issue {title} {issue}")
-                                coverfile = create_mag_cover(issuefile, refresh=True)
+                                coverfile = create_mag_cover(issuefile, refresh=True)  if CONFIG.get_bool('IMP_COMICCOVER') else ''
                                 if coverfile and path_isfile(coverfile):
                                     hashname = os.path.join(DIRS.CACHEDIR, 'comic', f'{myhash}.jpg')
                                     copyfile(coverfile, hashname)

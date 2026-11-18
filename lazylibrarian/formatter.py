@@ -549,17 +549,19 @@ def date_format(datestr, formatstr="$Y-$m-$d", context='', datelang=''):
 
 # Choices for the display date format selects, issue dates can also leave out the day
 DISPLAY_DATE_FORMATS = ['$Y-$m-$d', '$d.$m.$Y', '$d. $m. $Y', '$d/$m/$Y', '$m/$d/$Y', '$d-$m-$Y',
-                        '$d $b $Y', '$d $B $Y', '$d. $B $Y', '$B $d, $Y']
-ISSUE_DATE_FORMATS = DISPLAY_DATE_FORMATS + ['$B $Y', '$b $Y', '$m/$Y', '$Y-$m']
+                        '$d $b $Y', '$d $b $y', '$d $B $Y', '$d. $B $Y', '$B $d, $Y']
+ISSUE_DATE_FORMATS = DISPLAY_DATE_FORMATS + ['$B $Y', '$b $Y', '$b $y', '$m/$Y', '$Y-$m']
 
 
 def date_format_picker(current: str, formats: list[str], datelang: str = '') -> dict:
-    """ Formats for a display date select, each with an example date in datelang.
+    """ Formats for a display date select, each with today's date as the example, in datelang.
         A stored format that isn't one of these is returned as 'other' so the select can keep it
         and saving doesn't change it.
         Returns {'formats': [{'format', 'example'}], 'selected': str, 'other': dict | None} """
+    today = now()[:10]
+
     def entry(fmt):
-        return {'format': fmt, 'example': date_format('2026-12-31', fmt, datelang=datelang)}
+        return {'format': fmt, 'example': date_format(today, fmt, datelang=datelang)}
 
     other = None if current in formats else entry(current)
     return {'formats': [entry(fmt) for fmt in formats], 'selected': current, 'other': other}
@@ -570,7 +572,9 @@ def two_months(word):
     # found in some magazine titles
     a = 0
     b = 0
-    cleanword = unaccented(word).lower()
+    # titles often have punctuation after the month, eg "13th November, 2026"
+    word = word.strip(' ,;:')
+    cleanword = unaccented(word).lower().strip(' ,.;:')
     for f in range(1, 13):
         for month in lazylibrarian.MONTHNAMES[0][f]:
             if word.startswith(month):
@@ -617,7 +621,9 @@ def month2num(month):
      - given a month name (long or short) in requested locales
      - or given a season name in the seasons dictionary
     """
-    cleanmonth = unaccented(month).lower()
+    # titles often have punctuation after the month, eg "13th November, 2026"
+    month = month.strip(' ,;:')
+    cleanmonth = unaccented(month).lower().strip(' ,.;:')
     for f in range(1, 13):
         if month in lazylibrarian.MONTHNAMES[0][f] or cleanmonth in lazylibrarian.MONTHNAMES[1][f]:
             return f
@@ -1043,16 +1049,22 @@ def sort_definite(title: str, articles=list[str]) -> str:
     return title
 
 
-def surname_first(authorname: str, postfixes: list[str]) -> str:
-    """ Swap authorname round into surname, forenames for display and sorting"""
+def surname_first(authorname: str, postfixes: list[str], prefixes: list[str] | None = None) -> str:
+    """ Swap authorname round into surname, forenames for display and sorting.
+        Suffixes stay with the surname, "Ján Novák PhD" is "Novák PhD, Ján". Titles before the name
+        go after the forenames, so the name sorts by surname: "Ing. Ján Novák" is "Novák, Ján, Ing." """
     words = get_list(authorname)
-    if len(words) < 2:
+    titles = []
+    if prefixes:
+        keys = word_keys(prefixes)
+        while len(words) > 1 and word_key(words[0]) in keys:
+            titles.append(words.pop(0))
+    if len(words) < 2 and not titles:
         return authorname
     res = words.pop()
-
-    if word_key(res) in word_keys(postfixes):
+    if words and word_key(res) in word_keys(postfixes):
         res = f"{words.pop()} {res}"
-    return res + ', ' + ' '.join(words)
+    return ', '.join(part for part in (res, ' '.join(words), ' '.join(titles)) if part)
 
 
 def clean_name(name, extras=None):

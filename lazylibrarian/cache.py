@@ -191,9 +191,10 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
 
     proxies = proxy_list()
 
+    # timeout=True uses the configured timeouts, a number of seconds (a provider's own Timeout) is used as given
     # jackett query all indexers needs a longer timeout
     # /torznab/all/api?q=  or v2.0/indexers/all/results/torznab/api?q=
-    if timeout:
+    if timeout is True:
         if '/torznab/' in url_lower and ('/all/' in url_lower or '/aggregate/' in url_lower):
             timeout = CONFIG.get_int('HTTP_EXT_TIMEOUT')
         else:
@@ -297,8 +298,20 @@ def fetch_url(url: str, headers: dict | None = None, retry=True, timeout=True,
     else:
         logger.debug(f"Error {r.status_code} url={provider_log_origin(url)}")
 
-    msg = responses.get(r.status_code, "HTTP error")
+    msg = responses.get(r.status_code) or CLOUDFLARE_RESPONSES.get(r.status_code) or "HTTP error"
     return f"Response status {r.status_code}: {msg}", False
+
+
+# Cloudflare's own status codes, not in http.client.responses: without them the error was the start of the html page
+CLOUDFLARE_RESPONSES = {
+    520: 'Web Server Returned an Unknown Error',
+    521: 'Web Server Is Down',
+    522: 'Connection Timed Out',
+    523: 'Origin Is Unreachable',
+    524: 'A Timeout Occurred',
+    525: 'SSL Handshake Failed',
+    526: 'Invalid SSL Certificate',
+}
 
 
 def cache_img(img_type: ImageType, img_id: str, img_url: str, refresh=False) -> tuple[str, bool, bool]:

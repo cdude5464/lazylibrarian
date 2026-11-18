@@ -10,6 +10,8 @@
 #   https://www.databazeknih.cz/book-detail-more-info/30482               pages, original title, isbn
 #   https://www.databazeknih.cz/search?in=authors&q=sapkowski             search for authors
 #   https://www.databazeknih.cz/autori/andrzej-sapkowski-269              author, with schema.org json-ld
+#   https://www.databazeknih.cz/zivotopis/andrzej-sapkowski-269           full author biography, the json-ld
+#                                                                         description is cut short
 #   https://www.databazeknih.cz/vydane-knihy/andrzej-sapkowski-269?lang=sk  an author's books, 20 per page,
 #                                                                         in Czech without lang
 #   https://www.databazeknih.cz/serie/zaklinac-saga---7063                books in a series
@@ -24,6 +26,7 @@ import logging
 import re
 import time
 import traceback
+from html import escape as html_escape
 from queue import Queue
 from urllib.parse import urlencode
 
@@ -75,6 +78,7 @@ class DBK:
     ISBNURL = BASEURL + '/search?%s'
     AUTHORSEARCHURL = BASEURL + '/search?%s'
     AUTHORURL = BASEURL + '/autori/autor-%s'
+    BIOURL = BASEURL + '/zivotopis/autor-%s'
     AUTHORBOOKSURL = BASEURL + '/vydane-knihy/autor-%s'
     SERIESURL = BASEURL + '/serie/serie-%s'
 
@@ -552,6 +556,25 @@ class DBK:
         }
 
     @staticmethod
+    def _parse_bio(page: str) -> str:
+        """ Return the full biography from an author's biography page, paragraphs joined by <br>,
+            or empty string. The text is the first paragraph after the Životopis heading """
+        soup = BeautifulSoup(page, 'html.parser')
+        heading = next((h for h in soup.find_all('h2') if 'Životopis' in h.get_text()), None)
+        para = heading.find_next_sibling('p') if heading else None
+        if not para:
+            return ''
+        # the page source wraps lines anywhere, only <br> starts a new paragraph
+        lines = [[]]
+        for item in para.children:
+            if getattr(item, 'name', None) == 'br':
+                lines.append([])
+            else:
+                lines[-1].append(item.get_text() if isinstance(item, Tag) else str(item))
+        lines = [' '.join(''.join(line).split()) for line in lines]
+        return '<br>'.join(html_escape(line, quote=False) for line in lines if line)
+
+    @staticmethod
     def _comparable_name(name):
         """ Name without diacritics, unaccented() drops 'ł' as it has no separate accent """
         return unaccented(name.translate({0x141: 'L', 0x142: 'l'}))
@@ -667,6 +690,12 @@ class DBK:
         author = self._parse_author(page) if page else {}
         if not author:
             self.logger.debug(f"Unable to read Databazeknih author {authorid}")
+        elif author['about'].endswith(('...', '…')):
+            # the json-ld description is cut short, the biography page has all of it
+            bio_page, _ = self._fetch(self.BIOURL % number)
+            about = self._parse_bio(bio_page) if bio_page else ''
+            if about:
+                author['about'] = about
         return author
 
     def get_author_image(self, authorid=None, authorname=None, refresh=False):

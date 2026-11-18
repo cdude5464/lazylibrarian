@@ -8,7 +8,18 @@
     from lazylibrarian.notifiers import APPRISE_VER
     from lazylibrarian import MONTHNAMES, SEASONS
     from lazylibrarian import i18n
+    from lazylibrarian.menulinks import client_urls, prowlarr_urls
+    from lazylibrarian.sources.registry import direct_providers
 %>
+<%doc>
+  A button that opens a service in a new tab, at the address saved in the config (see menulinks.py),
+  next to its Test button. Nothing while there is no address.
+</%doc>
+<%def name="open_service(url, name)">
+%if url:
+<a class="button btn btn-sm btn-default" href="${url | h}" target="_blank" rel="noopener noreferrer" title="${url | h}"><i class="fa fa-external-link-alt"></i> ${_('Open %(name)s') % {'name': name}}</a>
+%endif
+</%def>
 <%def name="headerIncludes()">
 <div id="subhead_container">
     <div id="subhead_menu">
@@ -20,6 +31,7 @@
       <button class="button btn btn-sm btn-primary" type="button" value="Show Jobs" id="show_jobs"><i class="fa fa-list-ul"></i> ${_('Job Status')}</button>
       <button class="button btn btn-sm btn-primary" type="button" value="Show Stats" id="show_stats"><i class="fa fa-list-ul"></i> ${_('DB Stats')}</button>
       <button class="button btn btn-sm btn-primary" type="button" value="checkforupdates" id="checkforupdates"><i class="fa fa-list-alt"></i> ${_('Check Version')}</button>
+      <button class="button btn btn-sm btn-primary" type="button" value="setupwizard" id="setupwizard"><i class="fa fa-magic"></i> ${_('Setup Wizard')}</button>
       %if CONFIG['USER_ACCOUNTS']:
       <a class="button btn btn-sm btn-primary" href="user_admin"><i class="fa fa-user"></i> ${_('User Admin')}</a>
       %endif
@@ -31,7 +43,7 @@
   <!-- ensure the browser sends form-submission data in the UTF-8 encoding,
        even if the user fiddles with the page encoding -->
   <form accept-charset="UTF-8" action="config_update" method="post">
-<h1>${title}
+<h1>${title | h}
     <div class="pull-right table_wrapper_button">
       <input type="button" value="${_('Export Filters') | h}" id="savefilters" class="btn btn-default" />
       <input type="button" value="${_('Import Filters') | h}" id="loadfilters" class="btn btn-default" />
@@ -80,6 +92,7 @@
                         <option value="${lang}" ${selected}>${i18n.language_name(lang)} (${lang})</option>
                         %endfor
                       </select>
+                      <span class="help-block">${_('The language of these pages. Automatic follows the language set in your browser.')}</span>
                     </div>
                     </div>
                     <div class="col-sm-6">
@@ -128,6 +141,7 @@
                         <option value="${page}" ${selected}>${page_label}</option>
                         %endfor
                       </select>
+                      <span class="help-block">${_('The page that opens first when you open LazyLibrarian.')}</span>
                     </div>
                     </div>
                     </div>
@@ -150,6 +164,72 @@
                     %for group_label, boxes in appearance_groups:
                     ${enable_grid(boxes, group_label)}
                     %endfor
+                  </fieldset>
+                  <fieldset>
+                    <legend>${_('Menu Links')}</legend>
+                    <div class="row checkbox">
+                    <div class="col-md-12">
+                      <% checked = 'checked="checked"' if CONFIG['MENU_LINKS'] else '' %>
+                      <label for="menu_links" class="control-label">
+                        <input type="checkbox" id="menu_links" name="menu_links" value="1" ${checked} />
+                        ${_('Show links to other services')}</label>
+                      <span class="help-block">${_('Links in the "..." menu of the pages of the modern interface: to the services below that have an address, and to your download clients and Prowlarr (Logs), at the addresses set for them in Downloaders and Providers. Turning it off hides the links and keeps the addresses.')}</span>
+                    </div>
+                    </div>
+                    <%
+                      everyone = _('Shown to every user who is logged in.')
+                      admins = _('Shown only to users who can change the config.')
+                      # (setting, label, example address, help, name example, name help)
+                      menu_link_rows = [
+                        ('link_audiobookshelf', _('Audiobookshelf address:'), 'http://192.168.1.10:13378',
+                         _('Audiobookshelf, the server that streams your audiobooks and podcasts. In the modern interface it is in the "..." menu of AudioBooks.') + ' ' + everyone, None, None),
+                        ('link_calibre', _('Calibre address:'), 'http://192.168.1.10:8083',
+                         _('The web interface of your Calibre library: the Calibre content server, Calibre-Web or Calibre-Web Automated. In the modern interface it is in the "..." menu of eBooks.') + ' ' + everyone,
+                         'Calibre-Web', _('The name of the link in the menu, Calibre if left empty.')),
+                        ('link_downloads', _('Downloaded files address:'), 'http://192.168.1.10:8081',
+                         _('Browsers do not open local folders from a web page, so use a web file manager, such as File Browser, '
+                           'that shows the download folder. In the modern interface it is in the "..." menu of History.') + ' ' + admins, None, None),
+                      ]
+                    %>
+                    <fieldset id="menu_links_options">
+                    %for prefix, label, example, help, name_example, name_help in menu_link_rows:
+                    <div class="form-group">
+                      <label for="${prefix}_url" class="control-label">${label}</label>
+                      <input type="text" id="${prefix}_url" name="${prefix}_url" value="${CONFIG[prefix.upper() + '_URL'] | h}"
+                             class="form-control" placeholder="${example}">
+                      <span class="help-block">${help} ${_('The address as your browser reaches it, the link is not shown while it is empty.')}</span>
+                    </div>
+                    %if name_example:
+                    <div class="form-group">
+                      <label for="${prefix}_name" class="control-label">${_('Name in the menu:')}</label>
+                      <input type="text" id="${prefix}_name" name="${prefix}_name" value="${CONFIG[prefix.upper() + '_NAME'] | h}"
+                             class="form-control" placeholder="${name_example}">
+                      <span class="help-block">${name_help}</span>
+                    </div>
+                    %endif
+                    %endfor
+                    <div class="form-group">
+                      <label for="link_custom_url" class="control-label">${_('Your own link, address:')}</label>
+                      <input type="text" id="link_custom_url" name="link_custom_url" value="${CONFIG['LINK_CUSTOM_URL'] | h}"
+                             class="form-control" placeholder="http://192.168.1.10:9000">
+                      <span class="help-block">${_('Any other page you want at hand, for example Readarr, Kavita or your NAS.')} ${admins} ${_('The address as your browser reaches it, the link is not shown while it is empty.')}</span>
+                    </div>
+                    <div class="form-group">
+                      <label for="link_custom_name" class="control-label">${_('Name in the menu:')}</label>
+                      <input type="text" id="link_custom_name" name="link_custom_name" value="${CONFIG['LINK_CUSTOM_NAME'] | h}"
+                             class="form-control" placeholder="${_('My link') | h}">
+                      <span class="help-block">${_('The name of the link in the menu, the host name of the address if left empty.')}</span>
+                    </div>
+                    <div class="form-group">
+                      <label for="link_custom_page" class="control-label">${_('In the "..." menu of:')}</label>
+                      <select id="link_custom_page" name="link_custom_page" class="form-control">
+                        %for page_id, page_label in [('books', _('eBooks')), ('audio', _('AudioBooks')), ('history', _('History')), ('logs', _('Logs'))]:
+                        <option value="${page_id}"${' selected' if CONFIG['LINK_CUSTOM_PAGE'] == page_id else ''}>${page_label}</option>
+                        %endfor
+                      </select>
+                      <span class="help-block">${_('The page whose "..." menu has your link, in the modern interface.')}</span>
+                    </div>
+                    </fieldset>
                   </fieldset>
                   <fieldset>
                     <legend>${_('Display Date Formats')}</legend>
@@ -190,6 +270,7 @@
                       <label for="http_root" class="input-group-addon">${_('Web Root')}</label>
                       <input type="text" id="http_root" name="http_root" value="${CONFIG['HTTP_ROOT']}" class="form-control" placeholder="${_('Web Root') | h}">
                     </div>
+                    <span class="help-block">${_('Only when LazyLibrarian is behind a reverse proxy under a path of its own, like /lazylibrarian. Leave it empty otherwise.')}</span>
                     <div class="row checkbox">
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['HTTP_PROXY'] else '' %>
@@ -207,6 +288,7 @@
                       <label for="https_enabled" class="control-label">
                         <input type="checkbox" id="https_enabled" name="https_enabled" value="1" ${checked} />
                         ${_('HTTPS access to lazylibrarian')}</label>
+                      <span class="help-block">${_('Encrypts the connection to LazyLibrarian, with a certificate and its key. Leave it off when a reverse proxy takes care of HTTPS.')}</span>
                     </div>
                     </div>
                     <fieldset id="https_options">
@@ -225,6 +307,7 @@
                       <label for="ssl_verify" class="control-label">
                         <input type="checkbox" id="ssl_verify" name="ssl_verify" value="1" ${checked} />
                         ${_('Verify ssl certificates')}</label>
+                      <span class="help-block">${_('Checks the certificates of the sites LazyLibrarian connects to. Turn it off only when a site with a self-signed certificate fails.')}</span>
                     </div>
                     </div>
                     <fieldset id="ssl_options">
@@ -233,6 +316,16 @@
                         <input type="text" id="ssl_certs" name="ssl_certs" value="${CONFIG['SSL_CERTS']}" class="form-control" placeholder="${_('leave empty to use requests certificate') | h}">
                       </div>
                     </fieldset>
+                  </fieldset>
+                  <fieldset>
+                    <legend>${_('Timeouts')}</legend>
+                    <div class="input-group">
+                      <label for="http_timeout" class="input-group-addon">${_('Requests')}</label>
+                      <input type="number" id="http_timeout" name="http_timeout" value="${CONFIG['HTTP_TIMEOUT']}" min="30" class="form-control" placeholder="${_('seconds') | h}">
+                      <label for="http_ext_timeout" class="input-group-addon">${_('Aggregate indexers')}</label>
+                      <input type="number" id="http_ext_timeout" name="http_ext_timeout" value="${CONFIG['HTTP_EXT_TIMEOUT']}" min="30" class="form-control" placeholder="${_('seconds') | h}">
+                    </div>
+                    <span class="help-block">${_('How many seconds LazyLibrarian waits for a site, an indexer or a download client to answer (at least 30). Raise it when an indexer behind FlareSolverr times out. Aggregate indexers is for Torznab all/aggregate feeds that ask many trackers at once.')}</span>
                   </fieldset>
                     <fieldset>
                       <legend>${_('Logs')}</legend>
@@ -397,6 +490,7 @@
                     <div class="form-group">
                       <label for="proxy_host" class="control-label">${_('Proxy Host:')}</label>
                       <input type="text" id="proxy_host" name="proxy_host" value="${CONFIG['PROXY_HOST']}" class="form-control" placeholder="${_('Proxy Host') | h}">
+                      <span class="help-block">${_('Only when LazyLibrarian has to go through a proxy to reach the internet. Leave it empty otherwise.')}</span>
                     </div>
                     <div class="form-group">
                       <label for="proxy_type" class="control-label">${_('Proxy Type:')}</label>
@@ -416,6 +510,7 @@
                           <label for="rss_enabled" title="${_('Provide rss feeds') | h}">
                           <input type="checkbox" id="rss_enabled" name="rss_enabled" value="1" ${checked} />
                           ${_('Enable rss')}</label>
+                          <span class="help-block">${_('Rss feeds of the books added recently, for feed readers, and of audiobooks for podcast apps.')}</span>
                         </div>
                         <fieldset id="rssoptions">
                             <div class="input-group col-md-6">
@@ -440,8 +535,9 @@
                           <label for="opds_enabled" title="${_('Allow remote applications to interface with LazyLibrarian') | h}">
                           <input type="checkbox" id="opds_enabled" name="opds_enabled" value="1" ${checked} />
                           ${_('Enable OPDS')}</label>
+                          <span class="help-block">${_('An OPDS catalog lets reading apps on phones and e-readers (KOReader, Moon+ Reader and others) browse and download your books.')}</span>
                         </div>
-                        <small>${_('Enabling/Disabling OPDS or changing credentials requires restart')}</small><br>
+                        <small class="text-warning llc-restart">${_('Enabling/Disabling OPDS or changing credentials requires restart')}</small><br>
                         <fieldset id="opdsoptions">
                             <div class="checkbox">
                               <% checked = 'checked="checked"' if CONFIG['OPDS_AUTHENTICATION'] else '' %>
@@ -481,6 +577,7 @@
                       <label for="user_accounts" title="${_('User accounts') | h}">
                       <input type="checkbox" id="user_accounts" name="user_accounts" value="1" ${checked} />
                       ${_('Enable user accounts')}</label>
+                      <span class="help-block">${_('Everyone gets a login of their own, with their own reading lists and rss feed. When it is off, the one user name and password below protect LazyLibrarian.')}</span>
                     </div>
                     <div class="col-md-6">
                       <% checked = 'checked="checked"' if CONFIG['SINGLE_USER'] else '' %>
@@ -549,7 +646,7 @@
                       </select>
                     </div>
                     </fieldset>
-                    <small>${_('Enabling/Disabling user accounts or changing webserver user/pass requires restart')}<br></small>
+                    <small class="text-warning llc-restart">${_('Enabling/Disabling user accounts or changing webserver user/pass requires restart')}</small>
                   </fieldset>
                   %if docker():
                   ## no browser in a container; keep the saved value so saving the page does not change it
@@ -565,6 +662,7 @@
                       <label for="launch_browser" class="control-label">
                       <input type="checkbox" id="launch_browser" name="launch_browser" value="1" ${checked} />
                       ${_('Launch browser')}</label>
+                      <span class="help-block">${_('Opens LazyLibrarian in your browser when it starts.')}</span>
                     </div>
                     </div>
                   </fieldset>
@@ -576,6 +674,7 @@
                       <label for="api_enabled" title="${_('Allow remote applications to interface with LazyLibrarian') | h}">
                       <input type="checkbox" id="api_enabled" name="api_enabled" value="1" ${checked} />
                       ${_('Enable API')}</label>
+                      <span class="help-block">${_('Lets other programs and scripts control LazyLibrarian, with the key below.')}</span>
                     </div>
                     <fieldset id="api_options">
                       <div class="form-group">
@@ -664,6 +763,7 @@
                         <option value = "HardCover" ${hc_selected}>HardCover</option>
                       %endif
                     </select>
+                    <span class="help-block">${_('Where LazyLibrarian looks up authors and their books. Only the sources enabled below are offered.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['MULTI_SOURCE'] else '' %>
@@ -755,7 +855,17 @@
                       ${_('Enable HardCover api for book/author information')}
                     </label>
                   </div>
-                  <fieldset id="hc_options">
+                  <div id="hc_options">
+                    <div class="form-group">
+                      <label for="hc_token" class="control-label">${_('HardCover Token:')}</label>
+                      <div class="input-group">
+                        <input type="text" id="hc_token" name="hc_token" value="${config['hc_token'] | h}" class="form-control" placeholder="${_('Bearer token') | h}" spellcheck="false" autocomplete="off">
+                        <span class="input-group-btn">
+                          <button class="btn btn-default" type="button" id="test_hc_token">${_('Test')}</button>
+                        </span>
+                      </div>
+                      <span class="help-block help-keep">${_('Get your API token at')} <a href="https://hardcover.app/account/api" target="_blank" rel="noopener noreferrer">hardcover.app/account/api</a>. ${_('It is stored with the admin user.')}</span>
+                    </div>
                   <div class="row">
                     <div class="checkbox">
                       <% checked = 'checked="checked"' if CONFIG['HC_SYNC'] else '' %>
@@ -764,7 +874,7 @@
                         ${_('Enable HardCover Sync')}</label>
                     </div>
                   </div>
-                  </fieldset>
+                  </div>
                   <fieldset id="hcsync_options">
                     <div class="form-group">
                       <label for="hardcover_interval" class="control-label">${_('HardCover Sync Interval:')}</label>
@@ -796,13 +906,18 @@
                   <fieldset id="gb_options">
                   <div class="form-group">
                     <label for="gb_api" class="control-label">${_('GoogleBooks API:')}</label>
-                    <input type="text" id="gb_api" name="gb_api" value="${CONFIG['GB_API']}" class="form-control">
+                    <div class="input-group">
+                      <input type="text" id="gb_api" name="gb_api" value="${CONFIG['GB_API']}" class="form-control">
+                      <span class="input-group-btn"><button class="btn btn-default" type="button" id="test_gb_api">${_('Test')}</button></span>
+                    </div>
+                    <span class="help-block help-keep">${_('Get your API key at')} <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer">console.cloud.google.com/apis/credentials</a></span>
                   </div>
                   </fieldset>
                   <fieldset id="gr_options">
                   <div class="form-group">
                     <label for="gr_api">${_('Goodreads API:')}</label>
                     <input type="text" id="gr_api" name="gr_api" value="${CONFIG['GR_API']}" class="form-control"     placeholder="${_('Goodreads API') | h}">
+                    <span class="help-block help-keep">${_('Get your API key at')} <a href="https://www.goodreads.com/api/keys" target="_blank" rel="noopener noreferrer">goodreads.com/api/keys</a></span>
                     <div class="checkbox">
                       <% checked = 'checked="checked"' if CONFIG['GR_SYNC'] else '' %>
                       <label for="gr_sync" class="control-label">
@@ -878,6 +993,8 @@
                   <div class="form-group">
                     <label for="lt_devkey" class="control-label">${_('LibraryThing Developer Key:')}</label>
                     <input type="text" id="lt_devkey" name="lt_devkey" value="${CONFIG['LT_DEVKEY']}" class="form-control" placeholder="${_('optional, for book covers') | h}">
+                    <span class="help-block">${_('LibraryThing gives covers of books the other sources have none for. The key is free with a LibraryThing account.')}</span>
+                    <span class="help-block help-keep">${_('Get your developer key at')} <a href="https://www.librarything.com/services/keys.php" target="_blank" rel="noopener noreferrer">librarything.com/services/keys.php</a></span>
                   </div>
                 </fieldset>
                 <fieldset>
@@ -885,7 +1002,11 @@
                   <legend>ComicVine</legend>
                   <div class="form-group">
                     <label for="cv_apikey" class="control-label">${_('ComicVine Api Key:')}</label>
-                    <input type="text" id="cv_apikey" name="cv_apikey" value="${CONFIG['CV_APIKEY']}" class="form-control" placeholder="${_('optional') | h}">
+                    <div class="input-group">
+                      <input type="text" id="cv_apikey" name="cv_apikey" value="${CONFIG['CV_APIKEY']}" class="form-control" placeholder="${_('optional') | h}">
+                      <span class="input-group-btn"><button class="btn btn-default" type="button" id="test_cv_apikey">${_('Test')}</button></span>
+                    </div>
+                    <span class="help-block help-keep">${_('Get your API key at')} <a href="https://comicvine.gamespot.com/api/" target="_blank" rel="noopener noreferrer">comicvine.gamespot.com/api</a></span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['CV_WEBSEARCH'] else '' %>
@@ -979,24 +1100,28 @@
                     <label for="delete_csv">
                       <input type="checkbox" id="delete_csv" name="delete_csv" value="1" ${checked} />
                       ${_('Delete csv file or wishlist after successful import')}</label>
+                    <span class="help-block">${_('Deletes an imported csv file or wishlist once its books are added.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['BLACKLIST_FAILED'] else '' %>
                     <label for="blacklist_failed">
                       <input type="checkbox" id="blacklist_failed" name="blacklist_failed" value="1" ${checked} />
                       ${_('Blacklist failed downloads in history table')}</label>
+                    <span class="help-block">${_('A download that failed is not tried again from the same link.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['BLACKLIST_PROCESSED'] else '' %>
                     <label for="blacklist_processed">
                       <input type="checkbox" id="blacklist_processed" name="blacklist_processed" value="1" ${checked} />
                       ${_('Blacklist processed downloads in history table')}</label>
+                    <span class="help-block">${_('A download that was imported is not downloaded again from the same link.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['DELAYSEARCH'] else '' %>
                     <label for="delaysearch">
                       <input type="checkbox" id="delaysearch" name="delaysearch" value="1" ${checked} />
                       ${_('Increase delay for previously failed searches')}</label>
+                    <span class="help-block">${_('A book that keeps failing is searched for less and less often, to spare your providers.')}</span>
                   </div>
                 </fieldset>
               </div>
@@ -1047,6 +1172,7 @@
                         <div class="form-group col-md-6">
                           <label for="sab_cat">${_('SABnzbd Category:')}</label>
                           <input type="text" id="sab_cat" name="sab_cat" value="${CONFIG['SAB_CAT']}" class="form-control"      placeholder="${_('SABnzbd Category') | h}">
+                          <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                         </div>
                         <div class="form-group col-md-6">
                           <label for="sab_subdir" class="control-label">${_('SABnzbd URL Base:')}</label>
@@ -1074,6 +1200,7 @@
                         </div>
                         <div class="col-md-6">
                           <button class="button btn btn-sm btn-primary" type="button" value="Test SABnzbd" id="test_sabnzbd"><i class="fa fa-list-ul"></i> ${_('Test SABnzbd')}</button>
+                          ${open_service(client_urls().get('SABnzbd'), 'SABnzbd')}
                           <br>
                         </div>
                       </div>
@@ -1110,6 +1237,7 @@
                         <div class="form-group col-md-6">
                           <label for="nzbget_category" class="control-label">${_('Category:')}</label>
                           <input type="text" id="nzbget_category" name="nzbget_category" value="${CONFIG['NZBGET_CATEGORY']}" class="form-control" placeholder="${_('NZBGet Category') | h}">
+                          <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                         </div>
                         <div class="form-group col-md-6">
                           <label for="nzbget_priority">${_('Priority:')}</label>
@@ -1130,6 +1258,7 @@
                       <div class="row">
                       <div class="col-md-6">
                         <button class="button btn btn-sm btn-primary" type="button" value="Test NZBget" id="test_nzbget"><i class="fa fa-list-ul"></i> ${_('Test NZBget')}</button>
+                          ${open_service(client_urls().get('NZBGet'), 'NZBGet')}
                         <br>
                         <br>
                       </div>
@@ -1187,6 +1316,7 @@
                       <div class="row">
                       <div class="col-md-6">
                         <button class="button btn btn-sm btn-primary" type="button" value="Test Synology" id="test_synology"><i class="fa fa-list-ul"></i> ${_('Test Synology')}</button>
+                          ${open_service(client_urls().get('Download Station'), 'Download Station')}
                         <br>
                         <br>
                       </div>
@@ -1197,6 +1327,7 @@
                       <div class="form-group">
                         <label for="nzb_blackholedir" class="control-label">${_('NZB Blackhole Directory:')}</label>
                         <input type="text" id="nzb_blackholedir" name="nzb_blackholedir" value="${CONFIG['NZB_BLACKHOLEDIR']}" class="form-control" placeholder="${_('NZB Blackhole Directory') | h}">
+                        <span class="help-block">${_('A folder your downloader watches: LazyLibrarian saves the files of what it found here and the downloader picks them up.')}</span>
                       </div>
                     </fieldset>
                   <div class="checkbox">
@@ -1260,6 +1391,7 @@
                       <div class="form-group col-md-6">
                         <label for="deluge_label" class="control-label">${_('Deluge Label:')}</label>
                         <input type="text" id="deluge_label" name="deluge_label" value="${CONFIG['DELUGE_LABEL']}" class="form-control" placeholder="${_('Deluge Label') | h}">
+                        <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                       </div>
                       <div class="form-group col-md-6">
                         <label for="deluge_dir" class="control-label">${_('Download directory :')}</label>
@@ -1279,6 +1411,7 @@
                       </div>
                       <div class="col-md-6">
                         <button class="button btn btn-sm btn-primary" type="button" value="Test Deluge" id="test_deluge"><i class="fa fa-list-ul"></i> ${_('Test Deluge')}</button>
+                          ${open_service(client_urls().get('Deluge'), 'Deluge')}
                         <br>
                         <br>
                       </div>
@@ -1313,6 +1446,7 @@
                       <div class="form-group col-md-6">
                         <label for="transmission_label" class="control-label">${_('Transmission label:')}</label>
                         <input type="text" id="transmission_label" name="transmission_label" value="${CONFIG['TRANSMISSION_LABEL']}" class="form-control" placeholder="">
+                        <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                       </div>
                     </div>
                       <div class="row">
@@ -1329,6 +1463,7 @@
                     <div class="row">
                       <div class="col-md-6">
                         <button class="button btn btn-sm btn-primary" type="button" value="Test Transmission" id="test_transmission"><i class="fa fa-list-ul"></i> ${_('Test Transmission')}</button>
+                          ${open_service(client_urls().get('Transmission'), 'Transmission')}
                         <br>
                         <br>
                       </div>
@@ -1352,6 +1487,7 @@
                       <div class="form-group col-md-6">
                         <label for="rtorrent_label" class="control-label">${_('rTorrent Label:')}</label>
                         <input type="text" id="rtorrent_label" name="rtorrent_label" value="${CONFIG['RTORRENT_LABEL']}" class="form-control" placeholder="${_('rTorrent Label') | h}">
+                        <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                       </div>
                       <div class="form-group col-md-6">
                         <label for="rtorrent_dir" class="control-label">${_('rTorrent Directory:')}</label>
@@ -1399,6 +1535,7 @@
                       <div class="form-group col-md-6">
                         <label for="utorrent_label" class="control-label">${_('uTorrent Label:')}</label>
                         <input type="text" id="utorrent_label" name="utorrent_label" value="${CONFIG['UTORRENT_LABEL']}" class="form-control" placeholder="${_('uTorrent Label') | h}">
+                        <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                       </div>
                       <div class="form-group col-md-6">
                         <label for="utorrent_base" class="control-label">${_('uTorrent URL Base:')}</label>
@@ -1419,6 +1556,7 @@
                     <div class="row">
                       <div class="col-md-6">
                         <button class="button btn btn-sm btn-primary" type="button" value="Test uTorrent" id="test_utorrent"><i class="fa fa-list-ul"></i> ${_('Test uTorrent')}</button>
+                          ${open_service(client_urls().get('uTorrent'), 'uTorrent')}
                         <br>
                         <br>
                       </div>
@@ -1446,6 +1584,7 @@
                         <div class="form-group col-md-6">
                           <label for="qbittorrent_label" class="control-label">${_('qBitTorrent Label/Category:')}</label>
                           <input type="text" id="qbittorrent_label" name="qbittorrent_label" value="${CONFIG['QBITTORRENT_LABEL']}" class="form-control" placeholder="${_('qBitTorrent Label/Category') | h}">
+                          <span class="help-block">${_('A category (label) for the downloads of LazyLibrarian, so the downloader keeps them apart from your other downloads and can save them to a folder of their own.')}</span>
                         </div>
                         <div class="form-group col-md-6">
                           <label for="qbittorrent_base" class="control-label">${_('qBitTorrent URL Base:')}</label>
@@ -1470,6 +1609,7 @@
                       <div class="row">
                         <div class="col-md-6">
                           <button class="button btn btn-sm btn-primary" type="button" value="Test qBittorrent" id="test_qbittorrent"><i class="fa fa-list-ul"></i> ${_('Test qBittorrent')}</button>
+                          ${open_service(client_urls().get('qBittorrent'), 'qBittorrent')}
                           <br>
                           <br>
                         </div>
@@ -1502,6 +1642,7 @@
                       <div class="form-group">
                         <label for="torrent_dir" class="control-label">${_('Torrent Blackhole Directory:')}</label>
                         <input type="text" id="torrent_dir" name="torrent_dir" value="${CONFIG['TORRENT_DIR']}" class="form-control" placeholder="${_('Torrent Blackhole Directory') | h}">
+                        <span class="help-block">${_('A folder your downloader watches: LazyLibrarian saves the files of what it found here and the downloader picks them up.')}</span>
                       </div>
                       <div class="checkbox">
                         <% checked = 'checked="checked"' if CONFIG['TOR_CONVERT_MAGNET'] else '' %>
@@ -1569,6 +1710,9 @@
                       <label for="show_newz_prov" class="fa">  ${_('Newznab Providers')} </label>
                   </legend>
                   <fieldset id="newz_prov">
+                  %for prowlarr in prowlarr_urls(['NEWZNAB']):
+                  <div class="col-md-12 form-group llc-prowlarr">${open_service(prowlarr, 'Prowlarr')}</div>
+                  %endfor
                    %for provider in CONFIG.providers('NEWZNAB'):
                       <% checked = 'checked="checked"' if provider.get_bool('ENABLED') else '' %>
                   <div class="col-md-4 form-group">
@@ -1607,6 +1751,11 @@
                       <span class="input-group-addon">${_('Used')}</span>
                       <input type="text" id="newznab_${loop.index}_apicount" name="newznab_${loop.index}_apicount" value="${provider['APICOUNT']}" class="form-control" placeholder="" readonly="true">
                     </div>
+                    <div class="input-group">
+                      <span class="input-group-addon">${_('Timeout')}</span>
+                      <input type="number" id="newznab_${loop.index}_timeout" name="newznab_${loop.index}_timeout" value="${provider.get_int('TIMEOUT') or ''}" min="0" class="form-control" placeholder="${_('general timeout') | h}">
+                      <span class="input-group-addon">${_('seconds')}</span>
+                    </div>
                   </div>
                   %endfor
                 </fieldset>
@@ -1620,6 +1769,9 @@
                       <label for="show_torz_prov" class="fa">  ${_('Torznab Providers')} </label>
                   </legend>
                   <fieldset id="torz_prov">
+                  %for prowlarr in prowlarr_urls(['TORZNAB']):
+                  <div class="col-md-12 form-group llc-prowlarr">${open_service(prowlarr, 'Prowlarr')}</div>
+                  %endfor
                   %for provider in CONFIG.providers('TORZNAB'):
                       <% checked = 'checked="checked"' if provider.get_bool('ENABLED') else '' %>
                   <div class="col-md-4 form-group">
@@ -1662,6 +1814,11 @@
                     <div class="input-group">
                       <span class="input-group-addon">${_('Seed Duration')}</span>
                       <input type="number" id="torznab_${loop.index}_seed_duration" name="torznab_${loop.index}_seed_duration" value="${provider['SEED_DURATION']}" class="form-control" placeholder="0">
+                    </div>
+                    <div class="input-group">
+                      <span class="input-group-addon">${_('Timeout')}</span>
+                      <input type="number" id="torznab_${loop.index}_timeout" name="torznab_${loop.index}_timeout" value="${provider.get_int('TIMEOUT') or ''}" min="0" class="form-control" placeholder="${_('general timeout') | h}">
+                      <span class="input-group-addon">${_('seconds')}</span>
                     </div>
                     <div class="input-group">
                       <span class="input-group-addon">${_('API Limit')}</span>
@@ -1972,6 +2129,12 @@
                         <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${_('Member key for API access (paid members only)') | h}">
                         </span>
                       </div>
+                      % if CONFIG['ANNA'] and not CONFIG['ANNA_KEY']:
+                      <p class="help-block text-warning">
+                        <i class="fa fa-exclamation-triangle"></i>
+                        ${_('Downloads from Annas Archive need a paid member key, without one books are still searched there but not downloaded. For free direct downloads add a LibGen mirror (e.g. libgen.li) as a Generic (GEN) provider.')}
+                      </p>
+                      % endif
                       <div class="input-group">
                         <span class="input-group-addon">${_('Priority')}</span>
                         <input type="number" id="anna_dlpriority" name="anna_dlpriority" value="${CONFIG['ANNA_DLPRIORITY']}" class="form-control" placeholder="0">
@@ -1992,32 +2155,52 @@
                         </span>
                       </div>
                     </div>
-                    <% checked = 'checked="checked"' if CONFIG['WEBSHARE'] else '' %>
+                    %for provider in direct_providers():
+                    %if provider.page:
+                    <%
+                      page = provider.page
+                      pkey = provider.key
+                      pid = pkey.lower()
+                      first = page.fields[0]
+                      first_id = f"{pid}_{first.name.lower()}" if first.name else pid
+                      checked = 'checked="checked"' if CONFIG[pkey] else ''
+                    %>
                     <div class="col-md-4 form-group">
-                      <label for="webshare_user" class="sr-only">Webshare</label>
+                      <label for="${first_id}" class="sr-only">${_(page.title)}</label>
                       <div class="input-group">
-                        <span class="input-group-addon">Webshare</span>
-                        <input type="text" placeholder="${_('webshare.cz username (optional)') | h}" id="webshare_user" name="webshare_user" value="${CONFIG['WEBSHARE_USER']}" class="form-control">
+                        <span class="input-group-addon">${_(page.title)}</span>
+                        %if first.shown:
+                        <input type="text" class="form-control" value="${first.shown | h}" readonly>
+                        %else:
+                        <input type="${first.kind}" placeholder="${(_(first.placeholder) if first.placeholder else '') | h}" id="${first_id}" name="${first_id}" value="${CONFIG[pkey + '_' + first.name] | h}" class="form-control">
+                        %endif
                         <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${_('Enable provider') | h}">
-                        <input type="checkbox" id="webshare" name="webshare" value="1" ${checked} />
+                        <input type="checkbox" id="${pid}" name="${pid}" value="1" ${checked} />
                         </span>
                       </div>
+                      %if page.help:
+                      <p class="help-block">${_(page.help)}</p>
+                      %endif
+                      %for field in page.fields[1:]:
                       <div class="input-group">
-                        <span class="input-group-addon">${_('Password')}</span>
-                        <input type="password" placeholder="${_('password (optional)') | h}" id="webshare_pass" name="webshare_pass" value="${CONFIG['WEBSHARE_PASS']}" class="form-control">
-                        <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${_('Searching and downloading also works without an account') | h}">
+                        <span class="input-group-addon">${_(field.label) if field.label else ''}</span>
+                        <input type="${field.kind}" placeholder="${(_(field.placeholder) if field.placeholder else '') | h}" id="${pid}_${field.name.lower()}" name="${pid}_${field.name.lower()}" value="${CONFIG[pkey + '_' + field.name] | h}" class="form-control">
+                        <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${(_(field.tooltip) if field.tooltip else '') | h}">
                         </span>
                       </div>
+                      %endfor
                       <div class="input-group">
                         <span class="input-group-addon">${_('Priority')}</span>
-                        <input type="number" id="webshare_dlpriority" name="webshare_dlpriority" value="${CONFIG['WEBSHARE_DLPRIORITY']}" class="form-control" placeholder="0">
+                        <input type="number" id="${pid}_dlpriority" name="${pid}_dlpriority" value="${CONFIG[pkey + '_DLPRIORITY']}" class="form-control" placeholder="0">
                         <span class="input-group-addon">${_('Types')}</span>
-                        <input type="text" id="webshare_dltypes" name="webshare_dltypes" value="${CONFIG['WEBSHARE_DLTYPES']}" class="form-control" placeholder="">
+                        <input type="text" id="${pid}_dltypes" name="${pid}_dltypes" value="${CONFIG[pkey + '_DLTYPES']}" class="form-control" placeholder="">
                         <span class="input-group-addon">
-                        <button role="testprov" class="button btn btn-xs btn-warning active" type="button" value="WEBSHARE"> ${_('Test')}</button>
+                        <button role="testprov" class="button btn btn-xs btn-warning active" type="button" value="${pkey}"> ${_('Test')}</button>
                         </span>
                       </div>
                     </div>
+                    %endif
+                    %endfor
                     <% checked = 'checked="checked"' if CONFIG['BOK'] else '' %>
                     <div class="col-md-4 form-group">
                       <label for="bok_host" class="sr-only">${_('zlibrary host')}</label>
@@ -2120,6 +2303,7 @@
                       <input type="number" id="search_bookinterval" name="search_bookinterval" value="${CONFIG['SEARCH_BOOKINTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Minutes')}</span>
                     </div>
+                    <span class="help-block">${_('How often the providers are searched for the books you want, 0 turns the search off.')}</span>
                   </div>
                   %if CONFIG['MAG_TAB']:
                   <div class="form-group">
@@ -2128,6 +2312,7 @@
                       <input type="number" id="search_maginterval" name="search_maginterval" value="${CONFIG['SEARCH_MAGINTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Minutes')}</span>
                     </div>
+                    <span class="help-block">${_('How often the providers are searched for new issues of your magazines, 0 turns the search off.')}</span>
                   </div>
                   %endif
                   %if CONFIG['COMIC_TAB']:
@@ -2145,6 +2330,7 @@
                       <input type="number" id="searchrss_interval" name="searchrss_interval" value="${CONFIG['SEARCHRSS_INTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Minutes')}</span>
                     </div>
+                    <span class="help-block">${_('How often the rss feeds of your providers are read for books you want.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="wishlist_interval" class="control-label">${_('Wishlist Search Interval:')}</label>
@@ -2152,6 +2338,7 @@
                       <input type="number" id="wishlist_interval" name="wishlist_interval" value="${CONFIG['WISHLIST_INTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Hours')}</span>
                     </div>
+                    <span class="help-block">${_('How often your wishlists are checked for books to add.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="scan_interval" class="control-label">${_('Post-Processing Interval:')}</label>
@@ -2159,6 +2346,7 @@
                       <input type="number" id="scan_interval" name="scan_interval" value="${CONFIG['SCAN_INTERVAL']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${_('How often to check for new downloads') | h}">${_('Minutes')}</span>
                     </div>
+                    <span class="help-block">${_('How often the download folders are checked for finished downloads to move into the library.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="pp_delay" class="control-label">${_('Post-Processing Delay:')}</label>
@@ -2166,6 +2354,7 @@
                       <input type="number" id="pp_delay" name="pp_delay" value="${CONFIG['PP_DELAY']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon" data-toggle="tooltip" data-placement="bottom" title="${_('How long to wait after download is complete before processing') | h}">${_('Seconds')}</span>
                     </div>
+                    <span class="help-block">${_('How long to wait after a download is finished before it is processed, so the downloader has time to unpack it.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="versioncheck_interval" class="control-label">${_('Version Check Interval:')}</label>
@@ -2363,6 +2552,7 @@
                   </fieldset>
                   <fieldset>
                   <legend>Calibre</legend>
+                  <span class="help-block">${_('Only if you keep your books in Calibre. LazyLibrarian then hands every downloaded book over to Calibre: with calibredb, the command line program of Calibre, the book goes straight into your Calibre library, which names and places its files; or a copy goes to the Auto Add folder below, from which Calibre takes it in itself. Leave it all empty if you do not use Calibre.')}</span>
                   <div class="form-group">
                     <label for="imp_calibredb">${_('Calibredb import program:')}</label>
                     <input type="text" id="imp_calibredb" name="imp_calibredb" value="${CONFIG['IMP_CALIBREDB']}" class="form-control" placeholder="${_('calibredb program') | h}">
@@ -2374,6 +2564,7 @@
                       <label for="calibre_use_server" class="control-label">
                         <input type="checkbox" id="calibre_use_server" name="calibre_use_server" value="1" ${checked} />
                         ${_('Use Calibre Content Server')}</label>
+                        <span class="help-block">${_('calibredb adds the books through a running Calibre content server at the address below instead of opening the library files itself: for a library on another computer, or while the Calibre app has the library open.')}</span>
                   </div>
                   <fieldset id="calibre_options">
                   <div class="form-group">
@@ -2548,12 +2739,14 @@
                     <label for="destination_copy">
                       <input type="checkbox" id="destination_copy" name="destination_copy" value="1" ${checked} />
                       ${_('Keep original files')}</label>
+                    <span class="help-block">${_('Copies downloads into the library instead of moving them, the downloader keeps its files (to go on seeding, for example).')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['ONE_FORMAT'] else '' %>
                     <label for="one_format">
                       <input type="checkbox" id="one_format" name="one_format" value="1" ${checked} />
                       ${_('Only import one format of an ebook if multiple formats downloaded')}</label>
+                    <span class="help-block">${_('When a download holds a book in several formats, only the first of the eBook formats listed under Filters is imported.')}</span>
                   </div>
                   %if CONFIG['MAG_TAB']:
                   <div class="form-group">
@@ -2561,6 +2754,7 @@
                     <input type="text" id="mag_dest_folder" name="mag_dest_folder" value="${CONFIG['MAG_DEST_FOLDER']}" class="form-control" placeholder="${_('Magazines Destination Folder') | h}">
                     <span class="help-block help-keep">${_('Absolute path, or inside book folder. Options: $Title, $IssueDate, $IssueYear, $IssueVol, $IssueNum, $IssueMonth, $IssueMNum, $IssueDay, any string')}
                       <BR><strong>${_('All options are discretionary but Title is recommended unless included in Filename to prevent issue name collisions')}</strong></span>
+                    <small>${_('Example:')}  <mark>${config['namevars']['MagFolder']}</mark></small>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['MAG_RELATIVE'] else '' %>
@@ -2579,6 +2773,7 @@
                     <input type="text" id="mag_dest_file" name="mag_dest_file" value="${CONFIG['MAG_DEST_FILE']}" class="form-control" placeholder="${_('Magazine Issue Filename') | h}">
                     <span class="help-block help-keep">${_('Options: $Title, $IssueDate, $IssueYear, $IssueVol, $IssueNum, $IssueMonth, $IssueMNum, $IssueDay, any string')}
                       <BR><strong>${_('Current limitation: Filename must contain IssueDate, or IssueYear and one of IssueNum/IssueMonth/IssueMNum')}</strong></span>
+                    <small>${_('Example:')}  <mark>${config['namevars']['MagFile']}</mark></small>
                   </div>
                   %endif
                   %if CONFIG['COMIC_TAB']:
@@ -2586,6 +2781,7 @@
                     <label for="comic_dest_folder">${_('Comic Foldername Pattern:')}</label>
                     <input type="text" id="comic_dest_folder" name="comic_dest_folder" value="${CONFIG['COMIC_DEST_FOLDER']}" class="form-control" placeholder="${_('Comics Destination Folder') | h}">
                     <span class="help-block help-keep">${_('Absolute path, or inside book folder')}<br>${_('Options: $Title, $Issue, $Publisher, any string')}</span>
+                    <small>${_('Example:')}  <mark>${config['namevars']['ComicFolder']}</mark></small>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['COMIC_RELATIVE'] else '' %>
@@ -2614,19 +2810,22 @@
                   <div class="form-group">
                     <label for="ebook_dir" class="control-label">${_('eBook Library Folder:')}</label>
                     <input type="text" id="ebook_dir" name="ebook_dir" value="${CONFIG['EBOOK_DIR']}" class="form-control" placeholder="${_('eBook Library Folder') | h}">
+                    <span class="help-block">${_('The folder of your eBooks. New books are put here, and a Library Scan finds the books you already have here.')}</span>
                   </div>
                   %endif
                   %if CONFIG['AUDIO_TAB']:
                   <div class="form-group">
                     <label for="audio_dir" class="control-label">${_('AudioBook Library Folder:')}</label>
                     <input type="text" id="audio_dir" name="audio_dir" value="${CONFIG['AUDIO_DIR']}" class="form-control" placeholder="${_('AudioBook Library Folder') | h}">
+                    <span class="help-block">${_('The folder of your audiobooks. Keep it apart from the eBook folder: audiobooks have folder and file name patterns of their own.')}</span>
                   </div>
                   %endif
                   <div class="form-group">
                     <label for="alternate_dir" class="control-label">${_('Alternate Import/Export Folder:')}</label>
                     <input type="text" id="alternate_dir" name="alternate_dir" value="${CONFIG['ALTERNATE_DIR']}" class="form-control" placeholder="${_('Alternate Directory') | h}">
-                    <span class="help-block help-keep">${_('Directory for wishlists and manually importing books')}<br>
-                      <strong>${_('If "keep original files" is not set, LazyLibrarian can delete this folder after import')}</strong></span>
+                    <span class="help-block">${_('Directory for wishlists and manually importing books')}</span>
+                    <span class="help-block help-keep text-warning"><i class="fa fa-exclamation-triangle"></i>
+                      ${_('If "keep original files" is not set, LazyLibrarian can delete this folder after import')}</span>
                   </div>
                 </fieldset>
                 <fieldset>
@@ -2647,6 +2846,7 @@
                       <input type="number" id="cache_age" name="cache_age" value="${CONFIG['CACHE_AGE']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Days')}</span>
                     </div>
+                    <span class="help-block">${_('How long the details fetched from the info sources are kept before they are fetched again.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="backup_db" class="control-label">${_('Backup database every:')}</label>
@@ -2654,6 +2854,7 @@
                       <input type="number" id="backup_db" name="backup_db" value="${CONFIG['BACKUP_DB']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Days')}</span>
                     </div>
+                    <span class="help-block">${_('How often a backup copy of the database is made.')}</span>
                   </div>
                   %if CONFIG['MAG_TAB']:
                   <div class="form-group">
@@ -2662,6 +2863,7 @@
                       <input type="number" id="mag_age" name="mag_age" value="${CONFIG['MAG_AGE']}" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Days')}</span>
                     </div>
+                    <span class="help-block">${_('For a magazine you have no issues of yet, older issues than this are not downloaded.')}</span>
                   </div>
                   %endif
                   <div class="form-group">
@@ -2677,6 +2879,7 @@
                       <input type="number" id="stall_age" name="stall_age" value="${CONFIG['STALL_AGE']}" min="0" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Hours (0% progress)')}</span>
                     </div>
+                    <span class="help-block">${_('A download that makes no progress for this long is stopped.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="min_seeders" class="control-label">${_('Minimum seeders for torrent results:')}</label>
@@ -2684,6 +2887,7 @@
                       <input type="number" id="min_seeders" name="min_seeders" value="${CONFIG['MIN_SEEDERS']}" min="0" class="form-control" placeholder="${_('0 to disable') | h}">
                       <span class="input-group-addon">${_('Seeders')}</span>
                     </div>
+                    <span class="help-block">${_('Torrents with fewer seeders are left out, 0 turns this off.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="match_ratio">${_('Search Match Ratio:')}</label>
@@ -2691,6 +2895,7 @@
                       <input type="number" id="match_ratio" name="match_ratio" value="${CONFIG['MATCH_RATIO']}" class="form-control" placeholder="${_('Search Match Ratio (percent)') | h}">
                       <span class="input-group-addon">%</span>
                     </div>
+                    <span class="help-block">${_('How alike (in percent) the title and author of a search result must be to a book you want to count as a match. A lower number finds more, and more wrong books too.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="dload_ratio">${_('Download Match Ratio:')}</label>
@@ -2698,6 +2903,7 @@
                       <input type="number" id="dload_ratio" name="dload_ratio" value="${CONFIG['DLOAD_RATIO']}" class="form-control" placeholder="${_('Download Match Ratio (percent)') | h}">
                       <span class="input-group-addon">%</span>
                     </div>
+                    <span class="help-block">${_('How alike (in percent) the name of a downloaded file must be to the book for it to be imported.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="dload_ratio">${_('Provider Priority Weighting:')}</label>
@@ -2710,14 +2916,17 @@
                   <div class="form-group">
                     <label for="max_pages">${_('Maximum Search Pages:')}</label>
                     <input type="number" id="max_pages" name="max_pages" value="${CONFIG['MAX_PAGES']}" class="form-control" placeholder="${_('0 for no limit') | h}">
+                    <span class="help-block">${_('How many pages of results are read from a provider in one search, 0 for all of them.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="max_bookpages">${_('Maximum Author Pages:')}</label>
                     <input type="number" id="max_bookpages" name="max_bookpages" value="${CONFIG['MAX_BOOKPAGES']}" class="form-control" placeholder="${_('0 for no limit') | h}">
+                    <span class="help-block">${_('How many pages of the book list of an author are read from the info source, 0 for all of them.')}</span>
                   </div>
                   <div class="form-group">
-                    <label for="dload_ratio">${_('Maximum Coverwall Images:')}</label>
+                    <label for="max_wall">${_('Maximum Coverwall Images:')}</label>
                     <input type="number" id="max_wall" name="max_wall" value="${CONFIG['MAX_WALL']}" class="form-control" placeholder="${_('0 for no limit') | h}">
+                    <span class="help-block">${_('How many covers the Cover Wall shows at most.')}</span>
                   </div>
                 </fieldset>
                 %if CONFIG['MAG_TAB']:
@@ -2733,6 +2942,7 @@
                     <label for="imp_magcover" class="control-label">
                       <input type="checkbox" id="imp_magcover" name="imp_magcover" value="1" ${checked} />
                       ${_('Create cover files for magazines')}</label>
+                    <span class="help-block">${_('Saves the first page of each issue as its cover picture.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['IMP_MAGOPF'] else '' %>
@@ -2792,6 +3002,7 @@
                     <label for="imp_rename" class="control-label">
                       <input type="checkbox" id="imp_rename" name="imp_rename" value="1" ${checked} />
                       ${_('Rename existing books on libraryscan')}</label>
+                    <span class="help-block">${_('Renames the books a library scan finds by the file name patterns.')}</span>
                   </div>
                   %if CONFIG['MAG_TAB']:
                   <div class="checkbox">
@@ -2806,6 +3017,7 @@
                     <label for="add_author" class="control-label">
                       <input type="checkbox" id="add_author" name="add_author" value="1" ${checked} />
                       ${_('Add New Authors')}</label>
+                    <span class="help-block">${_('A library scan adds the authors of the books it finds who are not in your library yet.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['ADD_SERIES'] else '' %>
@@ -2830,6 +3042,7 @@
                     <label for="imp_autosearch" class="control-label">
                       <input type="checkbox" id="imp_autosearch" name="imp_autosearch" value="1" ${checked} />
                       ${_('Search when added')}</label>
+                    <span class="help-block">${_('Searches for a book as soon as it is added.')}</span>
                   </div>
                   %if CONFIG['MAG_TAB']:
                   <div class="checkbox">
@@ -2853,6 +3066,7 @@
                   <div class="form-group">
                     <label for="ebook_wanted_formats">${_('eBook wanted formats:')}</label>
                     <input type="text" id="ebook_wanted_formats" name="ebook_wanted_formats" value="${CONFIG['EBOOK_WANTED_FORMATS']}" class="form-control" placeholder="${_('wanted formats') | h}">
+                    <span class="help-block">${_('The formats each eBook is converted to after it is downloaded, with the ebook-convert program of Calibre (under External Programs).')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['KEEP_OPF'] else '' %>
@@ -2871,6 +3085,7 @@
                     <label for="delete_other_formats" class="control-label">
                       <input type="checkbox" id="delete_other_formats" name="delete_other_formats" value="1" ${checked} />
                       ${_('Delete unwanted filetypes')}</label>
+                    <span class="help-block">${_('Deletes the formats of a book that are not in the list of wanted formats.')}</span>
                   </div>
                 </fieldset>
                 <fieldset>
@@ -2884,18 +3099,21 @@
                     <label for="write_audiotags" class="control-label">
                       <input type="checkbox" id="write_audiotags" name="write_audiotags" value="1" ${checked} />
                       ${_('Write audio tags')}</label>
+                    <span class="help-block">${_('Writes the author, title and series into the tags of the audio files.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['CREATE_SINGLEAUDIO'] else '' %>
                     <label for="create_singleaudio" class="control-label">
                       <input type="checkbox" id="create_singleaudio" name="create_singleaudio" value="1" ${checked} />
                       ${_('Create single file audiobook')}</label>
+                    <span class="help-block">${_('Joins the parts of an audiobook into one file, with ffmpeg.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['ZIP_AUDIOPARTS'] else '' %>
                     <label for="zip_audioparts" class="control-label">
                       <input type="checkbox" id="zip_audioparts" name="zip_audioparts" value="1" ${checked} />
                       ${_('Create zip of audio parts')}</label>
+                    <span class="help-block">${_('Packs the parts of an audiobook into one zip file as well, easier to download.')}</span>
                   </div>
                   <div class="checkbox">
                     <% checked = 'checked="checked"' if CONFIG['KEEP_SEPARATEAUDIO'] else '' %>
@@ -3433,6 +3651,8 @@
                     <legend>${_('Apprise Notifiers')}</legend>
                     <div class="form-group col-md-12">
                     <button class="button btn btn-sm btn-primary" type="button" value="Supported Types" id="show_apprise"><i class="fa fa-list-ul"></i> ${_('Supported Types')}</button>
+                    <span class="help-block help-keep">${_('Each notifier is an Apprise URL, its format depends on the service, for example tgram://bottoken/ChatID.')}
+                      <a href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noopener noreferrer">${_('How to set up the URL of each service')} <i class="fa fa-external-link" aria-hidden="true"></i></a></span>
                     </div>
                   %for provider in CONFIG.providers('APPRISE'):
                   %if provider['DISPNAME'] != '':
@@ -3761,10 +3981,10 @@
                 <div class="row">
                 %for mag in config['comics_list']:
                 <div class="col-md-6">
-                <label>${mag['Title']}</label>
+                <label>${mag['Title'] | h}</label>
                   <div class="input-group">
-                    <label for="genre_list[${mag['Title']}]" class="input-group-addon">${_('Genres')}&nbsp;</label>
-                    <input type="text" id="genre_list[${mag['Title']}]" name="genre_list[${mag['Title']}]" value="${mag['Genre']}" class="form-control" placeholder="${_('Genre list') | h}">
+                    <label for="genre_list[${mag['Title'] | h}]" class="input-group-addon">${_('Genres')}&nbsp;</label>
+                    <input type="text" id="genre_list[${mag['Title'] | h}]" name="genre_list[${mag['Title'] | h}]" value="${mag['Genre'] | h}" class="form-control" placeholder="${_('Genre list') | h}">
                   </div>
                 </div>
                 %endfor
@@ -3782,30 +4002,30 @@
                 <div class="row">
                 %for mag in config['magazines_list']:
                 <div class="col-md-6 addon-align">
-                <label>${mag['Title']}</label>
+                <label>${mag['Title'] | h}</label>
                   <div class="input-group">
-                    <label for="reject_list[${mag['Title']}]" class="input-group-addon">${_('Reject')}&nbsp;</label>
-                    <input type="text" id="reject_list[${mag['Title']}]" name="reject_list[${mag['Title']}]" value="${mag['Reject']}" class="form-control" placeholder="${_('Reject word list') | h}">
+                    <label for="reject_list[${mag['Title'] | h}]" class="input-group-addon">${_('Reject')}&nbsp;</label>
+                    <input type="text" id="reject_list[${mag['Title'] | h}]" name="reject_list[${mag['Title'] | h}]" value="${mag['Reject'] | h}" class="form-control" placeholder="${_('Reject word list') | h}">
                   </div>
                   <div class="input-group">
-                    <label for="regex[${mag['Title']}]" class="input-group-addon">${_('Search')}</label>
-                    <input type="text" id="regex[${mag['Title']}]" name="regex[${mag['Title']}]" value="${mag['Regex']}" class="form-control" placeholder="${_('Search expression') | h}">
+                    <label for="regex[${mag['Title'] | h}]" class="input-group-addon">${_('Search')}</label>
+                    <input type="text" id="regex[${mag['Title'] | h}]" name="regex[${mag['Title'] | h}]" value="${mag['Regex'] | h}" class="form-control" placeholder="${_('Search expression') | h}">
                   </div>
                   <div class="input-group">
-                    <label for="genre_list[${mag['Title']}]" class="input-group-addon">${_('Genres')}</label>
-                    <input type="text" id="genre_list[${mag['Title']}]" name="genre_list[${mag['Title']}]" value="${mag['Genre']}" class="form-control" placeholder="${_('Genre list') | h}">
+                    <label for="genre_list[${mag['Title'] | h}]" class="input-group-addon">${_('Genres')}</label>
+                    <input type="text" id="genre_list[${mag['Title'] | h}]" name="genre_list[${mag['Title'] | h}]" value="${mag['Genre'] | h}" class="form-control" placeholder="${_('Genre list') | h}">
                   </div>
                   <div class="input-group">
-                    <label for="datetype[${mag['Title']}]" class="input-group-addon">${_('Date Style')}</label>
-                    <input type="text" id="datetype[${mag['Title']}]" name="datetype[${mag['Title']}]" value="${mag['DateType']}" class="form-control" placeholder="auto">
+                    <label for="datetype[${mag['Title'] | h}]" class="input-group-addon">${_('Date Style')}</label>
+                    <input type="text" id="datetype[${mag['Title'] | h}]" name="datetype[${mag['Title'] | h}]" value="${mag['DateType'] | h}" class="form-control" placeholder="auto">
                   </div>
                   <div class="input-group">
-                    <label for="coverpage[${mag['Title']}]" class="input-group-addon">${_('Cover Page')}</label>
-                    <input type="number" id="coverpage[${mag['Title']}]" name="coverpage[${mag['Title']}]" value="${mag['CoverPage']}" min=1 class="form-control" placeholder="1">
+                    <label for="coverpage[${mag['Title'] | h}]" class="input-group-addon">${_('Cover Page')}</label>
+                    <input type="number" id="coverpage[${mag['Title'] | h}]" name="coverpage[${mag['Title'] | h}]" value="${mag['CoverPage'] | h}" min=1 class="form-control" placeholder="1">
                   </div>
                   <div class="input-group">
-                    <label for="language[${mag['Title']}]" class="input-group-addon">${_('Language')}</label>
-                    <input type="text" id="language[${mag['Title']}]" name="language[${mag['Title']}]" value="${mag['Language']}" class="form-control" placeholder="${_('For opf/pdf') | h}" title="${_('For opf/pdf') | h}">
+                    <label for="language[${mag['Title'] | h}]" class="input-group-addon">${_('Language')}</label>
+                    <input type="text" id="language[${mag['Title'] | h}]" name="language[${mag['Title'] | h}]" value="${mag['Language'] | h}" class="form-control" placeholder="${_('For opf/pdf') | h}" title="${_('For opf/pdf') | h}">
                   </div>
                 </div>
                 %endfor
@@ -3956,11 +4176,9 @@
                         data-long="${','.join(month[0] for month in lang['months']) | h}"
                         data-short="${','.join(month[1] for month in lang['months']) | h}"
                         data-seasons="${','.join(f'{name}:{month}' for name, month in lang['seasons'].items()) | h}"
-                        data-issue_nouns="${','.join(lang['words'].get('issue_nouns', [])) | h}"
-                        data-volume_nouns="${','.join(lang['words'].get('volume_nouns', [])) | h}"
-                        data-mag_nouns="${','.join(lang['words'].get('mag_nouns', [])) | h}"
-                        data-name_postfix="${','.join(lang['words'].get('name_postfix', [])) | h}"
-                        data-name_definite="${','.join(lang['words'].get('name_definite', [])) | h}"
+                        %for field, words in lang['words'].items():
+                        data-${field}="${','.join(words) | h}"
+                        %endfor
                         aria-pressed="${'true' if lang['selected'] else 'false'}" title="${lang['locale'] | h}">${lang['label'] | h}</button>
                       %endfor
                     </div>
@@ -3971,7 +4189,8 @@
                     </div>
                     %endif
                     <span class="help-block">${_('Each language adds its month and season names to the Month Names and Season Names tables, and to Date Language.')}<br/>
-                      ${_('It also adds its words for issue and volume numbers, words allowed in magazine titles, author name suffixes and articles for sorting titles. At least one language stays on.')}</span>
+                      ${_('It also adds its words for issue and volume numbers, words allowed in magazine titles, author name suffixes and articles for sorting titles. At least one language stays on.')}<br/>
+                      ${_('And its titles before author names, words joining several authors, words for audiobooks in the eBook reject words (under Filters) and comic genres (under Import).')}</span>
                   </div>
                   <div class="form-group">
                     <label for="date_lang" class="control-label">${_('Date Language (for issue names and shown dates):')}</label>
@@ -4041,6 +4260,16 @@
                     <label for="name_postfix" class="control-label">${_('Author Name suffix')}</label>
                     <input type="text" id="name_postfix" name="name_postfix" value="${CONFIG['NAME_POSTFIX']}" class="form-control" placeholder="eg snr, jnr">
                     <span class="help-block">${_('Comma separated list of suffixes to ignore when showing surname first')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="name_prefix" class="control-label">${_('Titles before author names')}</label>
+                    <input type="text" id="name_prefix" name="name_prefix" value="${CONFIG['NAME_PREFIX']}" class="form-control" placeholder="eg Dr, Prof, Ing">
+                    <span class="help-block">${_('Comma separated list of titles written before the name, like Dr. or Ing. When showing surname first they go after the forenames, "Ing. Ján Novák" is shown and sorted as "Novák, Ján, Ing."')}</span>
+                  </div>
+                  <div class="form-group">
+                    <label for="multi_author_split" class="control-label">${_('Words joining authors')}</label>
+                    <input type="text" id="multi_author_split" name="multi_author_split" value="${CONFIG['MULTI_AUTHOR_SPLIT']}" class="form-control" placeholder="eg and, with">
+                    <span class="help-block">${_('Comma separated list of words that join several author names, e.g. "Terry Pratchett and Neil Gaiman". Commas, semicolons and & always split.')}</span>
                   </div>
                   <div class="form-group">
                     <label for="name_definite" class="control-label">${_('Definite Articles')}</label>
@@ -4134,6 +4363,7 @@
                     <input type="checkbox" id="telemetry_enable" name="telemetry_enable" value="1" ${checked} />
                     ${_('Enable sending anonymous telemetry data')}
                   </label>
+                  <span class="help-block">${_('Sends anonymous statistics that show the developers which features are used. What is sent is shown under Telemetry Data.')}</span>
                 </div>
                 <div id="telemetry_options">
                   <div class="form-group">
@@ -4189,6 +4419,11 @@
     <p>&nbsp;</p>
     <p style="text-align:center;color:grey">${_('Repo: %(repo)s') % {'repo': 'https://%s/%s/%s' % (CONFIG['GIT_HOST'], CONFIG['GIT_USER'], CONFIG['GIT_REPO'])}}  :  ${_('Branch: %(branch)s') % {'branch': CONFIG['GIT_BRANCH']}}  :  ${_('Updated: %(date)s') % {'date': config['updated']}}<br>
     ${_('Current Version: %(version)s') % {'version': CONFIG['CURRENT_VERSION']}}  :  ${_('Latest Version: %(version)s') % {'version': CONFIG['LATEST_VERSION']}}</p>
+    <p style="text-align:center">
+      <a href="https://lazylibrarian.gitlab.io/" target="_blank" rel="noopener"><i class="fa fa-book fa-fw"></i> ${_('Documentation')}</a> &middot;
+      <a href="https://www.reddit.com/r/LazyLibrarian/" target="_blank" rel="noopener"><i class="fab fa-reddit-alien fa-fw"></i> Reddit</a> &middot;
+      <a href="https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues" target="_blank" rel="noopener"><i class="fa fa-bug fa-fw"></i> ${_('Report an issue')}</a>
+    </p>
   </div>
 <!-- form -->
 </form>
@@ -4317,8 +4552,8 @@
         });
 
         $('.tab-content').on('click keydown', 'legend.section-toggle', function (e) {
-            // the help icon in a heading shows its popover, it doesn't collapse the section
-            if ($(e.target).closest('.help-icon').length) { return; }
+            // the help icon in a heading shows its popover, a button (Test) does its job, neither collapses the section
+            if ($(e.target).closest('.help-icon, .btn').length) { return; }
             if (e.type === 'keydown' && e.which !== 13 && e.which !== 32) { return; }
             e.preventDefault();
             var legend = $(this);
@@ -4338,7 +4573,7 @@
     // Hide sensitive values (API keys, tokens, passwords) behind an eye toggle
     function initSecretToggles() {
         var secretIds = ['api_key', 'api_ro_key', 'gb_api', 'gr_api', 'gr_secret', 'gr_oauth_token',
-                         'gr_oauth_secret', 'lt_devkey', 'cv_apikey', 'sab_api', 'slsk_api', 'anna_key',
+                         'gr_oauth_secret', 'hc_token', 'lt_devkey', 'cv_apikey', 'sab_api', 'slsk_api', 'anna_key',
                          'bok_remix_userkey', 'boxcar_token', 'pushbullet_token', 'pushover_apitoken',
                          'pushover_keys', 'prowl_apikey', 'telegram_token', 'slack_token', 'ms_trans_id',
                          'growl_password'];

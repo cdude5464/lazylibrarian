@@ -378,6 +378,26 @@ class OpenLibrary:
         }
         return author_dict
 
+    @staticmethod
+    def _lt_series_name(data):
+        """Extract the series name from a librarything nseries page"""
+        try:
+            return data.split(b'Series: ')[1].split(b'</')[0].decode('utf-8')
+        except IndexError:
+            try:
+                return data.split(b'<h1')[1].split(b'</h1>')[0].split(b'>')[-1].decode('utf-8')
+            except IndexError:
+                return ''
+
+    def get_series_name(self, series_id):
+        """Look up the name of a librarything series by its id (OL/LT prefixed)"""
+        if not self.lt_cache:
+            librarything_wait()
+        data, self.lt_cache = html_request(self.LT_NSERIES + str(series_id)[2:])
+        if not data:
+            return ''
+        return self._lt_series_name(data).strip()
+
     def get_series_members(self, series_id, series_name=''):
         if not self.lt_cache:
             librarything_wait()
@@ -386,13 +406,7 @@ class OpenLibrary:
         results = []
         if data:
             try:
-                try:
-                    seriesname = data.split(b'Series: ')[1].split(b'</')[0].decode('utf-8')
-                except IndexError:
-                    try:
-                        seriesname = data.split(b'<h1')[1].split(b'</h1>')[0].split(b'>')[-1].decode('utf-8')
-                    except IndexError:
-                        seriesname = ''
+                seriesname = self._lt_series_name(data)
                 if seriesname:
                     match = fuzz.partial_ratio(seriesname, series_name, processor=default_process)
                     if match < 95:

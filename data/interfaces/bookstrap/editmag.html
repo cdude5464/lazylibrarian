@@ -14,7 +14,7 @@
         <input name="utf8" type="hidden" value="&#x2713;" />
         <input name="old_title" id="old_title" type="hidden" value="${config['Title']}" />
         <fieldset>
-            <legend>${title}</legend>
+            <legend>${title | h}</legend>
             <div class="form-group col-md6">
                 <label for="new_title" class="control-label">${_('New Magazine Title:')}</label>
                 <input type="text" id="new_title" name="new_title" value="${config['Title']}" class="form-control" placeholder="${_('Title') | h}">

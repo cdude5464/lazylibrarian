@@ -1024,6 +1024,85 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         finally:
             db.close()
 
+    def test_add_book_reports_duplicate_conflict_instead_of_redirecting(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db, authorname='Matt Dinniman')
+            self._insert_book(db, 'graphic', 'Dungeon Crawler Carl, Vol. 1 (Graphic Novel)')
+        finally:
+            db.close()
+
+        title = 'Dungeon Crawler Carl'
+        result = self._google_result(title=title, authorname='Matt Dinniman')
+        interface = webServe.WebInterface()
+        with (
+            mock.patch.object(interface, 'check_permitted'),
+            mock.patch.object(webServe, 'search_for', side_effect=self._mock_search(result)),
+            mock.patch.object(interface, 'start_book_search') as search,
+            self.assertRaises(cherrypy.HTTPError) as error,
+        ):
+            interface.add_book(bookid='GB1', library='eBook', title=title, authorid='author-1',
+                               authorname='Matt Dinniman', source='GoogleBooks')
+
+        self.assertEqual(409, error.exception.code)
+        self.assertIn('conflicts with an existing library entry', str(error.exception))
+        search.assert_not_called()
+
+    def test_search_status_uses_exact_source_alias_and_canonical_id(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'canonical', 'Rant', status='Have', audio_status='Wanted', gb_id='GB1')
+            match = webServe.search_result_library_book(db, self._google_result())
+            self.assertEqual({'BookID': 'canonical', 'Status': 'Have', 'AudioStatus': 'Wanted'}, match)
+            self.assertEqual('Have', db.match("SELECT Status FROM books WHERE BookID='canonical'")['Status'])
+        finally:
+            db.close()
+
+    def test_search_status_does_not_match_another_sources_identifier(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, 'GB1', 'Rant', status='Have', gr_id='GB1')
+            self.assertIsNone(webServe.search_result_library_book(db, self._google_result()))
+        finally:
+            db.close()
+
+    def test_search_status_rejects_wrong_author_and_ambiguous_alias(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_author(db, 'author-2', 'Different Author')
+            self._insert_book(db, 'wrong-author', 'Rant', authorid='author-2', status='Have', gb_id='GB1')
+            self.assertIsNone(webServe.search_result_library_book(db, self._google_result()))
+            self._insert_book(db, 'canonical', 'Rant', status='Have', gb_id='GB2')
+            self._insert_book(db, 'duplicate', 'Rant', status='Skipped', gb_id='GB2')
+            self.assertIsNone(webServe.search_result_library_book(db, self._google_result(bookid='GB2')))
+        finally:
+            db.close()
+
+    def test_search_status_preserves_legacy_configured_source_match(self):
+        from lazylibrarian import webServe
+
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            self._insert_book(db, '12345', 'Rant', status='Wanted')
+            result = self._goodreads_result(bookid='12345')
+            self.assertEqual('Wanted', webServe.search_result_library_book(db, result)['Status'])
+            db.upsert('books', {'gr_id': 'different-id'}, {'BookID': '12345'})
+            self.assertIsNone(webServe.search_result_library_book(db, result))
+        finally:
+            db.close()
+
     def test_google_result_stamps_existing_normalized_title_match(self):
         from lazylibrarian import webServe
 

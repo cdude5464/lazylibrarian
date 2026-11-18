@@ -45,7 +45,7 @@ class ProviderSecretLoggingTest(TestCase):
         self.assertEqual(params['ToKeN'], [SECRET])
         self.assertEqual(params['PaSsWoRd'], [SECRET])
         self.assertEqual(params['q'], ['Author Title'])
-        self.assertEqual(args.kwargs, {'raw': True})
+        self.assertEqual(args.kwargs, {'raw': True, 'impersonate': 'chrome', 'timeout': True})
         self.assert_safe(logger)
 
     def test_search_accepts_real_typed_config_without_dict_get(self):
@@ -150,7 +150,7 @@ class ProviderSecretLoggingTest(TestCase):
 
     def test_cache_image_write_error_returns_only_exception_class(self):
         logger = Mock()
-        with patch.object(cache.logging, 'getLogger', return_value=logger), patch.object(cache.DIRS, 'get_cachedir', return_value='/tmp/cache'), patch.object(cache, 'path_isfile', return_value=False), patch.object(cache, 'fetch_url', return_value=(b'image', True)), patch.object(cache, 'open', create=True, side_effect=OSError('failed at ' + URL)):
+        with patch.object(cache.logging, 'getLogger', return_value=logger), patch.object(cache.DIRS, 'get_cachefile', return_value='/tmp/cache/book/123.jpg'), patch.object(cache, 'path_isfile', return_value=False), patch.object(cache, 'fetch_url', return_value=(b'image', True)), patch.object(cache, 'open', create=True, side_effect=OSError('failed at ' + URL)):
             result, success, _ = cache.cache_img(cache.ImageType.BOOK, '123', URL)
         self.assertFalse(success)
         self.assertEqual(result, 'OSError')

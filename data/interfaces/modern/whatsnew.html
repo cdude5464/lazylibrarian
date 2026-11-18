@@ -5,23 +5,23 @@
 %>
 <%def name="headIncludes()">
 <style>
-  .llw { max-width: 860px; }
-  .llw-filter { flex: 0 1 260px; min-width: 0; }
-  @media (max-width: 640px) { .llw-filter { flex: 1 1 100%; order: 5; } }
-  .llw-sec { margin: 1.6rem 0 .4rem; display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
-  .llw-sec h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0; }
-  .llw-day { position: relative; padding-left: 1.4rem; margin-left: .35rem; border-left: 2px solid var(--bs-border-color-translucent); }
-  .llw-date { position: relative; font-size: .78rem; font-weight: 600; color: var(--bs-secondary-color); padding: .9rem 0 .3rem; font-variant-numeric: tabular-nums; }
-  .llw-date::before { content: ""; position: absolute; left: calc(-1.4rem - 6px); top: 1.15rem; width: 10px; height: 10px; border-radius: 50%;
+  .lln { max-width: 860px; }
+  .lln-filter { flex: 0 1 260px; min-width: 0; }
+  @media (max-width: 640px) { .lln-filter { flex: 1 1 100%; order: 5; } }
+  .lln-sec { margin: 1.6rem 0 .4rem; display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; }
+  .lln-sec h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0; }
+  .lln-day { position: relative; padding-left: 1.4rem; margin-left: .35rem; border-left: 2px solid var(--bs-border-color-translucent); }
+  .lln-date { position: relative; font-size: .78rem; font-weight: 600; color: var(--bs-secondary-color); padding: .9rem 0 .3rem; font-variant-numeric: tabular-nums; }
+  .lln-date::before { content: ""; position: absolute; left: calc(-1.4rem - 6px); top: 1.15rem; width: 10px; height: 10px; border-radius: 50%;
                       background: var(--bs-body-bg); border: 2px solid var(--bs-secondary-color); }
-  .llw-day.has-new .llw-date::before { background: var(--ll-accent); border-color: var(--ll-accent); }
-  .llw-item { padding: .45rem .7rem; margin: 0 0 .35rem -.7rem; border-radius: 8px; }
-  .llw-item.new { background: var(--bs-success-bg-subtle); }
-  .llw-title { font-size: .92rem; line-height: 1.4; overflow-wrap: anywhere; }
-  .llw-title a { text-underline-offset: 2px; }
-  .llw-pre { font-size: .66rem; font-weight: 600; padding: 2px 7px; margin-right: .35rem; vertical-align: 1px; }
-  .llw-meta { font-size: .74rem; color: var(--bs-secondary-color); margin-top: .1rem; }
-  .llw-meta a { color: inherit; font-family: var(--bs-font-monospace); }
+  .lln-day.has-new .lln-date::before { background: var(--ll-accent); border-color: var(--ll-accent); }
+  .lln-item { padding: .45rem .7rem; margin: 0 0 .35rem -.7rem; border-radius: 8px; }
+  .lln-item.new { background: var(--bs-success-bg-subtle); }
+  .lln-title { font-size: .92rem; line-height: 1.4; overflow-wrap: anywhere; }
+  .lln-title a { text-underline-offset: 2px; }
+  .lln-pre { font-size: .66rem; font-weight: 600; padding: 2px 7px; margin-right: .35rem; vertical-align: 1px; }
+  .lln-meta { font-size: .74rem; color: var(--bs-secondary-color); margin-top: .1rem; }
+  .lln-meta a { color: inherit; font-family: var(--bs-font-monospace); }
 </style>
 </%def>
 <%def name="changelist(items, upcoming=False)">
@@ -35,8 +35,8 @@
             days.append((item['date'], [item]))
 %>
   %for day, entries in days:
-  <div class="llw-day ${'has-new' if any(e['id'] in unseen_ids for e in entries) else ''}" x-show="dayVisible($el)">
-    <div class="llw-date">${day | h}</div>
+  <div class="lln-day ${'has-new' if any(e['id'] in unseen_ids for e in entries) else ''}" x-show="dayVisible($el)">
+    <div class="lln-date">${day | h}</div>
     %for item in entries:
     <%
         is_new = item['id'] in unseen_ids
@@ -49,18 +49,18 @@
             cut = title_html.find(':')
             title_html = title_html[cut + 1:].lstrip() if cut >= 0 else title_html
     %>
-    <div class="llw-item ${'new' if is_new else ''}" data-new="${'1' if is_new else ''}"
+    <div class="lln-item ${'new' if is_new else ''}" data-new="${'1' if is_new else ''}"
          data-text="${(item['title'] + ' ' + item['author'] + ' ' + item['short_id']).lower() | h}" x-show="match($el)">
-      <div class="llw-title">
+      <div class="lln-title">
         %if prefix:
-        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis llw-pre">${prefix | h}</span>\
+        <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis lln-pre">${prefix | h}</span>\
         %endif
         ${title_html}
         %if is_new:
-        <span class="badge rounded-pill text-bg-success llw-pre ms-1">${_('New')}</span>
+        <span class="badge rounded-pill text-bg-success lln-pre ms-1">${_('New')}</span>
         %endif
       </div>
-      <div class="llw-meta">${item['author'] | h} · <a href="${repo | h}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></div>
+      <div class="lln-meta">${item['author'] | h} · <a href="${repo | h}/-/commit/${item['id'] | u}" target="_blank" rel="noopener">${item['short_id'] | h}</a></div>
     </div>
     %endfor
   </div>
@@ -70,15 +70,15 @@
 <%
     unseen = context.get('unseen') or []
 %>
-<div class="llw" x-data="llWhatsNew">
+<div class="lln" x-data="llWhatsNew">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     %if unseen:
     <span class="badge rounded-pill text-bg-success">${_('New')}: ${len(unseen)}</span>
     %endif
     <span class="flex-grow-1"></span>
-    %if not changes['error']:
-    <div class="input-group input-group-sm llw-filter">
+    %if not changes['error'] and not changes.get('loading'):
+    <div class="input-group input-group-sm lln-filter">
       <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
       <input type="search" class="form-control rounded-end-pill" x-model="q" placeholder="${_('Results filter') | h}" autocomplete="off" aria-label="${_('Results filter') | h}">
     </div>
@@ -89,13 +89,22 @@
     <a class="btn btn-sm btn-outline-secondary rounded-pill" href="${repo | h}/-/commits/${changes.get('branch') or branch | u}" target="_blank" rel="noopener">
       <i class="fa fa-external-link-alt" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('All changes on GitLab')}</span>
     </a>
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="https://www.reddit.com/r/LazyLibrarian/" target="_blank" rel="noopener">
+      <i class="fab fa-reddit-alien" aria-hidden="true"></i> <span class="d-none d-sm-inline">Reddit</span>
+    </a>
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues" target="_blank" rel="noopener">
+      <i class="fa fa-bug" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('Report an issue')}</span>
+    </a>
   </div>
 
-  %if changes['error']:
+  %if changes.get('loading'):
+  <p class="text-center text-body-secondary py-5"><span class="spinner-border spinner-border-sm me-2" role="status"></span>${_('Loading')}...</p>
+  <script>setTimeout(function () { location.reload(); }, 2500);</script>
+  %elif changes['error']:
   <div class="alert alert-warning mt-3">${_('Unable to get the list of changes from %(repo)s, try again later.') % {'repo': repo} | h}</div>
   %else:
     %if changes['known'] and changes['upcoming']:
-    <div class="llw-sec">
+    <div class="lln-sec">
       <h2><i class="fa fa-clock me-1" aria-hidden="true"></i>${_('Not installed yet')}</h2>
       <span class="small text-body-secondary">${len(changes['upcoming'])}</span>
     </div>
@@ -104,7 +113,7 @@
       %endif
     ${changelist(changes['upcoming'], True)}
     %endif
-    <div class="llw-sec">
+    <div class="lln-sec">
       %if changes['known']:
       <h2><i class="fa fa-check me-1" aria-hidden="true"></i>${_('Installed')}</h2>
       %else:
@@ -132,11 +141,11 @@ document.addEventListener('alpine:init', function () {
       },
       dayVisible: function (el) {
         var self = this;
-        return Array.prototype.some.call(el.querySelectorAll('.llw-item'), function (i) { return self.match(i); });
+        return Array.prototype.some.call(el.querySelectorAll('.lln-item'), function (i) { return self.match(i); });
       },
       get empty() {
         var self = this;
-        return !Array.prototype.some.call(document.querySelectorAll('.llw-item'), function (i) { return self.match(i); });
+        return !Array.prototype.some.call(document.querySelectorAll('.lln-item'), function (i) { return self.match(i); });
       }
     };
   });

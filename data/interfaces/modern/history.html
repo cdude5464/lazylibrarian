@@ -38,10 +38,12 @@
 <%
     can_status = bool(perm & lazylibrarian.perm_status)
     can_edit = bool(perm & lazylibrarian.perm_edit)
+    from lazylibrarian.menulinks import menu_links
+    ext_links = menu_links(perm, ['LINK_DOWNLOADS', 'LINK_DOWNLOADER', 'LINK_PROWLARR'], 'history')
 %>
 <div x-data="llHistory" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="badge rounded-pill text-bg-info" x-show="active" x-cloak x-text="llNgettext(T.active, active)"></span>
     <span class="flex-grow-1"></span>
@@ -60,16 +62,24 @@
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="downloads()">
       <i class="fa fa-download" aria-hidden="true"></i> <span class="d-none d-sm-inline">${_('Download Count')}</span>
     </button>
-    %if can_edit:
-    <div class="dropdown">
+    %if can_edit or ext_links:
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
+        ${self.ext_link_items(ext_links, False)}
+        %if ext_links and can_edit:
+        <li><hr class="dropdown-divider"></li>
+        %endif
+        %if can_edit:
+        <li><button type="button" class="dropdown-item" @click="stopAllSeeding()"><i class="fa fa-stop fa-fw me-2" aria-hidden="true"></i>${_('Stop all seeding')}</button></li>
+        <li><hr class="dropdown-divider"></li>
         <li><button type="button" class="dropdown-item" @click="clear('Processed')"><i class="fa fa-check fa-fw me-2" aria-hidden="true"></i>${_('Clear Processed')}</button></li>
         <li><button type="button" class="dropdown-item" @click="clear('Snatched')"><i class="fa fa-download fa-fw me-2" aria-hidden="true"></i>${_('Clear Snatched')}</button></li>
         <li><button type="button" class="dropdown-item" @click="clear('Failed')"><i class="fa fa-times fa-fw me-2" aria-hidden="true"></i>${_('Clear Failed')}</button></li>
         <li><hr class="dropdown-divider"></li>
         <li><button type="button" class="dropdown-item text-danger" @click="clear('all')"><i class="fa fa-broom fa-fw me-2" aria-hidden="true"></i>${_('Clear All History')}</button></li>
+        %endif
       </ul>
     </div>
     %endif
@@ -95,6 +105,11 @@
               <span class="llh-prog" role="progressbar" :aria-valuenow="h.progress" aria-valuemin="0" aria-valuemax="100"><i :style="'width:' + h.progress + '%'"></i></span>
             </span>
           </template>
+          %if can_edit:
+          <button type="button" class="btn btn-sm btn-outline-info rounded-pill py-0" x-show="h.status === 'Seeding'"
+                  :disabled="!!h.busy" @click.stop="stopSeeding(h)" @keydown.enter.stop>
+            <i class="fa fa-stop me-1" aria-hidden="true"></i>${_('Stop seeding')}</button>
+          %endif
           <span class="badge rounded-pill llh-pill" :class="pillClass(h.status)" x-text="llStatus(h.status)"></span>
         </span>
       </div>
@@ -126,6 +141,7 @@
             <button type="button" class="btn btn-sm btn-outline-warning rounded-pill" x-show="modal.item && modal.item.status !== 'Failed'" @click="markFailed()">${_('Mark Failed')}</button>
             %endif
             %if can_edit:
+            <button type="button" class="btn btn-sm btn-outline-info rounded-pill" x-show="modal.item && modal.item.status === 'Seeding'" @click="stopSeeding(modal.item)"><i class="fa fa-stop me-1" aria-hidden="true"></i>${_('Stop seeding')}</button>
             <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" @click="remove()">${_('Delete')}</button>
             %endif
           </div>
@@ -155,6 +171,7 @@ document.addEventListener('alpine:init', function () {
     allShown: ${_js('That is all')}, failed: ${_js('Something went wrong, try again')},
     downloads: ${_js('Successful Downloads')}, download: ${_js('Download')}, done: ${_js('Done')},
     markedFailed: ${_js('Marked Failed')}, deleted: ${_js('Deleted')},
+    confirmStopAll: ${_js('Stop seeding everything that is seeding?')},
     confirmClear: ${_js('Clear this part of the history?')}, confirmAll: ${_js('Clear all history? Snatched books go back to Wanted.')},
     confirmDelete: ${_js('Delete this history entry?')},
     types: {eBook: ${_js('eBook')}, AudioBook: ${_js('AudioBook')}, Magazine: ${_js('Magazine')}, comic: ${_js('Comic')}},
@@ -277,6 +294,29 @@ document.addEventListener('alpine:init', function () {
         var self = this, h = this.modal.item;
         fetch('markhistory?rowid=' + encodeURIComponent(h.rowid), {credentials: 'same-origin'})
           .then(function (r) { if (!r.ok) { throw new Error(r.status); } h.status = 'Failed'; h.progress = -1; self.hideModal(); self.toast(T.markedFailed); })
+          .catch(function () { self.toast(T.failed); });
+      },
+      stopSeeding: function (h) {
+        var self = this;
+        h.busy = true;
+        fetch('stop_seeding?rowid=' + encodeURIComponent(h.rowid), {method: 'POST', credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+          .then(function (j) {
+            if (!j.ok) { throw new Error('not stopped'); }
+            h.status = 'Processed'; h.progress = -1; self.toast(T.done);
+            if (self.modal.item === h) { self.hideModal(); }
+          })
+          .catch(function () { self.toast(T.failed); })
+          .finally(function () { h.busy = false; });
+      },
+      stopAllSeeding: function () {
+        if (!window.confirm(T.confirmStopAll)) { return; }
+        var self = this;
+        fetch('stop_all_seeding', {method: 'POST', credentials: 'same-origin'})
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+          .then(function (j) {
+            self.toast(j.ok ? T.done : T.failed); self.reset();
+          })
           .catch(function () { self.toast(T.failed); });
       },
       remove: function () {

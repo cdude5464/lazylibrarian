@@ -9,7 +9,6 @@ import io
 import logging
 import os
 import re
-import shutil
 import threading
 from collections import Counter
 from collections.abc import Generator
@@ -29,6 +28,7 @@ from lazylibrarian.configtypes import (
     ConfigItem,
     ConfigScheduler,
     ErrorListIterator,
+    is_secret_key,
 )
 from lazylibrarian.filesystem import DIRS, path_exists, syspath
 from lazylibrarian.formatter import plural, thread_name
@@ -426,6 +426,20 @@ class LLConfigHandler(ConfigDict):
             self.logger.warning(f"Unable to pre_load_fixup {configfile}")
             return 1
 
+    def ensure_libgen_preset(self):
+        """ With no generic (GEN) provider configured, offer LibGen ready filled in but switched off,
+            so a user only has to turn it on """
+        array = self.get_array('GEN')
+        if array is None or any(array.is_in_use(i) for i in range(len(array))):
+            return
+        first = array[0] if array.has_index(0) else None
+        if first is None:
+            return
+        first.set_str('DISPNAME', 'LibGen')
+        first.set_str('HOST', 'https://libgen.li')
+        first.set_str('SEARCH', 'index.php')
+        array.ensure_empty_end_item()
+
     def post_load_fixup(self) -> int:
         """
         Perform post-load operations specific to LL.
@@ -450,6 +464,7 @@ class LLConfigHandler(ConfigDict):
             warnings += 1
 
         self.ensure_valid_homepage()
+        self.ensure_libgen_preset()
 
         if self.config['SSL_CERTS'].get_str() != '' and not path_exists(str(self.config['SSL_CERTS'])):
             self.logger.warning(f"SSL_CERTS [{str(self.config['SSL_CERTS'])}] not found")
@@ -472,14 +487,6 @@ class LLConfigHandler(ConfigDict):
         # Re-initialize cached loggers
         self.initialize_logger()
         DIRS.initialize_logger()
-
-        # Clean the mako cache if the interface has changed
-        interface = self.config['HTTP_LOOK']
-        if interface.get_write_count() > 0:  # It's changed
-            mako_dir = DIRS.get_mako_cachedir()
-            self.logger.debug("Clearing mako cache")
-            shutil.rmtree(mako_dir)
-            os.makedirs(mako_dir)
 
         # Restart all scheduled jobs since the schedules may have changed
         if restart_jobs:
@@ -559,14 +566,10 @@ class LLConfigHandler(ConfigDict):
         """ Update REDACTLIST after config changes """
 
         self.REDACTLIST = []
-        wordlist = ['PASS', 'TOKEN', 'SECRET', '_API', '_USER', '_DEV', '_KEY', 'ADMIN_', '_AUTH_']
-        if self.get_bool('HOSTREDACT'):
-            wordlist.append('_HOST')
         for key in self.config.keys():
-            if key not in ['BOOK_API', 'GIT_USER', 'SINGLE_USER']:
-                for word in wordlist:
-                    if word in key and self[key] and len(self[key]) > 3:
-                        self.REDACTLIST.append(f"{self[key]}")
+            if (is_secret_key(key) or (self.get_bool('HOSTREDACT') and '_HOST' in key)) \
+                    and self[key] and len(self[key]) > 3:
+                self.REDACTLIST.append(f"{self[key]}")
         for key in ['EMAIL_FROM', 'EMAIL_TO', 'SSL_CERTS']:
             if self[key]:
                 self.REDACTLIST.append(f"{self[key]}")
@@ -645,9 +648,17 @@ class LLConfigHandler(ConfigDict):
 
     def use_direct(self) -> int:
         """ Returns number of enabled direct book providers """
-        count = self.count_in_use('GEN')
-        for item in ['BOK', 'ANNA', 'SLSK', 'WEBSHARE']:
-            if self.get_bool(item) and not BLOCKHANDLER.is_blocked(item):
+        # The search code blocks direct providers under their provider name (GEN_n, zlibrary, annas...),
+        # not their host or config key, so check the blocklist with the same name or a blocked
+        # provider still counts as active and the search logs "No direct providers are available".
+        count = 0
+        for provider in self.get_array('GEN') or []:
+            if provider['HOST'] and provider.get_bool('ENABLED') and \
+                    not BLOCKHANDLER.is_blocked(provider['NAME']):
+                count += 1
+        from lazylibrarian.sources.registry import direct_providers
+        for source in direct_providers():
+            if self.get_bool(source.key) and not BLOCKHANDLER.is_blocked(source.name):
                 count += 1
         return count
 
@@ -741,8 +752,8 @@ def wishlist_type(host: str) -> str:
     Return type of wishlist at host, or empty string if host is not a wishlist
     (Quite fragile, take care)
     """
-    # GoodReads rss feeds
-    if 'goodreads' in host and 'list_rss' in host:
+    # GoodReads shelves, the rss feed or shelf page url, read through the bookshelf widget
+    if 'goodreads' in host and ('list_rss' in host or '/review/list/' in host):
         return 'goodreads'
     # GoodReads Listopia html pages
     if 'goodreads' in host and '/list/show/' in host:

@@ -1,0 +1,113 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    page_id = 'magazines'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 760px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+  .lle-sub { color: var(--bs-secondary-color); margin-bottom: 1.5rem; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; overflow-wrap: anywhere; }
+  .lle .form-control[readonly] { background: var(--bs-tertiary-bg); }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def v(key):
+        try:
+            val = config[key]
+        except (KeyError, IndexError):
+            val = None
+        return '' if val is None else str(val)
+    mag = v('Title')
+    tagdict = tags if isinstance(tags, dict) else {}
+    # issue_update compares the posted tags with this snapshot, it reads kwargs['tagdata'] so it is always sent
+    tagdata = str(tags) if isinstance(tags, dict) else '{}'
+%>
+<div class="lle" x-data="llEditIssue">
+  <a href="issue_page?${urlencode({'title': mag}) | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title | h}</h1>
+  <div class="lle-sub">${mag | h} · ${v('IssueDate') | h}</div>
+
+  <form x-ref="form" accept-charset="UTF-8" action="issue_update" method="post" @submit.prevent="save()">
+    <input type="hidden" name="issueid" value="${v('IssueID') | h}">
+    <input type="hidden" name="tagdata" value="${tagdata | h}">
+
+    <div class="lle-card">
+      <h2>${_('Issue')}</h2>
+      <div class="row g-3 mb-3">
+        <div class="col-md-8">
+          <label class="form-label" for="magtitle">${_('Magazine Title:')}</label>
+          <input type="text" class="form-control" id="magtitle" name="magtitle" value="${mag | h}" placeholder="${_('Title') | h}" ${'' if can_edit else 'readonly'}>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="issuenum">${_('Issue Date/Num:')}</label>
+          <input type="text" class="form-control" id="issuenum" name="issuenum" value="${v('IssueDate') | h}" placeholder="${_('Date/Num') | h}" ${'' if can_edit else 'readonly'}>
+        </div>
+      </div>
+    </div>
+
+    %if tagdict:
+    <div class="lle-card">
+      <h2>${_('PDF Tags')}</h2>
+      <div class="row g-3 mb-3">
+        %for item in tagdict:
+        <div class="col-md-6">
+          <label class="form-label" for="tag-${loop.index}">${item | h}</label>
+          <input type="text" class="form-control" id="tag-${loop.index}" name="tags_${item | h}" value="${'' if tagdict[item] is None else str(tagdict[item]) | h}" ${'' if can_edit else 'readonly'}>
+        </div>
+        %endfor
+      </div>
+    </div>
+    %endif
+
+    %if can_edit:
+    <div class="lle-save">
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+    </div>
+    %endif
+  </form>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+document.addEventListener('alpine:init', function () {
+  var T = {failed: ${_js('Something went wrong, try again')}};
+  Alpine.data('llEditIssue', function () {
+    return {
+      saving: false, toastText: '',
+      save: function () {
+        var self = this;
+        this.saving = true;
+        // issue_update answers with a redirect to issue_page, which shows what changed (or why not) in its response line
+        fetch('issue_update', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            window.location = r.redirected ? r.url : 'magazines';
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2500}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

@@ -24,6 +24,21 @@ ValidIntTypes = int | bool
 ValidStrTypes = str
 ValidTypes = ValidStrTypes | ValidIntTypes
 
+# Words that mark a config key as holding a secret (password, API key, token...).
+# Shared by the config-write debug log and Config2._update_redactlist, so the two cannot drift.
+SECRET_KEY_WORDS = ('PASS', 'TOKEN', 'SECRET', '_API', '_USER', '_DEV', '_KEY', 'ADMIN_', '_AUTH_')
+NOT_SECRET_KEYS = ('BOOK_API', 'GIT_USER', 'SINGLE_USER')
+
+
+def is_secret_key(key: str) -> bool:
+    """ True if the config key holds a value that must never be logged """
+    key = key.upper()
+    if key in NOT_SECRET_KEYS:
+        return False
+    # 'API' on its own is the API key column of array sections (Newznab, Torznab, ...)
+    return key == 'API' or any(word in key for word in SECRET_KEY_WORDS)
+
+
 # Method or static method that can be called when a value changes
 OnChangeCallback = Callable[[str, OnChangeReason], None]
 

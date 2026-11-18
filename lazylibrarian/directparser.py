@@ -223,7 +223,8 @@ def direct_gen(book=None, prov=None, test=False):
                 host = f"http://{host}"
             search = entry['SEARCH']
             if not search:
-                search = 'search.php'
+                # libgen.li only has index.php, the older mirrors search.php
+                search = 'index.php' if 'libgen.li' in host.lower() else 'search.php'
             if search[0] == '/':
                 search = search[1:]
             priority = entry['DLPRIORITY']
@@ -486,6 +487,8 @@ def direct_gen(book=None, prov=None, test=False):
                                     url = url_fix(f"{host}/ads.php?{link}")
 
                             # redirect page for other sources [libgen.me, libgen.li, library1.org, booksdl.org]
+                            if not test:
+                                time.sleep(0.5)  # one request per result, don't hammer the mirror
                             bookresult, success = fetch_url(url, impersonate='chrome')
                             if not success:
                                 logger.debug(f'Error fetching link data from {provider}: {bookresult}')

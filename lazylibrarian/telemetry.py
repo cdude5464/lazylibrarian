@@ -33,6 +33,7 @@ from lazylibrarian.common import proxy_list
 from lazylibrarian.config2 import CONFIG, LLConfigHandler
 from lazylibrarian.formatter import thread_name
 from lazylibrarian.processcontrol import get_info_on_caller
+from lazylibrarian.sources.registry import direct_providers
 
 
 class LazyTelemetry:
@@ -125,7 +126,7 @@ class LazyTelemetry:
             'TOR_DOWNLOADER_RTORRENT', 'TOR_DOWNLOADER_UTORRENT',
             'TOR_DOWNLOADER_QBITTORRENT', 'TOR_DOWNLOADER_BLACKHOLE',
             # Providers
-            'BOK', 'SLSK', 'ANNA', 'WEBSHARE', 'AUDNEXUS',
+            *[source.key for source in direct_providers()], 'AUDNEXUS',
             # Processing
             'CALIBRE_USE_SERVER', 'OPF_TAGS', 'MULTI_SOURCE',
             # Notifiers
@@ -148,6 +149,8 @@ class LazyTelemetry:
             cfg_telemetry["params"] += "PRIMARY_OL "
         cfg_telemetry["params"] += f"UI_LANG_{_config['UI_LANGUAGE']} "
         cfg_telemetry["params"] += f"UI_LOOK_{_config['HTTP_LOOK']} "
+        for look in self.user_looks(_config):
+            cfg_telemetry["params"] += f"UI_LOOK_{look} "
 
         # Record whether these are configured differently from the default
         for key in ['GR_API', 'GB_API', 'OL_API', 'DNB_API', 'BN_API', 'DBK_API', 'RAN_API', 'HC_API', 'GR_SYNC', 'HC_SYNC', 'LT_DEVKEY',
@@ -162,6 +165,29 @@ class LazyTelemetry:
 
         # Count how many Apprise notifications are configured
         cfg_telemetry["APPRISE"] = _config.count_in_use('APPRISE')
+
+    @staticmethod
+    def user_looks(_config: LLConfigHandler) -> list:
+        """ With user accounts, each user can pick their own interface (users.Theme), which leaves
+        HTTP_LOOK as it is. Return the other interfaces users have picked, sorted, without counts
+        or user ids. An empty Theme means the global interface; otherwise it is look or look_style """
+        if not _config.get_bool('USER_ACCOUNTS'):
+            return []
+        try:
+            db = database.DBConnection()
+            try:
+                rows = db.select('SELECT DISTINCT Theme from users')
+            finally:
+                db.close()
+        except Exception:
+            return []
+        looks = set()
+        for row in rows:
+            look = (row['Theme'] or '').split('_', 1)[0]
+            if look in ('bookstrap', 'modern'):
+                looks.add(look)
+        looks.discard(_config['HTTP_LOOK'])
+        return sorted(looks)
 
     def record_usage_data(self, counter: str | None = None):
         usg = self.get_usage_telemetry()
@@ -217,13 +243,9 @@ class LazyTelemetry:
         proxies = proxy_list()
         timeout = 5
         headers = {'User-Agent': 'LazyLibrarian'}
-        if proxies:
-            payload = {"timeout": timeout, "proxies": proxies}
-        else:
-            payload = {"timeout": timeout}
         try:
             logger.debug(f'GET {url}')
-            r = requests.get(url, verify=False, params=payload, headers=headers)
+            r = requests.get(url, verify=False, timeout=timeout, proxies=proxies, headers=headers)
         except requests.exceptions.Timeout as e:
             logger.error(f"_send_url: Timeout sending telemetry {url}")
             return f"Timeout {str(e)}", False

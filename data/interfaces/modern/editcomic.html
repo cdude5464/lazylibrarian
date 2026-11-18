@@ -1,0 +1,162 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    page_id = 'comics'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 760px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+  .lle-sub { color: var(--bs-secondary-color); margin-bottom: 1.5rem; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; }
+  .lle .form-control[readonly] { background: var(--bs-tertiary-bg); }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    can_status = bool(perm & lazylibrarian.perm_status)
+    def v(key):
+        try:
+            val = config[key]
+        except (KeyError, IndexError):
+            val = None
+        return '' if val is None else str(val)
+    cid = v('ComicID')
+    ro = '' if can_edit else 'readonly'
+%>
+<div class="lle" x-data="llEditComic">
+  <a href="comicissue_page?${urlencode({'comicid': cid}) | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title | h}</h1>
+  <div class="lle-sub">${v('Title') | h}</div>
+
+  <form x-ref="form" accept-charset="UTF-8" action="comic_update" method="post" @submit.prevent="save()">
+    <input type="hidden" name="comicid" value="${cid | h}">
+
+    <div class="lle-card">
+      <h2>${_('Comic')}</h2>
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <label class="form-label" for="new_name">${_('Comic Title:')}</label>
+          <input type="text" class="form-control" id="new_name" name="new_name" value="${v('Title') | h}" placeholder="${_('Comic Title') | h}" ${ro}>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="new_id">${_('Comic ID:')}</label>
+          <input type="text" class="form-control" id="new_id" name="new_id" value="${cid | h}" placeholder="${_('Comic ID') | h}" ${ro}>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="aka">${_('Aka:')}</label>
+          <input type="text" class="form-control" id="aka" name="aka" value="${v('aka') | h}" placeholder="${_('Alternate IDs') | h}" ${ro}>
+        </div>
+      </div>
+    </div>
+
+    <div class="lle-card">
+      <h2><label for="editordata">${_('Comic Description')}</label></h2>
+      <textarea class="form-control mb-3" id="editordata" name="editordata" rows="8" placeholder="${_('Nothing to see here...') | h}" ${ro}>${v('Description') | h}</textarea>
+    </div>
+
+    %if can_edit or can_status:
+    <div class="lle-save">
+      %if can_edit:
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving || deleting">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+      %endif
+      %if can_status:
+      <button type="button" class="btn btn-outline-danger rounded-pill ms-auto" @click="askDelete()" :disabled="saving || deleting">
+        <i class="fa fa-times" aria-hidden="true"></i> ${_('Delete Comic')}
+      </button>
+      %endif
+    </div>
+    %endif
+  </form>
+
+  %if can_status:
+  <div class="modal fade" id="lle-delete" tabindex="-1" aria-labelledby="lle-delete-title" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h2 class="modal-title fs-6 fw-semibold" id="lle-delete-title">${_('Delete Comic')}</h2>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">${_('Are you sure you want to permanently delete the comic?')}</p>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-link" data-bs-dismiss="modal" :disabled="deleting">${_('Cancel')}</button>
+        <button type="button" class="btn btn-outline-secondary rounded-pill" @click="remove('Remove')" :disabled="deleting">${_('Remove')}</button>
+        <button type="button" class="btn btn-danger rounded-pill px-4" @click="remove('Delete')" :disabled="deleting">
+          <span class="spinner-border spinner-border-sm me-1" x-show="deleting" x-cloak aria-hidden="true"></span>${_('Delete')}
+        </button>
+      </div>
+    </div></div>
+  </div>
+  %endif
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    try:
+        _cid = str(config['ComicID'])
+    except (KeyError, IndexError):
+        _cid = ''
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var COMIC_ID = ${js(_cid)};
+  var T = {failed: ${_js('Something went wrong, try again')}};
+  Alpine.data('llEditComic', function () {
+    return {
+      saving: false, deleting: false, toastText: '',
+      save: function () {
+        var self = this;
+        this.saving = true;
+        // comic_update answers with a redirect to the comic's issue page (under the new ID when that was free)
+        fetch('comic_update', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            window.location = r.redirected ? r.url : 'comicissue_page?' + new URLSearchParams({comicid: COMIC_ID});
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      askDelete: function () {
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show();
+      },
+      // mark_comics: Remove drops the comic from the database, Delete also deletes its issue files
+      remove: function (action) {
+        var self = this;
+        var body = new URLSearchParams({action: action});
+        body.append(COMIC_ID, 'on');
+        this.deleting = true;
+        fetch('mark_comics', {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            // the login page is not the comics list
+            if (r.redirected && r.url.indexOf('comics') < 0) { window.location = r.url; return; }
+            window.location = 'comics';
+          })
+          .catch(function () {
+            self.deleting = false;
+            bootstrap.Modal.getOrCreateInstance(self.$refs.modal).hide();
+            self.toast(T.failed);
+          });
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 2500}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

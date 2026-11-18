@@ -1,0 +1,24 @@
+<%doc>
+  The setup wizard, included at the end of the body by bookstrap's base.html and modern's modern_base.html.
+  The dialog itself is built by data/js/setup_wizard.js, this only says whether to offer it on a new install.
+  Its texts come from wizard_presets, so a language picked in the wizard shows at once. Only someone allowed to change the config gets it.
+</%doc>
+<%def name="wizard(perm)">
+<%
+    import os
+    import lazylibrarian
+    from lazylibrarian import setupwizard
+    from lazylibrarian.filesystem import DIRS
+
+    def asset(name):
+        try:
+            return '%s?v=%d' % (name, os.path.getmtime(os.path.join(DIRS.PROG_DIR, 'data', name)))
+        except OSError:
+            return name
+%>
+%if perm & lazylibrarian.perm_config:
+<link href="${asset('css/setup_wizard.css')}" rel="stylesheet">
+<div id="llw-root" hidden data-autoopen="${'1' if setupwizard.should_autoopen() else '0'}"></div>
+<script src="${asset('js/setup_wizard.js')}"></script>
+%endif
+</%def>

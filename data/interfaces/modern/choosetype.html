@@ -1,0 +1,78 @@
+<%inherit file="modern_base.html" />
+<%!
+    import re
+    from urllib.parse import urlencode, urlsplit
+    page_id = 'choosetype'
+%>
+<%def name="headIncludes()">
+<style>
+  .llc { max-width: 560px; margin: 2rem auto 0; }
+  .llc-msg { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem; color: var(--bs-secondary-color); }
+  .llc-types { display: flex; flex-wrap: wrap; gap: .5rem; }
+  .llc-types .btn { min-width: 5rem; }
+  .llc-types .btn.llc-busy { pointer-events: none; opacity: .65; }
+</style>
+</%def>
+<%def name="body()">
+<%
+    # served by open_book / send_book: choose a format or an audiobook part, or show what happened to an email
+    try:
+        import cherrypy
+        params = cherrypy.request.params
+        referer = cherrypy.request.headers.get('Referer', '')
+    except Exception:
+        params, referer = {}, ''
+    library = 'AudioBook' if params.get('library') == 'AudioBook' else 'eBook'
+    back = 'audio' if library == 'AudioBook' else 'books'
+    # like bookstrap: coming from an author page, go back there (same site only, path and query)
+    if 'author_page' in referer:
+        ref = urlsplit(referer)
+        back = ref.path + ('?' + ref.query if ref.query else '')
+    action = 'send_book' if email else 'open_book'
+    allowed = list(valid) if valid else []
+    types = [t for t in (pop_types or '').split() if t in allowed]
+    message = re.sub(r'<br\s*/?>', '\n', pop_message or '').strip()
+    heading = (title or '').replace('&amp;', '&')
+
+    def icon(t):
+        if t.isdigit():
+            return 'fa-file-audio'
+        return {'zip': 'fa-file-archive', 'whole': 'fa-file'}.get(t, 'fa-file-alt')
+%>
+<div class="llc card shadow-sm">
+  <div class="card-body">
+    <h1 class="h5 card-title mb-2">${heading | h}</h1>
+    %if message:
+    <p class="llc-msg mb-3">${message | h}</p>
+    %endif
+    %if types:
+    <div class="llc-types" role="group" aria-label="${heading | h}">
+      %for t in types:
+      <a class="btn btn-outline-secondary rounded-pill" data-llc-email="${'1' if email else ''}"
+         href="${action}?${urlencode({'bookid': bookid, 'library': library, 'booktype': t}) | h}">
+        <i class="fa ${'fa-envelope' if email else icon(t)} me-1" aria-hidden="true"></i>${t | h}
+      </a>
+      %endfor
+    </div>
+    %endif
+  </div>
+  <div class="card-footer bg-transparent border-0 d-flex justify-content-end pb-3">
+    <a class="btn btn-ll rounded-pill px-4" href="${back | h}" ${'' if types else 'autofocus'}>${_('Close')}</a>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<script>
+(function () {
+  // sending an email takes a while: show it is working and do not send twice
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('.llc-types a[data-llc-email="1"]');
+    if (!a) { return; }
+    if (a.classList.contains('llc-busy')) { e.preventDefault(); return; }
+    a.classList.add('llc-busy');
+    var i = a.querySelector('.fa');
+    if (i) { i.className = 'spinner-border spinner-border-sm me-1'; }
+  });
+})();
+</script>
+</%def>

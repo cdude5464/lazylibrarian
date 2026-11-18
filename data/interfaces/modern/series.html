@@ -41,6 +41,10 @@
   .lls-card.lls-sel { background: var(--bs-tertiary-bg); outline: 3px solid var(--ll-accent); outline-offset: 4px; }
   .lls-card.lls-sel .lls-check { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
 
+  /* compact: smaller stacks, name only */
+  .lls-v-compact.lls-grid { grid-template-columns: repeat(auto-fill, minmax(124px, 1fr)); gap: 16px 10px; }
+  .lls-v-compact .lls-author, .lls-v-compact .lls-prog, .lls-v-compact .lls-status { display: none !important; }
+  .lls-v-compact .lls-name { font-size: .8rem; -webkit-line-clamp: 1; }
   .lls-v-list.lls-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .lls-v-list .lls-card { display: grid; align-items: center; gap: 0 12px; padding: 6px 4px; border-radius: 0; outline: none;
                           grid-template-columns: 40px minmax(0, 1fr) 130px auto;
@@ -91,19 +95,24 @@
   </a>
   %endif
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm lls-filter">
       <span class="input-group-text rounded-start-pill bg-transparent"><i class="fa fa-filter" aria-hidden="true"></i></span>
-      <input type="search" id="lls-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
+      <input type="search" id="lls-q" class="form-control " x-model.debounce.300ms="q"
              placeholder="${_('Filter series') | h}" autocomplete="off" aria-label="${_('Filter series') | h}">
-    </div>
-    <div class="btn-group btn-group-sm lls-views" role="group" aria-label="${_('View') | h}">
-      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
-              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
-      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
-              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
+      <div class="dropdown llb-status">
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-end-pill border-start-0" data-bs-toggle="dropdown" aria-expanded="false"
+                title="${_('Status') | h}" aria-label="${_('Status') | h}">
+          <i class="fa fa-tasks" aria-hidden="true"></i> ${dict(chips).get(status_now, status_label(status_now))}
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          %for st, label in chips:
+          <li><a class="dropdown-item ${'active' if st == status_now else ''}" href="${chip_url(st) | h}">${label}</a></li>
+          %endfor
+        </ul>
+      </div>
     </div>
     <select id="lls-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
       <option value="2:asc">${_('Series Name')}</option>
@@ -111,12 +120,47 @@
       <option value="3:desc">${_('Have')}</option>
       <option value="4:asc">${_('Status')}</option>
     </select>
+    <div class="dropdown lls-views">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('View') | h}" aria-label="${_('View') | h}">
+        <i class="fa" :class="view === 'grid' ? 'fa-th-large' : view === 'compact' ? 'fa-th' : view === 'list' ? 'fa-list' : 'fa-th-large'" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" :class="view === 'grid' && 'active'" @click="setView('grid')">
+          <i class="fa fa-fw me-2 fa-th-large" aria-hidden="true"></i>${_('Covers') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'compact' && 'active'" @click="setView('compact')">
+          <i class="fa fa-fw me-2 fa-th" aria-hidden="true"></i>${_('Compact') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'list' && 'active'" @click="setView('list')">
+          <i class="fa fa-fw me-2 fa-list" aria-hidden="true"></i>${_('List') | h}
+        </button></li>
+      </ul>
+    </div>
     %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
             x-text="selecting ? T.done : T.select"></button>
+    <div class="dropdown dropup ll-selmenu" x-show="selecting" x-cloak>
+      <button type="button" class="btn btn-sm btn-ll rounded-pill dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+              x-text="llNgettext(T.selected, selCount)"></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if perm&lazylibrarian.perm_status:
+        %for st in ['Active', 'Wanted', 'Paused', 'Ignored']:
+        <li><button type="button" class="dropdown-item" @click="bulk('${st}')">${_(st)}</button></li>
+        %endfor
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+        <li><button type="button" class="dropdown-item" @click="bulk('Subscribe')">${_('Subscribe')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button></li>
+        %endif
+      </ul>
+    </div>
+    %endif
+    %if perm&lazylibrarian.perm_search and not authorid:
+    ${self.add_button()}
     %endif
     %if not authorid:
-    <div class="dropdown">
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -137,13 +181,6 @@
       </ul>
     </div>
     %endif
-  </div>
-
-  <div class="d-flex gap-2 lls-chips pb-1 mb-3" role="group" aria-label="${_('Status') | h}">
-    %for st, label in chips:
-    <a class="btn btn-sm rounded-pill text-nowrap ${'btn-secondary' if st == status_now else 'btn-outline-secondary'}"
-       href="${chip_url(st) | h}" ${'aria-current="true"' if st == status_now else ''}>${label}</a>
-    %endfor
   </div>
 
   <div class="lls-grid" :class="'lls-v-' + view">
@@ -182,20 +219,9 @@
   </div>
   <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && series.length ? T.allShown : ''"></div>
 
-  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
-  <div class="lls-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'lls-bar-hidden'" role="region" aria-label="${_('Selected series') | h}">
-    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
-    %if perm&lazylibrarian.perm_status:
-    %for st in ['Active', 'Wanted', 'Paused', 'Ignored']:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('${st}')">${_(st)}</button>
-    %endfor
-    %endif
-    %if CONFIG['USER_ACCOUNTS']:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Subscribe')">${_('Subscribe')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button>
-    %endif
-    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
-  </div>
+
+  %if perm&lazylibrarian.perm_search and not authorid:
+  ${self.add_modal('series', series=True)}
   %endif
 
   <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
@@ -245,7 +271,7 @@ document.addEventListener('alpine:init', function () {
       get selCount() { return Object.keys(this.sel).length; },
       start: function () {
         var self = this;
-        try { var v = localStorage.getItem('lls-view'); if (v === 'grid' || v === 'list') { this.view = v; } } catch (e) {}
+        try { var v = localStorage.getItem('lls-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('lls-series') || 'null');
           if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }

@@ -5,6 +5,8 @@
     from lazylibrarian.scheduling import show_running
     root = CONFIG['HTTP_ROOT'].rstrip('/') if CONFIG['HTTP_ROOT'] else ''
     current = (self.attr.page_id if hasattr(self.attr, 'page_id') else '')
+    # a page for visitors (login, register) has no menu, notices or polling while nobody is logged in
+    bare = bool(getattr(self.attr, 'guest_page', False)) and not perm
     if current == 'books' and context.get('library') == 'AudioBook':
         current = 'audio'
     nav = []
@@ -116,6 +118,12 @@
                    'open in the classic one. You can go back to the classic interface at any time from the menu.'),
             actions=[('primary', _('Got it'), 'cookie', 'll_modern_welcome|1|365'),
                      ('secondary', _('Back to classic'), 'classic', '')]))
+    if bare:
+        notices = []
+    # the downloads panel (what is downloading, with progress) and download notifications in the bell
+    dl_ok = bool(perm & lazylibrarian.perm_history) and not bare
+    hist_refresh = CONFIG.get_int('HIST_REFRESH')
+    dl_refresh = max(hist_refresh, 5000) if hist_refresh else 10000
 %>
 <!doctype html>
 <html lang="${ui_lang}" data-bs-theme="light">
@@ -123,10 +131,18 @@
   <base href="${root}/">
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>LazyLibrarian - ${title}</title>
+  <title>LazyLibrarian - ${title | h}</title>
   <link rel="shortcut icon" type="image/png" href="images/ll.ico">
   <link rel="apple-touch-icon" href="images/ll.png">
   <link rel="manifest" href="images/manifest.json">
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#212529" media="(prefers-color-scheme: dark)">
+  <script>
+    // the service worker lets the interface be installed as an app, browsers only allow it over https or on localhost
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    }
+  </script>
   <script>
     // light or dark: the choice made with the theme button, otherwise the system setting
     (function () {
@@ -186,11 +202,41 @@
     @media (min-width: 1500px) { .ll-nav > .container-xl { max-width: 1640px; } }
     /* Config and Help are icons with a tooltip on wide screens, named in the phone menu */
     @media (min-width: 992px) { .ll-nav .ll-sec > .fa { margin-right: 0; } .ll-nav .ll-sec .ll-nl { display: none; } }
+    /* on a wide screen the filter field of every list page is the same width and sits in the middle of the toolbar */
+    @media (min-width: 641px) {
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > .flex-grow-1 { display: none; }
+      /* the title never gives up room to the filter (it used to break "E-knihy" after the hyphen) */
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > :is(h1, h2, .text-body-secondary) { flex: 0 0 auto; white-space: nowrap; }
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > .input-group { flex: 0 0 460px; max-width: 100%; margin-left: auto; margin-right: auto; }
+    }
+    /* on a wide screen (the page is 1296px wide from 1400px) the filter sits exactly in the middle of the toolbar,
+       whatever the title and the buttons are; a toolbar with too many controls to leave room for it opts out with .ll-flow */
+    @media (min-width: 1400px) {
+      .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) { position: relative; }
+      .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) > .flex-grow-1 { display: block; }
+      .ll-main .d-flex.flex-wrap:not(.ll-flow):has(> :is(h1, h2)):has(> .flex-grow-1) > .input-group { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: var(--ll-fw, 460px); margin: 0; }
+    }
+    /* the "Selected: N" menu stays put in the corner while the books scroll underneath */
+    .ll-main .ll-selmenu { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 1040; order: 0; }
+    .ll-main .ll-selmenu > .btn { padding: .45rem 1.1rem; box-shadow: 0 .25rem .9rem rgba(0, 0, 0, .45); }
+    /* the picked item of every toolbar menu (view, status, ...) wears the accent colour */
+    .ll-main .dropdown-menu .dropdown-item.active, .ll-main .dropdown-menu .dropdown-item:active { background: var(--ll-accent); color: var(--ll-accent-contrast); }
+    /* icon-only toolbar buttons (view, More, ...) all the same square size */
+    .ll-main .d-flex.flex-wrap > .dropdown > .btn:not(.btn-ll):has(> .fa:only-child) { width: 34px; padding-left: 0; padding-right: 0; }
+    /* on a phone the opened menu floats over the page instead of pushing it down */
+    @media (max-width: 991.98px) {
+      .ll-nav .navbar-collapse { position: absolute; top: 100%; left: 0; right: 0; z-index: 1030; padding: .5rem 1rem 1rem;
+                                 background: var(--bs-body-bg); border-bottom: 1px solid var(--bs-border-color);
+                                 box-shadow: 0 .75rem 1rem rgba(0, 0, 0, .25); max-height: calc(100vh - 56px); overflow-y: auto; }
+    }
     @media (min-width: 992px) { .ll-nav .ll-theme-btn > .fa, .ll-nav .ll-only-icon > .fa { margin-right: 0; } }
     .ll-main { padding-top: 1rem; padding-bottom: 6rem; }
     .btn-ll { --bs-btn-bg: var(--ll-accent); --bs-btn-border-color: var(--ll-accent); --bs-btn-color: var(--ll-accent-contrast);
               --bs-btn-hover-bg: var(--ll-accent); --bs-btn-hover-border-color: var(--ll-accent); --bs-btn-hover-color: var(--ll-accent-contrast); }
     [x-cloak] { display: none !important; }
+    /* "go to top" for the long, continuously scrolling pages; the notices (above it) cover it while they are shown */
+    .ll-totop { position: fixed; right: 1rem; bottom: 1rem; z-index: 1030; opacity: .55; }
+    .ll-totop:hover, .ll-totop:focus-visible { opacity: 1; }
     /* notices: a card stack in the bottom corner (full width on phones) */
     .ll-notices { position: fixed; right: 1rem; bottom: 1rem; z-index: 1045; width: min(380px, calc(100vw - 2rem)); display: flex; flex-direction: column; gap: .6rem;
                   max-height: calc(100vh - 6rem); overflow-y: auto; padding: 4px; margin: -4px; }
@@ -228,6 +274,15 @@
                        box-shadow: 0 6px 18px -8px rgba(0,0,0,.4); }
     @media (prefers-reduced-motion: reduce) { .ll-notice, .ll-notice.ll-out { animation: none; } }
     .ll-theme-btn, .ll-lang-btn { background: none; border: 0; }
+    /* the language list is long: it goes above the notices and scrolls when the screen is short, or its lower items can't be reached */
+    .ll-quick .dropdown-menu { z-index: 1060; max-height: calc(100vh - 80px); max-height: calc(100dvh - 80px); overflow-y: auto; overscroll-behavior: contain; }
+    /* on a phone the icons can wrap onto a second row and the menu, aligned to its icon, would stick out of the screen:
+       it takes the width of the bar instead, below it */
+    @media (max-width: 575.98px) {
+      .ll-quick > .dropdown:not(.ll-prov) { position: static; }
+      .ll-quick > .dropdown:not(.ll-prov) > .dropdown-menu { position: absolute !important; inset: 100% .5rem auto .5rem !important; transform: none !important;
+        width: auto; min-width: 0; max-height: calc(100vh - 130px); max-height: calc(100dvh - 130px); }
+    }
     /* the name opens the menu on narrow screens; on wide ones the menu is always there */
     .ll-brand { background: none; border: 0; padding-left: 0; color: inherit; }
     .ll-brand-caret { font-size: .62rem; opacity: .6; transition: transform .2s ease; }
@@ -237,9 +292,70 @@
     .ll-quick .nav-link > .fa { margin: 0 !important; width: auto; }
     .ll-quick .nav-link.active { background: var(--bs-secondary-bg); }
     .ll-quick .badge { position: absolute; top: 1px; right: -2px; font-size: .58rem; padding: 2px 5px; }
+    /* provider status in the top bar (llProvStatus) */
+    .ll-prov-btn { background: none; border: 0; }
+    .ll-prov-dot { position: absolute; bottom: 7px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--bs-success);
+                   box-shadow: 0 0 0 2px var(--bs-body-bg); }
+    .ll-prov.ll-bad .ll-prov-dot { display: none; }
+    .ll-prov-menu { width: 340px; max-height: min(70vh, 520px); overflow-y: auto; }
+    /* on a phone the icon sits near the left edge, so the menu takes the width of the screen under the bar */
+    @media (max-width: 575.98px) {
+      .ll-prov-menu.show { position: fixed !important; inset: 52px .75rem auto .75rem !important; width: auto; transform: none !important; }
+    }
+    .ll-prov-row { display: flex; align-items: flex-start; gap: .55rem; padding: .35rem 1rem; font-size: .85rem; }
+    .ll-prov-row .ll-pd { flex: 0 0 auto; width: .5rem; height: .5rem; border-radius: 50%; margin-top: .42rem; background: var(--bs-success); }
+    .ll-prov-row.bad .ll-pd { background: var(--bs-danger); }
+    .ll-prov-row .ll-pt { flex: 1 1 auto; min-width: 0; }
+    .ll-prov-row .ll-pn { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ll-prov-row .ll-pr { display: block; font-size: .75rem; color: var(--bs-danger-text-emphasis); overflow-wrap: anywhere; }
+    .ll-prov-row .ll-ph { display: block; font-size: .72rem; color: var(--bs-secondary-color); overflow-wrap: anywhere; margin-top: .1rem; }
+    .ll-prov-row .btn { flex: 0 0 auto; font-size: .72rem; padding: .05rem .55rem; }
     .ll-theme-btn .ll-t { display: none; }
     [data-ll-theme="auto"] .ll-theme-btn .ll-t-auto, [data-ll-theme="light"] .ll-theme-btn .ll-t-light,
     [data-ll-theme="dark"] .ll-theme-btn .ll-t-dark { display: inline; }
+    /* the downloads panel: slides in from the right, on wide screens it stays docked next to the page */
+    .ll-dl { --bs-offcanvas-width: 360px; border-left: 1px solid var(--bs-border-color-translucent) !important; }
+    .ll-dl .offcanvas-header { border-bottom: 1px solid var(--bs-border-color-translucent); padding: .8rem 1rem; }
+    .ll-dl .offcanvas-body { padding: 0 0 1rem; }
+    .ll-dl h3 { font-size: .7rem; text-transform: uppercase; letter-spacing: .06em; color: var(--bs-secondary-color); font-weight: 600;
+                margin: 0; padding: .9rem 1rem .4rem; display: flex; align-items: center; gap: .5rem; }
+    .ll-dl-item { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 .7rem; padding: .55rem 1rem; color: inherit; text-decoration: none; }
+    a.ll-dl-item:hover { background: var(--bs-tertiary-bg); }
+    .ll-dl-thumb { width: 40px; height: 56px; border-radius: 5px; background: var(--bs-secondary-bg); color: var(--bs-secondary-color);
+                   display: flex; align-items: center; justify-content: center; overflow: hidden; font-size: .9rem; }
+    .ll-dl-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .ll-dl-thumb.ll-sm { height: 40px; border-radius: 8px; }
+    .ll-dl-thumb.ll-ok { background: rgba(25,135,84,.14); color: var(--bs-success); }
+    .ll-dl-thumb.ll-bad { background: rgba(220,53,69,.14); color: var(--bs-danger); }
+    .ll-dl-t { font-weight: 600; font-size: .86rem; line-height: 1.3; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+    .ll-dl-m { font-size: .74rem; color: var(--bs-secondary-color); display: flex; flex-wrap: wrap; gap: 0 .7rem; }
+    .ll-dl-m span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+    .ll-dl-p { display: flex; align-items: center; gap: .5rem; margin-top: .35rem; font-size: .7rem; font-variant-numeric: tabular-nums; color: var(--bs-secondary-color); }
+    .ll-dl-p .bar { flex: 1; height: 6px; border-radius: 6px; background: var(--bs-secondary-bg); overflow: hidden; }
+    .ll-dl-p .bar i { display: block; height: 100%; background: var(--ll-accent); transition: width .4s ease; }
+    .ll-dl-p .bar.ll-wait i { width: 35% !important; animation: ll-dl-wait 1.4s ease-in-out infinite; }
+    @keyframes ll-dl-wait { from { transform: translateX(-100%); } to { transform: translateX(290%); } }
+    .ll-dl-pill { font-size: .64rem; font-weight: 600; padding: 2px 8px; }
+    .ll-dl-empty { padding: .6rem 1rem; font-size: .82rem; color: var(--bs-secondary-color); }
+    @media (min-width: 1400px) { body.ll-dl-docked { padding-right: 360px; } body.ll-dl-docked .ll-notices { right: calc(360px + 1rem); } }
+    @media (prefers-reduced-motion: reduce) { .ll-dl-p .bar i, .ll-dl-p .bar.ll-wait i { transition: none; animation: none; } }
+    .ll-dl .ll-dl-item.ll-new { background: color-mix(in srgb, var(--ll-accent) 9%, transparent); }
+    /* a dot on the download button: something finished since the panel was last opened */
+    .ll-quick .ll-dl-dot { position: absolute; right: 3px; bottom: 4px; width: 9px; height: 9px; border-radius: 50%;
+                           background: var(--bs-success); box-shadow: 0 0 0 2px var(--bs-body-bg); }
+    /* list page toolbars (title, count, filter, views, sort, Select, Add, More): on a narrow screen the same three
+       rows on every page instead of wherever the buttons happen to wrap: the title with Add and More (.ll-top),
+       then the filter on a row of its own, then the rest of the controls (status, view, sort, library, Select) */
+    @media (max-width: 640px) {
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1)::after { content: ""; order: 2; flex: 0 0 100%; margin-top: -.5rem; }
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > .input-group { order: 3; flex: 1 1 100%; }
+      .ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > :is(select, .btn, .dropdown, .btn-group) { order: 4; }
+      .ll-main .d-flex.d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1) > .ll-top { order: 1; }
+    }
+    /* a provider found the book but could not download it (eg Anna's Archive without a secret key) */
+    .ll-found { font-size: .66rem; font-weight: 600; padding: 2px 7px; background: rgba(217,130,43,.16); color: #b7651a;
+                border: 1px solid rgba(217,130,43,.45); max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+    [data-bs-theme="dark"] .ll-found { color: #f0a560; }
   </style>
   <script>
     // translation helpers, same contract as the bookstrap interface (see lazylibrarian/i18n.py)
@@ -250,6 +366,15 @@
     var llStatusLabels = ${js(status_labels())};
     function llStatus(s) {
       return String(s).replace(/^[A-Za-z]+/, function (w) { return llStatusLabels[w] || w; });
+    }
+    // get_books rows end with [[provider, reason, library], ...], the providers that found the book
+    // but failed to download it; only worth showing while the book is still missing
+    var llFoundText = ${_js('Found, but not downloaded')};
+    function llFound(r, lib, status) {
+      var f = r && r[r.length - 1];
+      if (!Array.isArray(f) || ['Open', 'Have', 'Snatched', 'Processed'].indexOf(String(status || '')) >= 0) { return []; }
+      return f.filter(function (x) { return x[2] === lib; })
+              .map(function (x) { return {name: x[0], lib: x[2], tip: llFoundText + ': ' + x[0] + (x[1] ? ' — ' + x[1] : '')}; });
     }
     function bookinfo(bookid, library) {
       window.location = 'book_detail?bookid=' + encodeURIComponent(bookid) + (library === 'AudioBook' ? '&library=AudioBook' : '');
@@ -263,6 +388,7 @@
   ${next.headIncludes()}
 </head>
 <body>
+  %if not bare:
   <nav class="navbar navbar-expand-lg sticky-top ll-nav">
     <div class="container-xl">
       <button class="navbar-brand ll-brand d-flex align-items-center gap-2" type="button" data-bs-toggle="collapse" data-bs-target="#ll-mainnav"
@@ -295,7 +421,30 @@
           </ul>
         </div>
         %endif
+        %if dl_ok:
+        <button type="button" class="nav-link ll-dl-btn" x-data @click="$store.dl.toggle()" :class="$store.dl.open && 'active'"
+                aria-controls="ll-dl" title="${_('Downloads') | h}" aria-label="${_('Downloads') | h}">
+          <i class="fa fa-download" aria-hidden="true"></i>
+          <span class="badge rounded-pill text-bg-info" x-show="$store.dl.downloading" x-cloak x-text="$store.dl.downloading"></span>
+          <span class="ll-dl-dot" x-show="$store.dl.unread" x-cloak title="${_('Downloaded') | h}"></span>
+        </button>
+        %endif
         %if perm & lazylibrarian.perm_config:
+        <%doc>provider status: a dot when every provider is fine, the number blocked in red, the list in the menu</%doc>
+        <div class="dropdown ll-prov" id="ll-prov" hidden>
+          <button type="button" class="nav-link ll-prov-btn" data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+                  aria-label="${_('Provider status') | h}" title="${_('Provider status') | h}">
+            <i class="fa fa-server" aria-hidden="true"></i>
+            <span class="ll-prov-dot" aria-hidden="true"></span>
+            <span class="badge rounded-pill text-bg-danger" hidden></span>
+          </button>
+          <div class="dropdown-menu dropdown-menu-end ll-prov-menu">
+            <h6 class="dropdown-header">${_('Provider status')}</h6>
+            <div class="ll-prov-list"></div>
+            <div class="dropdown-divider"></div>
+            <a class="dropdown-item small" href="config" data-ll-prov-config><i class="fa fa-cog fa-fw me-1" aria-hidden="true"></i>${_('Providers')}</a>
+          </div>
+        </div>
         <a class="nav-link ll-bell${' active' if current == 'whatsnew' else ''}" href="whats_new" title="${_("What's new") | h}" aria-label="${_("What's new") | h}">
           <i class="fa fa-bell" aria-hidden="true"></i>
           %if lazylibrarian.WHATS_NEW:
@@ -318,7 +467,14 @@
           %if can_switch:
           <li class="nav-item"><a class="nav-link ll-sec" href="#" data-ll-look="bookstrap" title="${_('Classic interface') | h}"><i class="fa fa-undo" aria-hidden="true"></i><span class="ll-nl">${_('Classic interface')}</span></a></li>
           %endif
-          <li class="nav-item"><a class="nav-link ll-sec" href="help" target="_blank" rel="noopener" title="${_('Help') | h}"><i class="fa fa-question-circle" aria-hidden="true"></i><span class="ll-nl">${_('Help')}</span></a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link ll-sec dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false" title="${_('Help') | h}"><i class="fa fa-question-circle" aria-hidden="true"></i><span class="ll-nl">${_('Help')}</span></a>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="help" target="_blank" rel="noopener"><i class="fa fa-book fa-fw" aria-hidden="true"></i> ${_('Help')}</a></li>
+              <li><a class="dropdown-item" href="https://www.reddit.com/r/LazyLibrarian/" target="_blank" rel="noopener"><i class="fab fa-reddit-alien fa-fw" aria-hidden="true"></i> Reddit</a></li>
+              <li><a class="dropdown-item" href="https://gitlab.com/LazyLibrarian/LazyLibrarian/-/issues" target="_blank" rel="noopener"><i class="fa fa-bug fa-fw" aria-hidden="true"></i> ${_('Report an issue')}</a></li>
+            </ul>
+          </li>
           %if perm > 0 and CONFIG['USER_ACCOUNTS']:
             %if perm & lazylibrarian.perm_config == 0:
             <li class="nav-item"><a class="nav-link ll-sec" href="profile" title="${_('User') | h}"><i class="fa fa-user" aria-hidden="true"></i><span class="ll-nl">${_('User')}</span></a></li>
@@ -331,10 +487,104 @@
       </div>
     </div>
   </nav>
+  %endif
 
   <main class="container-xl ll-main">
     ${next.body()}
   </main>
+  <button type="button" class="btn btn-secondary btn-sm ll-totop" id="ll-totop" hidden title="${_('Go to top') | h}" aria-label="${_('Go to top') | h}"><i class="fa fa-arrow-up" aria-hidden="true"></i></button>
+  <script>
+    (function () {
+      var b = document.getElementById('ll-totop');
+      function sync() { b.hidden = (window.pageYOffset || document.documentElement.scrollTop) < 400; }
+      window.addEventListener('scroll', sync, {passive: true});
+      b.addEventListener('click', function () { window.scrollTo({top: 0, behavior: 'smooth'}); });
+      sync();
+    })();
+  </script>
+
+  %if dl_ok:
+  <aside class="offcanvas offcanvas-end ll-dl" id="ll-dl" tabindex="-1" aria-labelledby="ll-dl-title" x-data>
+    <div class="offcanvas-header">
+      <h2 class="offcanvas-title h6 mb-0 d-flex align-items-center gap-2" id="ll-dl-title">
+        <i class="fa fa-download" aria-hidden="true"></i>${_('Downloads')}
+      </h2>
+      <button type="button" class="btn-close" @click="$store.dl.hide()" aria-label="${_('Close') | h}"></button>
+    </div>
+    <div class="offcanvas-body">
+      <h3 class="d-flex align-items-center gap-2">${_('Downloading')}
+        <span class="badge rounded-pill text-bg-info" x-show="$store.dl.active.length" x-text="$store.dl.active.length"></span>
+        %if perm & lazylibrarian.perm_edit:
+        <button type="button" class="btn btn-sm btn-outline-info rounded-pill py-0 ms-auto" x-show="$store.dl.seeding > 0"
+                :disabled="$store.dl.stopping" @click="$store.dl.stopAll()">
+          <i class="fa fa-stop me-1" aria-hidden="true"></i>${_('Stop all seeding')}</button>
+        %endif
+      </h3>
+      <template x-for="d in $store.dl.active" :key="d.rowid">
+        <a class="ll-dl-item" :href="d.link || 'history'">
+          <span class="ll-dl-thumb">
+            <template x-if="d.img"><img :src="d.img" alt="" loading="lazy" @error="d.img = ''"></template>
+            <template x-if="!d.img"><i class="fa" :class="$store.dl.icon(d.kind)" aria-hidden="true"></i></template>
+          </span>
+          <span class="d-block" style="min-width:0">
+            <span class="ll-dl-t" :title="d.title" x-text="d.title"></span>
+            <span class="ll-dl-m">
+              <span x-show="d.author" x-text="d.author"></span>
+              <span x-show="d.provider" x-text="d.provider"></span>
+              <span x-show="d.size" x-text="$store.dl.size(d.size)"></span>
+            </span>
+            <span class="ll-dl-p" x-show="d.status === 'Snatched' && d.progress >= 0">
+              <span class="bar" role="progressbar" :aria-valuenow="d.progress" aria-valuemin="0" aria-valuemax="100"
+                    :aria-label="d.title"><i :style="'width:' + d.progress + '%'"></i></span>
+              <span x-text="d.progress + '%'"></span>
+            </span>
+            <span class="ll-dl-p" x-show="d.status === 'Snatched' && d.progress === -1">
+              <span class="bar ll-wait" aria-hidden="true"><i></i></span>
+              <span x-text="llStatus(d.status)"></span>
+            </span>
+            <span class="ll-dl-p" x-show="d.status !== 'Snatched' || d.progress < -1">
+              <span class="badge rounded-pill ll-dl-pill" :class="d.status === 'Seeding' ? 'text-bg-info' : 'text-bg-warning'"
+                    x-text="d.status === 'Seeding' ? llStatus(d.status) : $store.dl.T.noClient"></span>
+              %if perm & lazylibrarian.perm_edit:
+              <button type="button" class="btn btn-sm btn-outline-info rounded-pill ms-2 py-0" x-show="d.status === 'Seeding'"
+                      :disabled="!!d.busy" @click.prevent.stop="$store.dl.stopSeeding(d)">
+                <i class="fa fa-stop me-1" aria-hidden="true"></i>${_('Stop seeding')}</button>
+              %endif
+            </span>
+          </span>
+        </a>
+      </template>
+      <div class="ll-dl-empty" x-show="$store.dl.loaded && !$store.dl.active.length">${_('Nothing is downloading')}</div>
+      <div class="ll-dl-empty" x-show="!$store.dl.loaded"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span></div>
+
+      <h3 class="d-flex align-items-center justify-content-between">${_('Finished recently')}
+        <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill py-0" x-show="$store.dl.recent.length"
+                @click="$store.dl.clearRecent()"><i class="fa fa-trash me-1" aria-hidden="true"></i>${_('Clear')}</button></h3>
+      <template x-for="d in $store.dl.recent" :key="d.rowid">
+        <a class="ll-dl-item" :class="$store.dl.hl.indexOf(d.rowid) >= 0 && 'll-new'" :href="d.link || 'history'">
+          <span class="ll-dl-thumb">
+            <template x-if="d.img"><img :src="d.img" alt="" loading="lazy" @error="d.img = ''"></template>
+            <template x-if="!d.img"><i class="fa" :class="$store.dl.icon(d.kind)" aria-hidden="true"></i></template>
+          </span>
+          <span class="d-block" style="min-width:0">
+            <span class="ll-dl-t" x-text="d.title"></span>
+            <span class="ll-dl-m">
+              <span x-show="d.author" x-text="d.author"></span>
+              <span x-text="$store.dl.ago(d.date)"></span>
+            </span>
+            <span class="ll-dl-p">
+              <span class="badge rounded-pill ll-dl-pill" :class="d.status === 'Processed' ? 'bg-success-subtle text-success-emphasis' : 'text-bg-danger'"
+                    x-text="llStatus(d.status)"></span>
+            </span>
+          </span>
+        </a>
+      </template>
+      <div class="ll-dl-empty" x-show="$store.dl.loaded && !$store.dl.recent.length">${_('No history found')}</div>
+      <div class="px-3 pt-2"><a class="btn btn-sm btn-outline-secondary rounded-pill" href="history">
+        <i class="fa fa-history me-1" aria-hidden="true"></i>${_('History')}</a></div>
+    </div>
+  </aside>
+  %endif
 
   %if notices:
   <section class="ll-notices" aria-label="${_('Notifications') | h}" aria-live="polite">
@@ -393,7 +643,189 @@
 
   <script src="js/bootstrap5.bundle.min.js"></script>
   ${next.javascriptIncludes()}
+  %if dl_ok:
+  <script>
+  // downloads panel and the dot on its button when something finished, fed by get_downloads
+  document.addEventListener('alpine:init', function () {
+    var REFRESH = ${dl_refresh}, IDLE = 60000, WIDE = 1400, LANG = ${js(ui_lang or 'en')};
+    var T = {noClient: ${_js('Download client not reachable')},
+             icons: {eBook: 'fa-book', AudioBook: 'fa-headphones', Magazine: 'fa-newspaper', comic: 'fa-images'}};
+    function load(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+    function save(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+    var rtf = null, panel = null, panelWide = false;  // the bootstrap instance stays out of Alpine's reactivity
+    try { rtf = new Intl.RelativeTimeFormat(LANG, {numeric: 'auto'}); } catch (e) {}
+    Alpine.store('dl', {
+      T: T, active: [], recent: [], hl: [], loaded: false, open: false, timer: 0, stopping: false,
+      get downloading() { return this.active.filter(function (d) { return d.status === 'Snatched'; }).length; },
+      get seeding() { return this.active.filter(function (d) { return d.status === 'Seeding'; }).length; },
+      get unread() { return this.recent.some(function (d) { return d.isNew; }); },
+      init: function () {
+        var self = this, el = document.getElementById('ll-dl');
+        el.addEventListener('shown.bs.offcanvas', function () { self.open = true; self.dock(); self.markRead(); self.schedule(true); });
+        el.addEventListener('hidden.bs.offcanvas', function () { self.open = false; self.hl = []; self.dock(); });
+        window.addEventListener('resize', function () { self.dock(); });
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { self.schedule(true); } });
+        // a panel left open stays open on the next page, without sliding in again
+        if (load('ll-dl-open') && window.innerWidth >= WIDE) {
+          el.style.transition = 'none'; this.inst().show();
+          setTimeout(function () { el.style.transition = ''; }, 50);
+        }
+        this.poll();
+      },
+      // docked next to the page on wide screens, over it with a backdrop on narrow ones
+      inst: function () {
+        var wide = window.innerWidth >= WIDE, el = document.getElementById('ll-dl');
+        if (panel && panelWide !== wide && !this.open) { panel.dispose(); panel = null; }
+        if (!panel) { panel = new bootstrap.Offcanvas(el, {backdrop: !wide, scroll: wide}); panelWide = wide; }
+        return panel;
+      },
+      dock: function () { document.body.classList.toggle('ll-dl-docked', this.open && panelWide && window.innerWidth >= WIDE); },
+      show: function () {
+        save('ll-dl-open', true); this.inst().show();
+      },
+      hide: function () { save('ll-dl-open', false); this.inst().hide(); },
+      toggle: function () { if (this.open) { this.hide(); } else { this.show(); } },
+      poll: function () {
+        var self = this;
+        fetch('get_downloads?_=' + Date.now(), {credentials: 'same-origin'}).then(function (r) {
+          if (!r.ok) { throw new Error(r.status); } return r.json();
+        }).then(function (j) {
+          var read = load('ll-dl-read'), cleared = load('ll-dl-cleared') || [];
+          // what was cleared from the list stays out of it, the history page still has it
+          var recent = (j.recent || []).filter(function (d) { return cleared.indexOf(d.rowid) < 0; });
+          // the first time ever, what finished before is not news
+          if (!Array.isArray(read)) { read = recent.map(function (d) { return d.rowid; }); save('ll-dl-read', read); }
+          recent.forEach(function (d) { d.isNew = read.indexOf(d.rowid) < 0; });
+          self.active = j.active || []; self.recent = recent; self.loaded = true;
+          // what finishes while the panel is open is seen right away, just highlighted
+          if (self.open) { self.markRead(); }
+        }).catch(function () {}).finally(function () { self.schedule(false); });
+      },
+      schedule: function (now) {
+        var self = this;
+        clearTimeout(this.timer);
+        if (now) { this.timer = setTimeout(function () { self.poll(); }, 0); return; }
+        var busy = this.active.some(function (d) { return d.status === 'Snatched'; });
+        var delay = (this.open || busy) ? REFRESH : IDLE;
+        if (document.hidden) { delay = Math.max(delay, IDLE); }
+        this.timer = setTimeout(function () { self.poll(); }, delay);
+      },
+      markRead: function () {
+        var read = load('ll-dl-read');
+        read = Array.isArray(read) ? read : [];
+        var hl = this.hl;
+        this.recent.forEach(function (d) { if (d.isNew && hl.indexOf(d.rowid) < 0) { hl.push(d.rowid); } });
+        this.recent.forEach(function (d) { if (read.indexOf(d.rowid) < 0) { read.push(d.rowid); } d.isNew = false; });
+        save('ll-dl-read', read.slice(-200));
+      },
+      clearRecent: function () {
+        var cleared = load('ll-dl-cleared');
+        cleared = Array.isArray(cleared) ? cleared : [];
+        this.recent.forEach(function (d) { if (cleared.indexOf(d.rowid) < 0) { cleared.push(d.rowid); } });
+        save('ll-dl-cleared', cleared.slice(-200));
+        this.recent = []; this.hl = [];
+      },
+      stopAll: function () {
+        var self = this;
+        this.stopping = true;
+        fetch('stop_all_seeding', {method: 'POST', credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .catch(function () {})
+          .finally(function () { self.stopping = false; self.schedule(true); });
+      },
+      stopSeeding: function (d) {
+        var self = this;
+        d.busy = true;
+        fetch('stop_seeding?rowid=' + encodeURIComponent(d.rowid), {method: 'POST', credentials: 'same-origin'}).then(function (r) {
+          return r.json();
+        }).then(function (j) { if (j.ok) { self.schedule(true); } else { d.busy = false; } })
+          .catch(function () { d.busy = false; });
+      },
+      icon: function (kind) { return T.icons[kind] || 'fa-book'; },
+      size: function (s) { return /^[0-9.]+$/.test(String(s)) ? s + ' MB' : String(s); },
+      ago: function (s) {
+        var m = /^(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)(?::(\d\d))?/.exec(String(s || ''));
+        if (!m) { return String(s || ''); }
+        var t = new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0)), sec = (t - Date.now()) / 1000, a = Math.abs(sec);
+        if (!rtf) { return t.toLocaleString(); }
+        if (a < 60) { return rtf.format(Math.round(sec), 'second'); }
+        if (a < 3600) { return rtf.format(Math.round(sec / 60), 'minute'); }
+        if (a < 86400) { return rtf.format(Math.round(sec / 3600), 'hour'); }
+        if (a < 86400 * 30) { return rtf.format(Math.round(sec / 86400), 'day'); }
+        return t.toLocaleDateString(LANG);
+      }
+    });
+  });
+  </script>
+  %endif
   <script defer src="js/alpine.min.js"></script>
+  %if not bare and perm & lazylibrarian.perm_config:
+  <script>
+    // provider status in the top bar: the providers in use and anything on the blocklist (provider_status in
+    // webServe.py), refreshed every minute and when the menu opens
+    (function () {
+      var box = document.getElementById('ll-prov');
+      if (!box) { return; }
+      var T = {ok: ${_js('OK')}, unblock: ${_js('Unblock')}, left: ${_js('Blocked for %(time)s')},
+               blocked: ${_jsn('%(count)s provider blocked', '%(count)s providers blocked')},
+               min: ${_jsn('%(count)s minute', '%(count)s minutes')}, hr: ${_jsn('%(count)s hour', '%(count)s hours')}};
+      var btn = box.querySelector('.ll-prov-btn'), badge = btn.querySelector('.badge'), list = box.querySelector('.ll-prov-list');
+      var label = btn.getAttribute('aria-label');
+      function left(s) {
+        var m = Math.ceil(s / 60);
+        return m < 120 ? llNgettext(T.min, m) : llNgettext(T.hr, Math.round(m / 60));
+      }
+      function row(name, b) {
+        var r = document.createElement('div'); r.className = 'll-prov-row' + (b ? ' bad' : '');
+        var dot = document.createElement('span'); dot.className = 'll-pd'; dot.setAttribute('aria-hidden', 'true');
+        var t = document.createElement('span'); t.className = 'll-pt';
+        var n = document.createElement('span'); n.className = 'll-pn'; n.textContent = name; t.appendChild(n);
+        r.appendChild(dot); r.appendChild(t);
+        if (b) {
+          var why = document.createElement('span'); why.className = 'll-pr';
+          why.textContent = T.left.replace('%(time)s', left(b.remaining)) + (b.reason ? ': ' + b.reason : '');
+          t.appendChild(why);
+          if (b.hint) {  // what to change, and where (block_hint in blockhints.py)
+            var hint = document.createElement('span'); hint.className = 'll-ph'; hint.textContent = b.hint; t.appendChild(hint);
+          }
+          var u = document.createElement('button'); u.type = 'button'; u.className = 'btn btn-sm btn-outline-danger rounded-pill';
+          u.textContent = T.unblock; u.setAttribute('aria-label', T.unblock + ' ' + name);
+          u.addEventListener('click', function () {
+            var body = new FormData(); body.append('key', b.key); u.disabled = true;
+            fetch('unblock_provider', {method: 'POST', body: body, credentials: 'same-origin'}).then(load, load);
+          });
+          r.appendChild(u);
+        } else {
+          var ok = document.createElement('span'); ok.className = 'visually-hidden'; ok.textContent = T.ok; t.appendChild(ok);
+        }
+        return r;
+      }
+      function load() {
+        fetch('provider_status', {cache: 'no-store', credentials: 'same-origin'}).then(function (r) { return r.json(); }).then(function (json) {
+          var bad = [], good = [];
+          (json.providers || []).forEach(function (p) { (p.block ? bad : good).push([p.name, p.block]); });
+          (json.other || []).forEach(function (b) { bad.push([b.key, b]); });
+          list.textContent = '';
+          bad.concat(good).forEach(function (p) { list.appendChild(row(p[0], p[1])); });
+          box.hidden = !bad.length && !good.length;
+          box.classList.toggle('ll-bad', bad.length > 0);
+          badge.hidden = !bad.length; badge.textContent = bad.length;
+          var state = bad.length ? llNgettext(T.blocked, bad.length) : T.ok;
+          btn.title = label + ': ' + state; btn.setAttribute('aria-label', label + ': ' + state);
+        }).catch(function () {});
+      }
+      btn.addEventListener('show.bs.dropdown', load);
+      // the config page opens on its Providers section
+      box.querySelector('[data-ll-prov-config]').addEventListener('click', function (e) {
+        e.preventDefault();
+        var go = function () { window.location.href = 'config'; };
+        fetch('set_current_tabs?config_tab=4', {credentials: 'same-origin'}).then(go, go);
+      });
+      load();
+      setInterval(function () { if (!document.hidden) { load(); } }, 60000);
+    })();
+  </script>
+  %endif
   %if can_switch:
   <script>
     // the language menu, the classic interface link and the welcome notice, see switch_interface in webServe.py
@@ -500,13 +932,102 @@
   </script>
   %endif
   <script>
+    /* the centred filter (>= 1400px) shrinks to the room left between the title and the controls on its right,
+       and when there is almost none the toolbar falls back to the normal flowing layout (.ll-flow) */
+    (function () {
+      var SEL = '.ll-main .d-flex.flex-wrap:has(> :is(h1, h2)):has(> .flex-grow-1)';
+      var mq = window.matchMedia('(min-width: 1400px)');
+      function fit(bar) {
+        var filter = bar.querySelector(':scope > .input-group'), gap = bar.querySelector(':scope > .flex-grow-1');
+        if (!filter || !gap) { return; }
+        bar.classList.remove('ll-flow'); bar.style.removeProperty('--ll-fw');
+        if (!mq.matches) { return; }
+        var b = bar.getBoundingClientRect(), g = gap.getBoundingClientRect(), mid = b.left + b.width / 2;
+        var half = Math.min(mid - g.left, g.right - mid) - 12;
+        if (half * 2 >= 460) { return; }
+        if (half * 2 < 220) { bar.classList.add('ll-flow'); return; }
+        bar.style.setProperty('--ll-fw', Math.floor(half * 2) + 'px');
+      }
+      function all() { document.querySelectorAll(SEL).forEach(fit); }
+      function start() {
+        all();
+        if (!window.ResizeObserver) { window.addEventListener('resize', all); return; }
+        var ro = new ResizeObserver(function (es) { es.forEach(function (e) { var bar = e.target.closest(SEL); if (bar) { fit(bar); } }); });
+        document.querySelectorAll(SEL).forEach(function (bar) { ro.observe(bar); var gap = bar.querySelector(':scope > .flex-grow-1'); if (gap) { ro.observe(gap); } });
+        mq.addEventListener('change', all);
+      }
+      window.addEventListener('load', start);
+    })();
+  </script>
+  %if not bare:
+  <script>
     setInterval(function () {
       fetch('show_running', {credentials: 'same-origin'}).then(function (r) { return r.text(); }).then(function (t) {
         var s = document.getElementById('ll-spinner'); if (s) { s.hidden = !t.trim(); s.title = t; }
       }).catch(function () {});
     }, 4000);
   </script>
+  %endif
+  <%namespace name="llw" file="setup_wizard.html"/>
+  ${llw.wizard(perm)}
 </body>
 </html>
 <%def name="headIncludes()"></%def>
 <%def name="javascriptIncludes()"></%def>
+<%doc>
+  Links to other services (Config > Interface > Menu Links) as items of a page's "..." menu, see menulinks.py.
+  links is a list of (href, icon, name); divider puts a line above them when the menu has other items.
+</%doc>
+<%def name="ext_link_items(links, divider=True)">
+        %if links and divider:
+        <li><hr class="dropdown-divider"></li>
+        %endif
+        %for href, icon, name in links:
+        <li><a class="dropdown-item" href="${href | h}" target="_blank" rel="noopener noreferrer"><i class="fa ${icon} fa-fw me-2" aria-hidden="true"></i>${name | h}<i class="fa fa-external-link-alt ms-2 small opacity-50" aria-hidden="true"></i></a></li>
+        %endfor
+</%def>
+<%doc>
+  "Add" on the authors, eBooks and audiobooks pages: one search for an author, a title or an ISBN,
+  call add_button() in the toolbar and add_modal() once in the page, both only with perm_search.
+</%doc>
+<%def name="add_button()">
+    <button type="button" class="btn btn-sm btn-ll rounded-pill ll-top" data-bs-toggle="modal" data-bs-target="#ll-add">
+      <i class="fa fa-plus" aria-hidden="true"></i> ${_('Add')}
+    </button>
+</%def>
+<%def name="add_modal(source='index', series=False)">
+  <div class="modal fade" id="ll-add" tabindex="-1" aria-labelledby="ll-add-title" aria-hidden="true" x-data="{adding: false}"
+       @shown-bs-modal.dot="$refs.searchfor.focus()">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <form action="${'add_series_id' if series else 'search'}" method="get" @submit="adding = true">
+        <div class="modal-header border-0 pb-0">
+          <h2 class="modal-title h5" id="ll-add-title">${_('Add series') if series else _('Add')}</h2>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="${_('Close') | h}"></button>
+        </div>
+        <div class="modal-body">
+          %if series:
+          <label for="ll-searchfor" class="form-label small text-body-secondary">${_('Series ID or link')}</label>
+          <input type="text" class="form-control" id="ll-searchfor" name="seriesid" required x-ref="searchfor"
+                 placeholder="${_('HC12345 / GR12345 / OL12345') | h}" autocomplete="off" aria-describedby="ll-add-help">
+          <div id="ll-add-help" class="form-text">${_('A Hardcover, Goodreads or LibraryThing series ID, or a Goodreads or LibraryThing series link.')}</div>
+          %else:
+          <label for="ll-searchfor" class="form-label small text-body-secondary">${_('Search for author/book')}</label>
+          <input type="search" class="form-control" id="ll-searchfor" name="searchfor" required x-ref="searchfor"
+                 placeholder="${_('Title / Author / ISBN') | h}" autocomplete="off">
+          <input type="hidden" name="btnsearch" value="${source | h}">
+          %endif
+        </div>
+        <div class="modal-footer border-0 pt-0">
+          <button type="submit" class="btn btn-ll rounded-pill" :disabled="adding">
+            <span class="spinner-border spinner-border-sm me-1" x-show="adding" x-cloak aria-hidden="true"></span>
+            %if series:
+            <i class="fa fa-plus me-1" x-show="!adding" aria-hidden="true"></i>${_('Add')}
+            %else:
+            <i class="fa fa-search me-1" x-show="!adding" aria-hidden="true"></i>${_('Search')}
+            %endif
+          </button>
+        </div>
+      </form>
+    </div></div>
+  </div>
+</%def>

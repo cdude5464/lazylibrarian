@@ -32,6 +32,11 @@ from lazylibrarian.formatter import (
 from lazylibrarian.telemetry import TELEMETRY
 
 
+class ProviderTestFailed(str):
+    """ What a provider test returns when the site could not be searched: the error, so that the test says
+        FAILED and why, instead of passing with 0 results """
+
+
 def torrent_abb(book=None, test=False):
     # The audiobookbay code is based on code originally found at
     # https://github.com/JamesRy96/audiobookbay-automated/blob/main/app/app.py
@@ -104,7 +109,7 @@ def torrent_abb(book=None, test=False):
     if test:
         logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from "
                      f"{provider} for {book['searchterm']}")
-        return len(results)
+        return ProviderTestFailed(errmsg) if errmsg else len(results)
 
     return results, errmsg
 
@@ -289,7 +294,7 @@ def torrent_tpb(book=None, test=False):
 
         if test:
             logger.debug(f"Test found {len(results)} {plural(len(results), 'result')} from {provider} for {sterm}")
-            return len(results)
+            return ProviderTestFailed(errmsg) if errmsg else len(results)
 
         if 0 < CONFIG.get_int('MAX_PAGES') < page:
             logger.warning('Maximum results page search reached, still more results available')
@@ -429,7 +434,7 @@ def torrent_kat(book=None, test=False):
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider} for {sterm}")
     if test:
-        return len(results)
+        return ProviderTestFailed(errmsg) if errmsg else len(results)
     return results, errmsg
 
 
@@ -525,7 +530,7 @@ def torrent_lime(book=None, test=False):
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider} for {sterm}")
     if test:
-        return len(results)
+        return ProviderTestFailed(errmsg) if errmsg else len(results)
     return results, errmsg
 
 
@@ -620,5 +625,5 @@ def torrent_tdl(book=None, test=False):
 
     logger.debug(f"Found {len(results)} {plural(len(results), 'result')} from {provider} for {sterm}")
     if test:
-        return len(results)
+        return ProviderTestFailed(errmsg) if errmsg else len(results)
     return results, errmsg

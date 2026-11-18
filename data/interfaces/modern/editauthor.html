@@ -1,0 +1,332 @@
+<%inherit file="modern_base.html" />
+<%!
+    import lazylibrarian
+    from urllib.parse import urlencode
+    from lazylibrarian.config2 import CONFIG
+    from lazylibrarian.startup import prioritized_infosources
+    page_id = 'authors'
+%>
+<%def name="headIncludes()">
+<style>
+  .lle { max-width: 980px; }
+  .lle h1 { font-size: clamp(1.3rem, 1rem + 1.5vw, 1.9rem); font-weight: 650; letter-spacing: -.015em; margin: 0; text-wrap: balance; }
+  .lle-sub { color: var(--bs-secondary-color); }
+  .lle-bar { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: 1rem 0 1.5rem; }
+  .lle-card { border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1.1rem 1.1rem .4rem; margin-bottom: 1.25rem; }
+  .lle-card h2 { font-size: .8rem; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--bs-secondary-color); margin: 0 0 .9rem; }
+  .lle .form-label { font-size: .82rem; font-weight: 500; margin-bottom: .25rem; }
+  .lle .form-control[readonly] { background: var(--bs-tertiary-bg); }
+  .lle-src { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; gap: .5rem 1rem; align-items: center; padding: .7rem 0;
+             border-top: 1px solid var(--bs-border-color-translucent); }
+  .lle-src:first-of-type { border-top: 0; }
+  .lle-src .name { font-weight: 600; font-size: .9rem; }
+  .lle-src .sid { font-family: var(--bs-font-monospace); font-size: .85rem; overflow-wrap: anywhere; }
+  .lle-src .acts { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; justify-content: flex-end; }
+  .lle-src .acts .form-control { width: 130px; }
+  @media (max-width: 575.98px) { .lle-src { grid-template-columns: minmax(0, 1fr) auto; } .lle-src .acts { grid-column: 1 / -1; justify-content: flex-start; } }
+  .lle-pics { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: .9rem; margin-bottom: 1rem; }
+  .lle-pic { display: flex; flex-direction: column; gap: .35rem; cursor: pointer; font-size: .78rem; text-align: center; overflow-wrap: anywhere; }
+  .lle-pic img, .lle-pic .none { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 50%; background: var(--bs-secondary-bg);
+                                 outline: 2px solid transparent; outline-offset: 3px; }
+  .lle-pic .none { display: flex; align-items: center; justify-content: center; color: var(--bs-secondary-color); font-size: 1.4rem; }
+  .lle-pic input { position: absolute; opacity: 0; pointer-events: none; }
+  .lle-pic input:checked + * { outline-color: var(--ll-accent); }
+  .lle-pic input:focus-visible + * { outline-color: var(--bs-body-color); }
+  .lle-save { position: sticky; bottom: 0; z-index: 5; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; padding: .8rem 0;
+              background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent); backdrop-filter: blur(6px); border-top: 1px solid var(--bs-border-color-translucent); }
+</style>
+</%def>
+<%def name="body()">
+<%
+    can_edit = bool(perm & lazylibrarian.perm_edit)
+    def v(key):
+        try:
+            val = config[key]
+        except (KeyError, IndexError):
+            val = None
+        return '' if val is None else str(val)
+    authorid = v('AuthorID')
+    author_qs = urlencode({'authorid': authorid})
+    linkable_sources = [(name, src['author_key'], src['enabled'])
+                        for name, src in prioritized_infosources() if src.get('author_link')]
+    # same fallback as the author page badge: with no primary chosen yet, the first linked source
+    # in priority order counts as the primary, so the radio here agrees with the author page
+    effective_primary = v('PrimarySource')
+    if not effective_primary:
+        for fallback_name, fallback_col, fallback_enabled in linkable_sources:
+            if v(fallback_col):
+                effective_primary = fallback_name
+                break
+    img = v('AuthorImg')
+    has_pic = bool(img) and not any(x in img.lower() for x in ('nophoto', 'nocover', 'no_cover'))
+    title_search = 'search?' + urlencode({'searchfor': v('AuthorName')})
+    title_sources = [(key, label) for key, label in (('GB_API', _('Search Google Books')), ('DNB_API', _('Search DNB')),
+                                                    ('BN_API', _('Search BN'))) if CONFIG[key]]
+%>
+<div class="lle" x-data="llEditAuthor">
+  <a href="author_page?${author_qs | h}" class="btn btn-sm btn-link text-body-secondary px-0 mb-2"><i class="fa fa-arrow-left" aria-hidden="true"></i> ${_('Back')}</a>
+  <h1>${title}</h1>
+  <div class="lle-sub">${v('AuthorName') | h}</div>
+
+  <div class="lle-bar">
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="author_page?${author_qs | h}"><i class="fa fa-book" aria-hidden="true"></i> ${_('Books')}</a>
+    <a class="btn btn-sm btn-outline-secondary rounded-pill" href="author_detail?${author_qs | h}"><i class="fa fa-info-circle" aria-hidden="true"></i> ${_('Detail')}</a>
+  </div>
+
+  <form x-ref="form" accept-charset="UTF-8" action="author_update" method="post" @submit.prevent="save()">
+    <input type="hidden" name="authorid" value="${authorid | h}">
+
+    <div class="lle-card">
+      <h2>${_('Author')}</h2>
+      <div class="row g-3 mb-3">
+        <div class="col-12">
+          <label class="form-label" for="authorname">${_('Author Name:')}</label>
+          <input type="text" class="form-control" id="authorname" name="authorname" value="${v('AuthorName') | h}" placeholder="${_('Author Name') | h}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="authorborn">${_('Born:')}</label>
+          <input type="text" class="form-control" id="authorborn" name="authorborn" value="${v('AuthorBorn') | h}" placeholder="${_('Born (yyyy/mm/dd)') | h}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="authordeath">${_('Died:')}</label>
+          <input type="text" class="form-control" id="authordeath" name="authordeath" value="${v('AuthorDeath') | h}" placeholder="${_('Died (yyyy/mm/dd)') | h}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="aka">${_('AKA:')}</label>
+          <input type="text" class="form-control" id="aka" name="aka" value="${v('AKA') | h}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="reason">${_('Added by:')}</label>
+          <input type="text" class="form-control" id="reason" value="${v('Reason') | h}" placeholder="${_('Reason for inclusion') | h}" readonly>
+        </div>
+        <div class="col-12">
+          <label class="form-label" for="amazonauthorurl">${_('Amazon Author Page:')}</label>
+          <input type="text" class="form-control" id="amazonauthorurl" name="amazonauthorurl" value="${v('AmazonAuthorURL') | h}"
+                 placeholder="${_('https://www.amazon.com/stores/.../author/... - no free lookup exists for this, paste it if you find it') | h}">
+        </div>
+      </div>
+    </div>
+
+    <div class="lle-card">
+      <h2><label for="editordata">${_('Author Description')}</label></h2>
+      <textarea class="form-control mb-3" id="editordata" name="editordata" rows="8" placeholder="${_('Nothing to see here...') | h}">${v('About') | h}</textarea>
+    </div>
+
+    <div class="lle-card">
+      <h2>${_('Current Image:')}</h2>
+      <input type="hidden" name="cover" :value="manual ? 'manual' : pick">
+      <div class="lle-pics">
+        <label class="lle-pic position-relative">
+          <input type="radio" value="current" x-model="pick" :disabled="manual">
+          %if has_pic:
+          <img src="${img | h}" alt="${v('AuthorName') | h}">
+          %else:
+          <span class="none"><i class="fa fa-user" aria-hidden="true"></i></span>
+          %endif
+          <span>${_('No change')}</span>
+        </label>
+        %for item in images:
+        <label class="lle-pic position-relative">
+          <input type="radio" value="${item[1] | h}" x-model="pick" :disabled="manual">
+          <img src="${item[1] | h}" alt="${_('cover') | h}" loading="lazy">
+          <span>${item[0] | h}</span>
+        </label>
+        %endfor
+      </div>
+      %if not images:
+      <div class="mb-3">
+        <a class="btn btn-sm btn-outline-secondary rounded-pill" href="edit_author?${urlencode({'authorid': authorid, 'images': 'True'}) | h}" @click="busy = true">
+          <i class="fa fa-images" aria-hidden="true"></i> ${_('Find Images')}</a>
+        <span class="small text-body-secondary ms-2" x-show="busy" x-cloak><span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>${_('Searching, please wait...')}</span>
+      </div>
+      %endif
+      <div class="mb-3">
+        <label class="form-label" for="authorimg">${_('File/URL')}</label>
+        <input type="text" class="form-control" id="authorimg" name="authorimg" x-model.trim="imgPath" placeholder="${_('New Image file or URL') | h}">
+        <div class="form-text">${_('Filenames must be full path to file or a URL, or put none to remove author image')}<br>${_('Filename and URL need to end with .jpg/.jpeg/.png/.webp')}</div>
+      </div>
+    </div>
+
+    <div class="lle-save">
+      <div class="form-check me-auto">
+        <input class="form-check-input" type="checkbox" id="manual" name="manual" value="1" ${'checked' if v('Manual') in ('1', 'True') else ''}>
+        <label class="form-check-label" for="manual">${_('Lock settings')}</label>
+      </div>
+      %if can_edit:
+      <button type="submit" class="btn btn-ll rounded-pill px-4" :disabled="saving">
+        <span class="spinner-border spinner-border-sm me-1" x-show="saving" x-cloak aria-hidden="true"></span>${_('Save changes')}
+      </button>
+      %endif
+    </div>
+  </form>
+
+  <div class="lle-card mt-4">
+    <h2>${_('Source IDs:')}</h2>
+    %for src_name, src_col, src_enabled_key in linkable_sources:
+    <div class="lle-src">
+      <span class="name">${src_name | h}</span>
+      <span class="sid">${v(src_col) | h}</span>
+      <span class="acts">
+        %if v(src_col):
+          %if can_edit:
+          <span class="form-check mb-0">
+            <input class="form-check-input" type="radio" name="primary" id="primary-${src_name | h}" value="${src_name | h}"
+                   ${'checked' if effective_primary == src_name else ''} @change="setPrimary(${js(src_name) | h})">
+            <label class="form-check-label small" for="primary-${src_name | h}">${_('Primary')}</label>
+          </span>
+          <button type="button" class="btn btn-sm btn-outline-danger rounded-pill" @click="unlink(${js(src_name) | h})">
+            <i class="fa fa-times" aria-hidden="true"></i> ${_('Remove')}</button>
+          %elif effective_primary == src_name:
+          <span class="badge rounded-pill bg-secondary-subtle text-secondary-emphasis">${_('Primary')}</span>
+          %endif
+        %elif not CONFIG[src_enabled_key]:
+          <span class="small text-body-secondary">${_('%(source)s not enabled') % {'source': src_name} | h}</span>
+        %elif can_edit:
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" :disabled="busySrc === ${js(src_name) | h}" @click="search(${js(src_name) | h})">
+            <span class="spinner-border spinner-border-sm me-1" x-show="busySrc === ${js(src_name) | h}" x-cloak aria-hidden="true"></span>
+            <i class="fa fa-search" aria-hidden="true" x-show="busySrc !== ${js(src_name) | h}"></i> ${_('Search %(source)s') % {'source': src_name} | h}</button>
+          <input type="text" class="form-control form-control-sm rounded-pill" x-ref="${src_col | h}" placeholder="${_('or enter ID') | h}"
+                 aria-label="${_('or enter ID') | h}" @keydown.enter.prevent="linkManual(${js(src_name) | h}, $refs[${js(src_col) | h}].value)">
+          <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="linkManual(${js(src_name) | h}, $refs[${js(src_col) | h}].value)">
+            <i class="fa fa-link" aria-hidden="true"></i> ${_('Link')}</button>
+        %endif
+      </span>
+    </div>
+    %endfor
+    %if title_sources:
+    <div class="border-top pt-3 mb-3">
+      <div class="form-label">${_('Search for additional titles (book search only, no author linking):')}</div>
+      <div class="d-flex flex-wrap gap-2">
+        %for key, label in title_sources:
+        <a class="btn btn-sm btn-outline-secondary rounded-pill" href="${title_search | h}" target="_blank" rel="noopener"><i class="fa fa-search" aria-hidden="true"></i> ${label}</a>
+        %endfor
+      </div>
+    </div>
+    %endif
+  </div>
+
+  <div class="modal fade" id="lle-confirm" tabindex="-1" aria-labelledby="lle-confirm-text" aria-hidden="true" x-ref="modal">
+    <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+      <div class="modal-body">
+        <p class="mb-2" id="lle-confirm-text" x-text="ask.text"></p>
+        <p class="mb-0 fw-semibold" x-show="ask.question" x-text="ask.question"></p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal" x-text="ask.no"></button>
+        <button type="button" class="btn rounded-pill" :class="ask.danger ? 'btn-danger' : 'btn-ll'" @click="confirmed()" x-text="ask.yes"></button>
+      </div>
+    </div></div>
+  </div>
+
+  <div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="margin-bottom: 64px">
+    <div class="toast align-items-center text-bg-dark border-0" role="status" x-ref="toast">
+      <div class="toast-body" x-text="toastText"></div>
+    </div>
+  </div>
+</div>
+</%def>
+<%def name="javascriptIncludes()">
+<%
+    from urllib.parse import urlencode as _urlencode
+    try:
+        _authorid = str(config['AuthorID'])
+    except (KeyError, IndexError):
+        _authorid = ''
+%>
+<script>
+document.addEventListener('alpine:init', function () {
+  var AUTHORID = ${js(_authorid)};
+  var AUTHOR_PAGE = ${js('author_page?' + _urlencode({'authorid': _authorid}))};
+  var T = {
+    failed: ${_js('Something went wrong, try again')}, done: ${_js('Done')}, no: ${_js('No')}, cancel: ${_js('Cancel')},
+    yesLink: ${_js('Yes, link it')}, yesRemove: ${_js('Yes, remove')},
+    enterId: ${_js('Enter an ID first')},
+    confirmManual: ${_js('Link this author to %(source)s id "%(id)s"? This is not verified against the name - double-check the id is correct before confirming.')},
+    noMatch: ${_js('No match found on %(source)s')},
+    found: ${_js('Found on %(source)s: "%(name)s" (id: %(id)s)')}, linkFound: ${_js('Link this author to that entry?')},
+    confirmRemove: ${_js('Remove the %(source)s link for this author? You can search and re-link it afterward.')},
+    linkFailed: ${_js('Link failed - check the logs')}, searchFailed: ${_js('Search failed - check the logs')},
+    primaryFailed: ${_js('Failed to set primary source - check the logs')}, removeFailed: ${_js('Remove failed - check the logs')}
+  };
+  function fill(msg, vals) {
+    return String(msg).replace(/%\((\w+)\)s/g, function (m, k) { return vals[k] == null ? m : String(vals[k]); });
+  }
+  function get(url, params) {
+    return fetch(url + '?' + new URLSearchParams(params), {credentials: 'same-origin'}).then(function (r) {
+      if (!r.ok) { throw new Error(r.status); }
+      return r.json();
+    });
+  }
+
+  Alpine.data('llEditAuthor', function () {
+    return {
+      busy: false, saving: false, busySrc: '', toastText: '', pick: 'current', imgPath: '',
+      ask: {text: '', question: '', yes: '', no: '', danger: false, then: null},
+      get manual() { return this.imgPath !== ''; },
+      save: function () {
+        var self = this;
+        this.saving = true;
+        fetch('author_update', {method: 'POST', body: new URLSearchParams(new FormData(this.$refs.form)), credentials: 'same-origin'})
+          .then(function (r) {
+            if (!r.ok) { throw new Error(r.status); }
+            // author_update answers with a redirect to the author page, anything else (the login page, say) is not a save
+            window.location = (r.redirected && r.url.indexOf('author_page') < 0) ? r.url : AUTHOR_PAGE;
+          })
+          .catch(function () { self.saving = false; self.toast(T.failed); });
+      },
+      confirm: function (opts) {
+        this.ask = Object.assign({text: '', question: '', yes: T.yesLink, no: T.no, danger: false, then: null}, opts);
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).show();
+      },
+      confirmed: function () {
+        var fn = this.ask.then;
+        bootstrap.Modal.getOrCreateInstance(this.$refs.modal).hide();
+        if (fn) { fn(); }
+      },
+      link: function (source, sourceid) {
+        var self = this;
+        get('link_author_source', {authorid: AUTHORID, source: source, sourceid: sourceid})
+          .then(function (d) { if (d.error) { self.toast(d.error); return; } window.location.reload(); })
+          .catch(function () { self.toast(T.linkFailed); });
+      },
+      linkManual: function (source, value) {
+        var sourceid = String(value || '').trim(), self = this;
+        if (!sourceid) { this.toast(T.enterId); return; }
+        this.confirm({text: fill(T.confirmManual, {source: source, id: sourceid}), then: function () { self.link(source, sourceid); }});
+      },
+      search: function (source) {
+        var self = this;
+        this.busySrc = source;
+        get('search_author_source', {authorid: AUTHORID, source: source})
+          .then(function (d) {
+            if (d.error) { self.toast(d.error); return; }
+            if (!d.found) { self.toast(fill(T.noMatch, {source: source})); return; }
+            self.confirm({text: fill(T.found, {source: source, name: d.authorname, id: d.authorid}), question: T.linkFound,
+                          then: function () { self.link(source, d.authorid); }});
+          })
+          .catch(function () { self.toast(T.searchFailed); })
+          .finally(function () { self.busySrc = ''; });
+      },
+      setPrimary: function (source) {
+        var self = this;
+        get('set_primary_source', {authorid: AUTHORID, source: source})
+          .then(function (d) { self.toast(d.error ? d.error : source + ' · ' + T.done); })
+          .catch(function () { self.toast(T.primaryFailed); });
+      },
+      unlink: function (source) {
+        var self = this;
+        this.confirm({text: fill(T.confirmRemove, {source: source}), yes: T.yesRemove, no: T.cancel, danger: true, then: function () {
+          get('unlink_author_source', {authorid: AUTHORID, source: source})
+            .then(function (d) { if (d.error) { self.toast(d.error); return; } window.location.reload(); })
+            .catch(function () { self.toast(T.removeFailed); });
+        }});
+      },
+      toast: function (m) {
+        this.toastText = m;
+        bootstrap.Toast.getOrCreateInstance(this.$refs.toast, {delay: 3000}).show();
+      }
+    };
+  });
+});
+</script>
+</%def>

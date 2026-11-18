@@ -15,7 +15,7 @@
         <input name="issueid" type="hidden" value="${config['IssueID']}" />
         <textarea id="summernote" name="tagdata" class="hidden" rows="20" placeholder="">${tags}</textarea>
         <fieldset>
-            <legend>${title}</legend>
+            <legend>${title | h}</legend>
             <div class="form-group col-md6">
                 <label for="magtitle" class="control-label">${_('Magazine Title:')}</label>
                 <input type="text" id="magtitle" name="magtitle" value="${config['Title']}" class="form-control" placeholder="${_('Title') | h}">

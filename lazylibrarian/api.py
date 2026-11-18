@@ -891,7 +891,7 @@ class Api:
                     elif arg.upper() in item:
                         hit.append(arg)
                         if arg.upper() in ['EXTENDED', 'APICOUNT', 'APILIMIT', 'RATELIMIT', 'DLPRIORITY', 'LASTUSED',
-                                           'SEEDERS', 'SEED_DURATION']:
+                                           'SEEDERS', 'SEED_DURATION', 'TIMEOUT']:
                             item.set_int(arg.upper(), kwargs[arg])
                         elif arg.upper() in ['SEED_RATIO']:
                             item.set_float(arg.upper(), kwargs[arg])
@@ -1018,7 +1018,7 @@ class Api:
                 hit.append(arg)
                 # empty_slot[arg.upper()] = kwargs[arg]
                 if arg.upper() in ['EXTENDED', 'APICOUNT', 'APILIMIT', 'RATELIMIT', 'DLPRIORITY', 'LASTUSED',
-                                   'SEEDERS', 'SEED_DURATION']:
+                                   'SEEDERS', 'SEED_DURATION', 'TIMEOUT']:
                     empty_slot.set_int(arg.upper(), kwargs[arg])
                 elif arg.upper() in ['SEED_RATIO']:
                     empty_slot.set_float(arg.upper(), kwargs[arg])

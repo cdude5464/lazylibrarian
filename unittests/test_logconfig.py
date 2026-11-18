@@ -56,8 +56,9 @@ class TestLogConfig(LLTestCaseWithConfigandDIRS):
                     self.assertTrue(testlogger.isEnabledFor(level))
                 for level in no:
                     self.assertFalse(testlogger.isEnabledFor(level))
-            finally:
-                return testlogger
+            except:
+                pass
+            return testlogger
 
         # Test that only DEBUG messages are filtered by default
         logger = test_enabled('root', [logging.INFO, logging.WARNING, logging.ERROR], [logging.DEBUG])

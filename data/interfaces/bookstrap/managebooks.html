@@ -56,7 +56,7 @@
     <button class="hidden" onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Syncing, please wait...')}</button>
 </%def>
 <%def name="body()">
-  <h1>${title}</h1>
+  <h1>${title | h}</h1>
   <form action="manage" method="get" class="form-inline">
     <div class="row">
       <div class="col-xs-12 col-sm-5">

@@ -116,7 +116,7 @@ perm_comics = 1 << 13  # 8192 access to comics
 perm_authorbooks = perm_audio + perm_ebook
 perm_guest = perm_download + perm_series + perm_authorbooks + perm_magazines + perm_comics
 perm_friend = perm_guest + perm_search + perm_status
-perm_admin = 65535
+perm_all = 65535
 
 # user prefs
 pref_myauthors = 1 << 0

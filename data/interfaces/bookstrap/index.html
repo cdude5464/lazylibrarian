@@ -49,7 +49,7 @@
 </%def>
 
 <%def name="body()">
-<h1>${title}</h1>
+<h1>${title | h}</h1>
   %if lazylibrarian.AUTHORS_UPDATE == 1:
     <p>
     <button onclick="" id="myAlert" title=""><i class="fa fa-circle-notch fa-spin"></i> ${_('Author Refresh in progress ...')}</button>

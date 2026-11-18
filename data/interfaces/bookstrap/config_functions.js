@@ -577,6 +577,39 @@
             });
         });
 
+        $('#test_hc_token').click(function () {
+            let hc_token = $.trim($("#hc_token").val());
+            $.get("test_hcauth", {'hc_token': hc_token},
+                function (data) {
+                    bootbox.dialog({
+                        title: ${_js('Test HardCover Token')},
+                        message: '<pre>' + data + '</pre>',
+                        buttons: {
+                            primary: {
+                                label: ${_js('Close')},
+                                className: 'btn-primary'
+                            }
+                        }
+                    });
+                });
+        });
+
+        function keyTest(btn, field, url, title) {
+            $(btn).click(function () {
+                let params = {};
+                params[field] = $.trim($("#" + field).val());
+                $.get(url, params, function (data) {
+                    bootbox.dialog({
+                        title: title,
+                        message: '<pre>' + $('<div>').text(data).html() + '</pre>',
+                        buttons: {primary: {label: ${_js('Close')}, className: 'btn-primary'}}
+                    });
+                });
+            });
+        }
+        keyTest('#test_gb_api', 'gb_api', 'test_gbapi', ${_js('Test GoogleBooks Key')});
+        keyTest('#test_cv_apikey', 'cv_apikey', 'test_cvapi', ${_js('Test ComicVine Key')});
+
         $('#test_grauth').click(function () {
             let gr_api = $.trim($("#gr_api").val());
             let gr_secret = $.trim($("#gr_secret").val());
@@ -1368,9 +1401,10 @@
             });
         }
 
-        // Issue, volume and magazine title words, author name suffixes and articles,
-        // each chip has them in data-<field id>
-        const wordFields = ["issue_nouns", "volume_nouns", "mag_nouns", "name_postfix", "name_definite"];
+        // Issue, volume and magazine title words, author name suffixes, titles and joining words, articles,
+        // audiobook words to reject and comic genres, each chip has them in data-<field id>
+        const wordFields = ["issue_nouns", "volume_nouns", "mag_nouns", "name_postfix", "name_prefix", "name_definite",
+            "multi_author_split", "reject_words", "comic_genres"];
         function chipWords(chip, field) {
             return (chip.attr("data-" + field) || "").split(",").filter(item => item);
         }

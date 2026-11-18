@@ -254,6 +254,20 @@ def check_whats_new():
         mark_seen()
 
 
+def changes_when_ready(count: int = 100) -> dict:
+    """ recent_changes without making the page wait for git or gitlab: the cached list, or else {'loading': True}
+        while a background thread gets it, the page asks again until it is there """
+    current = CONFIG['CURRENT_VERSION']
+    key = (current, branch())
+    with _lock:
+        cached = _page_cache.get('data')
+        if cached and _page_cache.get('key') == key and time.time() - _page_cache.get('time', 0) < PAGE_CACHE_SECONDS:
+            return cached
+    if not any(t.name == 'WHATSNEW' for t in threading.enumerate()):
+        threading.Thread(target=recent_changes, name='WHATSNEW', args=[count], daemon=True).start()
+    return {'loading': True, 'error': False, 'upcoming': [], 'installed': [], 'known': is_hash(current)}
+
+
 def recent_changes(count: int = 100) -> dict:
     """ Recent commits on the branch, split into the ones not installed yet and the installed ones.
         Cached for an hour so opening the page doesn't call gitlab every time """

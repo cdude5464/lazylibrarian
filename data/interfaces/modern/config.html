@@ -23,7 +23,19 @@
   .llc-sys .btn-danger { --bs-btn-color: var(--bs-danger-text-emphasis); }
   .llc-sys .btn .fa { margin-right: .3rem; opacity: .75; }
   .llc-sys #myAlert { border: 0; background: var(--bs-info-bg-subtle); color: var(--bs-info-text-emphasis); border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
-  @media (max-width: 767.98px) { .llc-sys { flex: 1 1 100%; } .llc-sys #subhead_menu { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; } .llc-sys .btn { white-space: nowrap; } }
+  /* on a phone the pills fold into a drop-down under one button, so none of them runs off the screen */
+  .llc-sys-toggle { display: none; }
+  @media (max-width: 767.98px) {
+    .llc-sys { flex: 1 1 100%; }
+    .llc-sys-toggle { display: inline-flex; align-items: center; }
+    .llc-sys-toggle .fa { margin-right: .3rem; opacity: .75; }
+    .llc-sys-toggle .llc-caret { margin: 0 0 0 .4rem; transition: transform .15s; }
+    .llc-sys.open .llc-sys-toggle .llc-caret { transform: rotate(180deg); }
+    .llc-sys #subhead_menu { display: none; flex-direction: column; align-items: stretch; margin-top: .5rem; padding: .4rem; border: 1px solid var(--bs-border-color);
+                             border-radius: 12px; background: var(--bs-tertiary-bg); }
+    .llc-sys.open #subhead_menu { display: flex; }
+    .llc-sys #subhead_menu .btn { text-align: left; white-space: nowrap; }
+  }
 
   .llc-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 2rem; align-items: start; }
   @media (max-width: 991.98px) { .llc-layout { grid-template-columns: minmax(0, 1fr); gap: 1rem; } }
@@ -42,13 +54,39 @@
   .llc #configtabs > li > a:hover { background: var(--bs-tertiary-bg); }
   .llc #configtabs > li.active > a { background: var(--bs-secondary-bg); font-weight: 600; }
   .llc #configtabs > li.active > a .fa { opacity: 1; color: var(--ll-accent); }
+  /* the three groups of the section menu (llcRegroup) */
+  .llc #configtabs > li.llc-navgroup { font-size: .7rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em;
+                                        color: var(--bs-secondary-color); padding: 1rem .8rem .3rem; }
+  .llc #configtabs > li.llc-navgroup:first-child { padding-top: .25rem; }
+  /* on a phone or a tablet the menu is a select, thirteen sections do not fit in a row of chips */
+  .llc-navsel { display: none; }
   @media (max-width: 991.98px) {
-    .llc #configtabs { flex-direction: row; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: .35rem; padding-bottom: 2px; }
-    .llc #configtabs > li > a { white-space: nowrap; border: 1px solid var(--bs-border-color); border-radius: 999px; padding: .3rem .8rem; font-size: .85rem; }
-    .llc #configtabs > li.active > a { background: var(--ll-accent); color: var(--ll-accent-contrast); border-color: var(--ll-accent); }
-    .llc #configtabs > li.active > a .fa { color: inherit; }
+    .llc #configtabs { display: none; }
+    .llc-navsel { display: block; font-weight: 600; }
   }
-  .llc-searching #configtabs { opacity: .45; pointer-events: none; }
+  .llc-searching #configtabs, .llc-searching .llc-navsel { opacity: .45; pointer-events: none; }
+  /* what a section is for, under its title */
+  .llc-pane-intro { font-size: .88rem; color: var(--bs-secondary-color); margin: 0 0 1rem; max-width: 75ch; }
+  .llc-pane-intro:empty { display: none; }
+  /* Getting started: the three settings LazyLibrarian needs to find and download books */
+  .llc-start { border: 1px solid color-mix(in srgb, var(--ll-accent) 45%, transparent); background: color-mix(in srgb, var(--ll-accent) 7%, var(--bs-body-bg));
+               border-radius: 14px; padding: .8rem 1rem; margin-bottom: 1rem; }
+  .llc-start-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .3rem; }
+  .llc-start-head strong { font-size: .95rem; margin-right: auto; }
+  .llc-start-head .fa { color: var(--ll-accent); }
+  .llc-start p { font-size: .85rem; color: var(--bs-secondary-color); margin: 0 0 .6rem; }
+  .llc-steps { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr)); gap: .5rem; margin: 0; padding: 0; list-style: none; }
+  .llc-steps li { display: flex; gap: .55rem; align-items: flex-start; font-size: .85rem; }
+  .llc-steps .llc-stepnum { flex: 0 0 auto; width: 1.5rem; height: 1.5rem; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+                            font-size: .75rem; font-weight: 700; border: 1.5px solid var(--ll-accent); color: var(--ll-accent); }
+  .llc-steps li.done .llc-stepnum { background: var(--ll-accent); color: var(--ll-accent-contrast); }
+  .llc-steps a { font-weight: 600; text-decoration: none; }
+  .llc-steps small { display: block; color: var(--bs-secondary-color); }
+  .llc-searching .llc-start, .llc-searching .llc-pane-intro, .llc-searching .llc-pager { display: none !important; }
+  /* previous and next section, at the end of a section */
+  .llc-pager { display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap; margin: .5rem 0 0; }
+  .llc-pager .btn { border-radius: 999px; font-size: .82rem; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .llc-pager .btn:only-child.llc-next { margin-left: auto; }
 
   .llc-tools { display: flex; gap: .4rem; flex-wrap: wrap; justify-content: flex-end; margin-bottom: .75rem; }
   .llc-tools .btn { border-radius: 999px; font-size: .78rem; padding: .25rem .75rem; }
@@ -65,10 +103,13 @@
   .llc .tab-pane fieldset:has(> legend), .llc .tab-pane fieldset:has(> .section-body) {
     background: var(--bs-body-bg); border: 1px solid var(--bs-border-color-translucent); border-radius: 14px; padding: 1rem 1.1rem .4rem; margin-bottom: 1rem;
     box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-  .llc .tab-pane fieldset fieldset:has(> legend) { border-radius: 10px; background: var(--bs-tertiary-bg); box-shadow: none; }
+  .llc .tab-pane fieldset fieldset:has(> legend) { border-radius: 10px; background: var(--bs-body-bg); box-shadow: none; }
   .llc legend { float: left; width: 100%; font-size: .78rem; font-weight: 600; text-transform: uppercase; letter-spacing: .07em; color: var(--bs-secondary-color);
                 margin: 0 0 .75rem; padding: 0; border: 0; display: flex; align-items: center; gap: .35rem; }
   .llc legend.section-toggle { cursor: pointer; user-select: none; }
+  /* a download client's Test in its heading, as on a provider card */
+  .llc legend .llc-ltest + .llc-ltest { margin-left: 0 !important; }
+  .llc legend .llc-ltest { margin-left: auto; font-size: .75rem; padding: .15rem .65rem; text-transform: none; letter-spacing: normal; font-weight: 400; }
   .llc legend label.fa { font: inherit; letter-spacing: inherit; margin: 0; cursor: pointer; }
   .llc legend .section-caret { transition: transform .15s ease; font-size: .9em; }
   .llc legend + * { clear: left; }
@@ -87,14 +128,43 @@
     .llc fieldset:has(> [class*="col-"]) > .col-md-6 { flex-basis: 50%; } .llc fieldset:has(> [class*="col-"]) > .col-md-8 { flex-basis: 66.666%; }
   }
   .llc fieldset:has(> [class*="col-"]) > [class*="col-"] > .input-group:last-child { margin-bottom: 1.4rem; }
+  /* a section card holding columns (Usenet, rss server, provider types) keeps its edges where the other cards have
+     them, and its padding gives up the columns' gutter, so its content lines up with theirs */
+  .llc .tab-pane fieldset:is(:has(> legend), :has(> .section-body)):has(> [class*="col-"]) { margin-inline: 0; padding-inline: .6rem; }
+  .llc .tab-pane fieldset#rss_options:has(> [class*="col-"]) { margin-inline: 0 !important; padding-inline: .6rem !important; }
+  /* action buttons (Test, Sync now, Request authorization...): one row of small outlined pills under what they act on */
+  /* an apprise notifier in a box like the other notifiers' sections (llcActions) */
+  .llc .llc-acard { border: 1px solid var(--bs-border-color-translucent); border-radius: 10px; background: var(--bs-body-bg);
+                    padding: .8rem .9rem .1rem; height: 100%; }
+  .llc .llc-acard .input-group { margin-bottom: .8rem; }
+  .llc .llc-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; margin: 0 0 .9rem; }
+  .llc .form-group > .llc-actions:last-child, .llc .form-group > .llc-actions:has(+ .help-block[hidden]:last-child) { margin-bottom: 0; }
+  .llc .form-group > :is(input, select, textarea, .input-group, .llc-fgrid) + .llc-actions { margin-top: .5rem; }
   .llc .form-group { margin-bottom: .9rem; }
+  /* fields side by side (Host | Port, Username | Password) on one line even when a label takes two */
+  .llc .tab-pane .row > .form-group[class*="col-"] { display: flex; flex-direction: column; justify-content: flex-end; }
+  .llc .tab-pane .row > .form-group[class*="col-"] > label { align-self: flex-start; }
   /* provider cards: the rows of "label | field | label | field | button" made into a small form */
-  .llc .llc-pcard > .llc-pbox { border: 1px solid var(--bs-border-color-translucent); border-radius: 12px; background: var(--bs-tertiary-bg); padding: .7rem .8rem .2rem; height: 100%; }
+  .llc .llc-pcard > .llc-pbox { border: 1px solid var(--bs-border-color-translucent); border-radius: 12px; background: var(--bs-body-bg); padding: .7rem .8rem .2rem; height: 100%; }
   .llc .llc-pcard.llc-off > .llc-pbox { opacity: .7; }
   .llc .llc-ph { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; min-height: 32px; }
   .llc .llc-ptitle { font-weight: 650; font-size: .95rem; margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .llc .llc-ptitle:empty::before { content: attr(data-empty); color: var(--bs-secondary-color); font-weight: 500; }
   .llc .llc-ph .btn { font-size: .75rem; padding: .15rem .65rem; }
+  /* provider status (llcProviderStatus): a badge after the name, the block's time, reason and Unblock under the header */
+  .llc .llc-pstat { flex: 0 0 auto; width: .6rem; height: .6rem; border-radius: 50%; margin-left: -.15rem; cursor: help; }
+  .llc .llc-pstat.llc-pok { background: var(--bs-success); }
+  .llc .llc-pstat.llc-pbad { background: var(--bs-danger); box-shadow: 0 0 0 3px var(--bs-danger-bg-subtle); }
+  .llc .llc-ptitle:has(+ .llc-pstat) { margin-right: 0; }
+  .llc .llc-ph > .llc-pstat { margin-right: auto; }
+  .llc .llc-pblock { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; font-size: .8rem; color: var(--bs-danger-text-emphasis);
+    background: var(--bs-danger-bg-subtle); border-radius: 8px; padding: .35rem .6rem; margin-bottom: .6rem; overflow-wrap: anywhere; }
+  .llc .llc-pblock > span { flex: 1 1 12rem; min-width: 0; }
+  .llc .llc-pblock .llc-phint { display: block; color: var(--bs-body-color); margin-top: .15rem; }
+  .llc .llc-pblock .btn { font-size: .72rem; padding: .1rem .6rem; }
+  .llc .llc-pother { border: 1px solid var(--bs-danger-border-subtle); border-radius: 12px; padding: .6rem .8rem .1rem; margin-bottom: 1rem; }
+  .llc .llc-pother-h { font-weight: 650; font-size: .9rem; margin-bottom: .5rem; }
+  .llc .llc-pother .llc-pblock strong { flex: 0 0 auto; }
   .llc .llc-pon { display: inline-flex; align-items: center; gap: .4rem; margin: 0; font-size: .78rem; font-weight: 500; color: var(--bs-secondary-color); cursor: pointer; }
   /* folding: a provider card down to its header, a provider type section down to its heading; search shows all */
   .llc .llc-pcaret { border: 0; background: none; padding: 0 .1rem; color: var(--bs-secondary-color); line-height: 1; }
@@ -110,6 +180,9 @@
   .llc .llc-pgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .55rem .6rem; }
   .llc .llc-pf { min-width: 0; margin-bottom: .55rem; }
   .llc .llc-pf.llc-wide { grid-column: 1 / -1; }
+  .llc .llc-dlt { display: flex; flex-wrap: wrap; gap: .3rem; }
+  .llc .llc-dlt .btn { width: 2.1rem; padding-left: 0; padding-right: 0; }
+  .llc .tab-pane .llc-dlt .btn .fa { margin-right: 0; }
   .llc .llc-pf > label { display: block; font-size: .72rem; font-weight: 500; color: var(--bs-secondary-color); margin-bottom: .2rem; }
   .llc .llc-pf .form-control, .llc .llc-pf .form-select { font-size: .88rem; padding: .3rem .6rem; }
   .llc .llc-pf .form-control[readonly] { background: transparent; border-color: transparent; padding-left: 0; }
@@ -148,18 +221,57 @@
   .llc .tab-pane fieldset#rss_options { display: block !important; height: auto !important; overflow: visible !important;
                                          padding: 1rem 1.1rem .4rem !important; margin: 0 0 1rem !important; }
   .llc #rss_options.llc-locked > :not(legend):not(.llc-needs) { opacity: .5; }
+  /* with user accounts on, the grid of the section collapses to no width at the right edge of the card (its contents
+     look pushed to the right); a set width keeps it the width of the card */
+  .llc #rss_options .llc-cgrid { width: 100%; }
   .llc .llc-needs { font-size: .8rem; color: var(--bs-secondary-color); margin: 0 0 .6rem; }
   .llc .llc-needs .fa { margin-right: .3rem; }
   /* Processing: the sections in one list that flows over columns where there is room */
-  .llc .llc-flow { columns: 3 300px; column-gap: 1rem; }
-  .llc .llc-flow > .llc-flow-item { break-inside: avoid; display: flow-root; }
+  /* the sections of a tab one under the other, read in one order; inside a section the short settings sit side by
+     side in a grid, the long ones (patterns, lists, the options of a switch) take the whole width (llcCardGrids) */
+  .llc .llc-flow > .llc-flow-item { display: flow-root; }
+  .llc .llc-cgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); column-gap: 1.75rem; align-items: start; }
+  .llc .llc-cgrid > .llc-cwide { grid-column: 1 / -1; }
+  .llc .llc-cgrid > .llc-cstart { grid-column-start: 1; }
+  /* Processing: the switches of a section together, one column in tight rows */
+  .llc .llc-cgrid > .llc-swgrid { align-self: center; }
+  .llc .llc-swgrid > .checkbox { margin-bottom: .35rem; }
+  /* contrast between a section and the cards inside it: the section a little lighter than the page, its cards as dark as the page */
+  .llc .tab-pane .llc-flow-item > fieldset:has(> legend), .llc .tab-pane .llc-flow-item > fieldset:has(> .section-body) { background: color-mix(in srgb, var(--bs-body-color) 6%, var(--bs-body-bg)); }
+  /* Language detection: the switch level with the key field, the maintenance button under the switch, the key with its
+     help on the right over both, instead of three cells with a tall one beside two short ones */
+  .llc .llc-cgrid > .checkbox:has(#google_trans_id) { margin-top: 1.9rem; }
+  .llc .llc-cgrid > .form-group:has(#ms_trans_id) { grid-row: span 2; }
+  .llc .llc-cgrid > #lang_refresh_options { grid-column: auto; }
+  /* a switch next to the field it belongs to (several sources, Goodreads sync): centred on that field */
+  .llc .llc-cgrid > .checkbox:has(#multi_source, #gr_sync) { align-self: center; margin-bottom: 0; }
+  /* small cards side by side (national libraries, providers) as high as the highest of their row */
+  .llc .llc-cgrid > fieldset:not(.llc-cwide), .llc .llc-cgrid > .llc-pcard { align-self: stretch; }
+  /* a cell keeps one spacing under it, a field with a button (show/hide) in it adds none of its own */
+  .llc .llc-cgrid > * > .input-group:last-child, .llc .llc-cgrid > * > .input-group:has(+ .help-block[hidden]:last-child) { margin-bottom: 0; }
+  .llc .llc-flags { display: inline-flex; gap: .3rem; margin-left: .35rem; cursor: help; }
+  .llc .llc-flags svg { width: 1.35rem; height: .9rem; border-radius: 2px; box-shadow: 0 0 0 1px var(--bs-border-color); text-transform: none; letter-spacing: normal; }
+  .llc .llc-flags .fa { font-size: 1.05rem; color: var(--ll-accent); }
+  .llc .llc-note { display: block; font-size: .75rem; color: var(--bs-warning); margin: .15rem 0 0 calc(2.1em + .6rem); }
+  /* On this page: links to the sections of a long tab */
+  .llc-toc { display: flex; flex-wrap: wrap; gap: .35rem; align-items: center; margin: -.35rem 0 1rem; font-size: .8rem; }
+  .llc-toc > span { color: var(--bs-secondary-color); margin-right: .2rem; }
+  .llc-toc a { border: 1px solid var(--bs-border-color); border-radius: 999px; padding: .1rem .65rem; color: var(--bs-body-color); text-decoration: none; }
+  .llc-toc a:hover, .llc-toc a:focus-visible { border-color: var(--ll-accent); color: var(--ll-accent); }
+  .llc-searching .llc-toc { display: none; }
+  .llc .llc-flow-item > fieldset { scroll-margin-top: 80px; }
+  /* the example of a name pattern: the accent colour, softly, instead of the yellow marker */
+  .llc small > mark { background: color-mix(in srgb, var(--ll-accent) 16%, transparent); color: var(--ll-accent);
+                      border-radius: 6px; padding: .05rem .45rem; font-weight: 500; }
   /* $variables of the name patterns: a click inserts them at the cursor of the pattern field */
   .llc .llc-token { display: inline-block; font: inherit; font-size: .95em; line-height: 1.5; color: var(--bs-body-color);
-                    background: var(--bs-tertiary-bg); border: 1px solid var(--bs-border-color); border-radius: 999px; padding: 0 .55rem; margin: .1rem 0; cursor: pointer; }
-  .llc .llc-token:hover, .llc .llc-token:focus-visible { border-color: var(--ll-accent); color: var(--ll-accent); outline: 0; }
+                    background: color-mix(in srgb, var(--ll-accent) 14%, var(--bs-body-bg)); border: 1px solid color-mix(in srgb, var(--ll-accent) 45%, transparent);
+                    border-radius: 999px; padding: 0 .55rem; margin: .1rem 0; cursor: pointer; }
+  .llc .llc-token:hover, .llc .llc-token:focus-visible { background: color-mix(in srgb, var(--ll-accent) 28%, var(--bs-body-bg)); border-color: var(--ll-accent); outline: 0; }
   .llc .help-icon { margin-left: .35rem; color: var(--bs-secondary-color); cursor: help; font-size: .85em; text-decoration: none; }
   .llc .help-icon:hover, .llc .help-icon:focus { color: var(--ll-accent); }
-  .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: .1rem 1rem; }
+  /* a list of switches in the same columns as the cells of the section around it */
+  .llc .checkbox-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 17rem), 1fr)); gap: .1rem 1.75rem; }
   /* language pickers: even gaps between chips in both directions (they were inline-blocks spaced by whitespace) */
   .llc .langpicker { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; margin: .15rem 0 .1rem; }
   .llc .langpicker .langchip { margin: 0; border-radius: 999px; padding: .2rem .8rem; font-size: .85rem; line-height: 1.4; }
@@ -171,7 +283,8 @@
   .llc .searchlang-modes { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
   .llc #lang_refresh_options .help-block, .llc #config_langrefreshstatus { display: block; margin: .4rem 0 0 !important; }
   .llc .checkbox, .llc .radio { margin: 0 0 .55rem; }
-  .llc .row.checkbox { margin-bottom: .2rem; }
+  /* .checkbox's margin would take the row's negative gutter and indent its switches */
+  .llc .row.checkbox { margin: 0 calc(-.5 * var(--bs-gutter-x)) .2rem; }
   .llc .row.checkbox > [class*="col-"] { margin-bottom: .55rem; }
   .llc .checkbox label, .llc .radio label { display: inline-flex; align-items: center; gap: .6rem; font-weight: 400; font-size: .9rem; cursor: pointer; margin: 0; }
   /* checkboxes as switches */
@@ -215,24 +328,30 @@
 <%def name="body()">
 <div class="llc pt-1" id="llc">
   <div class="llc-head">
-    <h1>${title}</h1>
-    <div class="llc-sys">${bs.headerIncludes()}</div>
+    <h1>${title | h}</h1>
+    <div class="llc-sys">
+      <button type="button" class="btn btn-sm llc-sys-toggle" aria-expanded="false" onclick="var s=this.closest('.llc-sys');this.setAttribute('aria-expanded',s.classList.toggle('open'))"><i class="fa fa-wrench"></i> ${_('System')} <i class="fa fa-chevron-down llc-caret"></i></button>
+      ${bs.headerIncludes()}
+    </div>
   </div>
   <div class="llc-layout">
     <aside class="llc-side">
       <div class="llc-search">
-        <i class="fa fa-search" aria-hidden="true"></i>
+        <i class="fa fa-filter" aria-hidden="true"></i>
         <input type="search" class="form-control form-control-sm" id="llc-q" placeholder="${_('Search settings') | h}" aria-label="${_('Search settings') | h}" autocomplete="off">
       </div>
       <div class="llc-hits" id="llc-hits" hidden></div>
       <nav id="llc-nav" aria-label="${_('Settings sections') | h}"></nav>
     </aside>
     <div class="llc-main">
-      <div class="d-flex align-items-center gap-2 flex-wrap mb-2">
+      <div class="llc-start" id="llc-start" hidden></div>
+      <div class="d-flex align-items-center gap-2 flex-wrap mb-1">
         <h2 class="llc-pane-title me-auto" id="llc-pane-title"></h2>
         <div class="llc-tools mb-0" id="llc-tools"></div>
       </div>
+      <p class="llc-pane-intro" id="llc-pane-intro"></p>
       ${bs.body()}
+      <nav class="llc-pager" id="llc-pager" aria-label="${_('Settings sections') | h}"></nav>
       ## the accent colour takes the place of the Bootswatch theme (which only styles bookstrap) in Appearance
       <template id="llc-accent-tpl">
         <div class="form-group">
@@ -373,7 +492,11 @@
     var h1 = form.querySelector(':scope > h1');
     if (h1) {
       var tools = document.getElementById('llc-tools');
-      h1.querySelectorAll('input[type="button"], button').forEach(function (b) { tools.appendChild(b); });
+      // one look for them all, as the action buttons in the sections (Blocked Providers came as a yellow warning)
+      h1.querySelectorAll('input[type="button"], button').forEach(function (b) {
+        b.classList.remove('btn-default', 'btn-primary', 'btn-warning', 'button'); b.classList.add('btn-sm', 'btn-outline-secondary');
+        tools.appendChild(b);
+      });
       var add = h1.querySelector('#add');
       if (add) { add.hidden = true; document.getElementById('llc-save').appendChild(add); add.setAttribute('form', 'llc-form'); }
       h1.remove();
@@ -404,11 +527,491 @@
       });
     }
     function show(li) {
+      var id = li.getAttribute('aria-controls');
       ul.querySelectorAll('li[role="presentation"]').forEach(function (x) { x.classList.toggle('active', x === li); x.setAttribute('aria-selected', x === li); });
-      form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === li.getAttribute('aria-controls')); });
+      form.querySelectorAll('.tab-content > .tab-pane').forEach(function (p) { p.classList.toggle('active', p.id === id); });
       document.getElementById('llc-pane-title').textContent = li.textContent.trim();
+      document.getElementById('llc-pane-intro').textContent = INTRO[id] || '';
+      var sel = document.getElementById('llc-navsel'); if (sel) { sel.value = id; }
+      // the buttons of one section (Export and Import Filters, Blocked Providers) only show with it
+      var own = {savefilters: 'filters', loadfilters: 'filters', showblocked: 'providers'};
+      Object.keys(own).forEach(function (k) { var b = document.getElementById(k); if (b) { b.classList.toggle('hidden', id !== own[k]); } });
+      // the previous and the next section, to go through them all in order
+      var all = Array.prototype.slice.call(ul.querySelectorAll('li[role="presentation"]')), i = all.indexOf(li), pager = document.getElementById('llc-pager');
+      pager.textContent = '';
+      [[all[i - 1], 'llc-prev', '<i class="fa fa-chevron-left me-1" aria-hidden="true"></i>', ''],
+       [all[i + 1], 'llc-next', '', '<i class="fa fa-chevron-right ms-1" aria-hidden="true"></i>']].forEach(function (p) {
+        if (!p[0]) { return; }
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'btn btn-sm btn-outline-secondary ' + p[1];
+        b.innerHTML = p[2]; b.appendChild(document.createTextNode(p[0].textContent.trim())); b.insertAdjacentHTML('beforeend', p[3]);
+        b.addEventListener('click', function () { show(p[0]); window.scrollTo({top: 0}); });
+        pager.appendChild(b);
+      });
       // remembered for this browser tab, so a reload comes back to the same section
-      try { sessionStorage.setItem('llc-tab', li.getAttribute('aria-controls')); } catch (e) {}
+      try { sessionStorage.setItem('llc-tab', id); } catch (e) {}
+    }
+
+    // The sections in the order a new user sets LazyLibrarian up, in three groups: the basics (the interface, where
+    // the library is, where book details come from, languages), finding and downloading books, and the system.
+    // Bookstrap's tabs mix settings of very different kinds (Interface held the web server and the logs, Processing
+    // the library folders and the search intervals); here a section is found by a setting it holds and moved, so its
+    // fields keep their names and the page scripts' handlers.
+    var GROUPS = [
+      [${_js('Basics')}, ['webinterface', 'llc-library', 'importoptions', 'languages', 'genres']],
+      [${_js('Downloading')}, ['providers', 'downloadsettings', 'llc-search', 'filters', 'searchprocessing']],
+      [${_js('System')}, ['notifications', 'llc-server', 'llc-system']]
+    ];
+    // the new sections: title, icon and the settings whose sections they take, in this order
+    var NEWPANES = {
+      'llc-library': [${_js('Library')}, 'fa-book', ['download_dir', 'fmt_series', 'pref_ebookopf', 'newauthor_books', 'imp_calibredb']],
+      'llc-search': [${_js('Searching')}, 'fa-search', ['search_bookinterval', 'notfound_status', 'match_ratio', 'blacklist_failed']],
+      'llc-server': [${_js('Server and Access')}, 'fa-server', ['http_host', 'https_enabled', 'user_accounts', 'rss_enabled', 'opds_enabled',
+        'api_enabled', 'proxy_host', 'launch_browser']],
+      'llc-system': [${_js('System')}, 'fa-wrench', ['versioncheck_interval', 'cache_age', 'logdir', 'telemetry_enable']]
+    };
+    // what each section is for, under its title
+    var INTRO = {
+      webinterface: ${_js('How LazyLibrarian looks: its language, colors, the pages in the menu and how lists and dates are shown.')},
+      'llc-library': ${_js('Where your books are kept and how their folders and files are named. Start here: set the folder of your eBook library, and of your AudioBook library if you have one.')},
+      importoptions: ${_js('Where LazyLibrarian gets details about authors and books: titles, series, covers and descriptions. The defaults work, add an API key only for a source you want to use.')},
+      languages: ${_js('Which languages your books are in, how the language of a book is found out and in which language names and dates are written.')},
+      genres: ${_js('How the genres from the info sources are tidied up: renamed, merged or left out.')},
+      providers: ${_js('The places LazyLibrarian searches for books: indexers (Newznab, Torznab, often through Prowlarr or Jackett), torrent sites, rss feeds and direct download sites. Enable at least one.')},
+      downloadsettings: ${_js('The programs that download what was found: a usenet client for Newznab results, a torrent client for torrents. Direct download sites need no downloader.')},
+      'llc-search': ${_js('When LazyLibrarian searches, which books it looks for and how closely a result must match a book to be downloaded.')},
+      filters: ${_js('What is never downloaded: words you do not want, file types, sizes out of the limits, and which books are left out of the library.')},
+      searchprocessing: ${_js('What happens to a download before it goes into the library: conversions of eBooks and audiobooks, magazine covers and the programs used for them.')},
+      notifications: ${_js('A message when a book is found or downloaded: by e-mail, Telegram, Pushover and many other services through Apprise.')},
+      'llc-server': ${_js('How LazyLibrarian is reached: its address and port, HTTPS, user accounts, and what it offers other apps (rss feeds, OPDS for e-readers, the API). Most changes here need a restart.')},
+      'llc-system': ${_js('Updates, logs, the upkeep of the cache and the database, and anonymous usage statistics.')}
+    };
+    function llcRegroup() {
+      var content = form.querySelector('.tab-content');
+      if (!ul || !content) { return; }
+      // the outermost section holding a setting
+      var outer = function (el) { var fs = el && el.closest('fieldset'), up; while (fs && (up = fs.parentElement.closest('fieldset'))) { fs = up; } return fs; };
+      var tidy = function (from) {
+        // the column or flow item a section leaves, now empty
+        while (from && !from.matches('.tab-pane, .configtable, .row, .llc-flow') && !from.querySelector('input, select, textarea, legend, button')) {
+          var up = from.parentElement; from.remove(); from = up;
+        }
+      };
+      var tel = document.getElementById('telemetry');
+      Object.keys(NEWPANES).forEach(function (id) {
+        var d = NEWPANES[id], pane = document.createElement('div');
+        pane.className = 'tab-pane'; pane.id = id; pane.setAttribute('role', 'tabpanel'); pane.setAttribute('data-llc-title', d[0]);
+        pane.innerHTML = '<div class="configtable"><div class="row"><div class="col-12 llc-flow"></div></div></div>';
+        var flow = pane.querySelector('.llc-flow');
+        var put = function (fs) {
+          if (!fs || pane.contains(fs)) { return; }
+          var from = fs.parentElement, item = document.createElement('div');
+          item.className = 'llc-flow-item'; item.appendChild(fs); flow.appendChild(item);
+          tidy(from);
+        };
+        d[2].forEach(function (sid) { put(outer(document.getElementById(sid))); });
+        // Telemetry: all of its sections join System
+        if (id === 'llc-system' && tel) { tel.querySelectorAll('fieldset').forEach(function (fs) { if (!fs.parentElement.closest('fieldset')) { put(fs); } }); }
+        if (!flow.children.length) { return; }
+        content.appendChild(pane);
+        var li = document.createElement('li'), a = document.createElement('a');
+        li.setAttribute('role', 'presentation'); li.setAttribute('aria-controls', id);
+        a.setAttribute('role', 'tab'); a.href = '#' + id;
+        a.innerHTML = '<i class="fa ' + d[1] + '" aria-hidden="true"></i>'; a.appendChild(document.createTextNode(d[0]));
+        li.appendChild(a); ul.appendChild(li);
+      });
+      if (tel && !tel.querySelector('input, select, textarea, button')) {
+        var tli = ul.querySelector('li[aria-controls="telemetry"]'); if (tli) { tli.remove(); }
+        tel.remove();
+      }
+      // the menu in groups; a section no group knows (a new bookstrap tab) comes at the end
+      var known = [];
+      GROUPS.forEach(function (g) {
+        var lis = g[1].map(function (id) { known.push(id); return ul.querySelector('li[role="presentation"][aria-controls="' + id + '"]'); }).filter(Boolean);
+        if (!lis.length) { return; }
+        var head = document.createElement('li');
+        head.className = 'llc-navgroup'; head.setAttribute('aria-hidden', 'true'); head.textContent = g[0];
+        ul.appendChild(head);
+        lis.forEach(function (li) { ul.appendChild(li); });
+      });
+      ul.querySelectorAll('li[role="presentation"]').forEach(function (li) { if (known.indexOf(li.getAttribute('aria-controls')) < 0) { ul.appendChild(li); } });
+      // on a phone or a tablet the menu is a select with the same groups
+      var sel = document.createElement('select');
+      sel.id = 'llc-navsel'; sel.className = 'form-select llc-navsel'; sel.setAttribute('aria-label', ${_js('Settings sections')});
+      var grp = null;
+      Array.prototype.forEach.call(ul.children, function (li) {
+        if (li.classList.contains('llc-navgroup')) { grp = document.createElement('optgroup'); grp.label = li.textContent; sel.appendChild(grp); return; }
+        if (li.getAttribute('role') !== 'presentation') { return; }
+        var o = document.createElement('option');
+        o.value = li.getAttribute('aria-controls'); o.textContent = li.textContent.trim();
+        (grp || sel).appendChild(o);
+      });
+      sel.addEventListener('change', function () {
+        var li = ul.querySelector('li[aria-controls="' + sel.value + '"]');
+        if (li) { show(li); window.scrollTo({top: 0}); }
+      });
+      document.getElementById('llc-nav').appendChild(sel);
+    }
+
+    // The sections of a tab used to flow over two or three columns of uneven height, read down one and up the next;
+    // now they are one under the other, and in each the short settings (a switch, a number, a name) share a line
+    // in a grid while the long ones (patterns, word lists, the options under a switch) take the whole width. A tab
+    // with several sections starts with links to them.
+    var TT = {toc: ${_js('On this page:')}};
+    function llcCardGrids() {
+      // "... requires restart": a warning with its sign, like the other warnings
+      form.querySelectorAll('.llc-restart').forEach(function (sm) {
+        sm.classList.add('llc-warn'); sm.style.display = 'block';
+        sm.insertAdjacentHTML('afterbegin', '<i class="fa fa-exclamation-triangle me-1" aria-hidden="true"></i>');
+      });
+      // a warning in the label of a switch ("may contain the API key") goes under it, the switch and its words stay
+      // on one line
+      form.querySelectorAll('.tab-pane label > small').forEach(function (sm) {
+        var lb = sm.parentElement;
+        if (!lb.querySelector('input[type="checkbox"]')) { return; }
+        var br = sm.previousElementSibling; if (br && br.matches('br')) { br.remove(); }
+        // "(WARNING may contain api key)": the sign says it is a warning, without the brackets and the word before
+        // the colon, in any language
+        var t = sm.textContent.replace(/\s+/g, ' ').trim().replace(/^\((.*)\)$/, '$1').replace(/^[^:]{1,25}:\s*/, '');
+        sm.textContent = t.charAt(0).toUpperCase() + t.slice(1);
+        sm.insertAdjacentHTML('afterbegin', '<i class="fa fa-exclamation-triangle me-1" aria-hidden="true"></i>');
+        sm.classList.add('llc-note'); lb.after(sm);
+      });
+      // every tab the same way: its sections, wherever bookstrap put them (two columns of Usenet and Torrents, a row
+      // of columns...), go into one flow in their order
+      form.querySelectorAll('.tab-content > .tab-pane').forEach(function (pane) {
+        if (pane.querySelector('.llc-flow')) { return; }
+        var tops = Array.prototype.filter.call(pane.querySelectorAll('fieldset'), function (fs) { return !fs.parentElement.closest('fieldset'); });
+        if (!tops.length) { return; }
+        var host = pane.querySelector(':scope > .configtable') || pane, row = document.createElement('div'), flow = document.createElement('div');
+        row.className = 'row'; flow.className = 'col-12 llc-flow'; row.appendChild(flow);
+        host.insertBefore(row, host.firstChild);
+        tops.forEach(function (fs) {
+          var from = fs.parentElement, item = document.createElement('div');
+          item.className = 'llc-flow-item'; item.appendChild(fs); flow.appendChild(item);
+          while (from && from !== host && from !== pane && !from.querySelector('input, select, textarea, legend, button')) { var up = from.parentElement; from.remove(); from = up; }
+        });
+        Array.prototype.slice.call(host.children).forEach(function (c) { if (c !== row && !c.querySelector('input, select, textarea, legend, button')) { c.remove(); } });
+      });
+      // a setting takes a cell when it is one or two short fields or a switch or two; a list of switches, a long list,
+      // a pattern, a group of fields or a section takes the whole width
+      var fields = function (el) { return el.querySelectorAll('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([type="button"]), select, textarea').length; };
+      var compact = function (el) {
+        if (el.matches('.llc-pcard') || el.querySelector(':scope > .llc-acard')) { return true; }
+        // a small named section (a national library: one switch) is a card in a cell, like a provider
+        if (el.matches('fieldset') && el.querySelector(':scope > legend') && !el.querySelector('fieldset, textarea, .checkbox-grid')) {
+          return fields(el) + el.querySelectorAll('input[type="checkbox"]').length <= 2;
+        }
+        if (el.matches('fieldset, label, p, small, span, .llc-actions, .help-block')) { return false; }
+        if (el.querySelector('textarea, .help-keep, .langpicker, .searchlang-summary, table, fieldset, .checkbox-grid, .llc-actions .btn + .btn')) { return false; }
+        // the word lists of Filters are long, their sizes are not
+        if (el.matches('.llc-flat') && !el.querySelector('.llc-fgrid')) { return false; }
+        var n = fields(el), cb = el.querySelectorAll('input[type="checkbox"]').length;
+        return (n > 0 || cb > 0) && n <= 2 && cb <= 2;
+      };
+      var uncol = function (el) { el.className = el.className.replace(/\bcol-(xs-|sm-|md-|lg-)?\d+\b/g, '').trim(); };
+      var UNIT = '.form-group, .checkbox, .radio, fieldset, .row, .llc-fgrid, .help-block, .llc-actions';
+      // Name lines: bookstrap names a source or a group with a label of its own line (API HardCover:, Audnexus:,
+      // Permissions) and puts its settings after it. That line and what follows it, up to the next name line or the
+      // settings of another source, become a section with the name as its heading.
+      var isHead = function (n) {
+        if (!n || n.nodeType !== 1 || !n.matches('label') || n.querySelector('input, select, textarea')) { return false; }
+        var nx = n.nextElementSibling;
+        return !!nx && !nx.matches('input, select, textarea, .input-group');
+      };
+      var titled = function (fs) { return !!fs.querySelector(':scope > legend'); };
+      var legendOf = function (text) { var lg = document.createElement('legend'); lg.textContent = text.replace(/\s*:\s*$/, '').trim(); return lg; };
+      var prefix = function (el) {
+        var c = el.matches('input, select, textarea') ? el : el.querySelector('input:not([type="hidden"]), select, textarea');
+        return c && c.id ? c.id.split('_')[0] : '';
+      };
+      var headings = function (body, fs) {
+        // Info Sources: a source is named without the "API" of "API GoogleBooks:"
+        var src = !!body.closest('#importoptions');
+        var legendOf = function (text) {
+          var lg = document.createElement('legend');
+          lg.textContent = (src ? text.replace(/^\s*API\s+/i, '') : text).replace(/\s*:\s*$/, '').trim();
+          return lg;
+        };
+        var kids = Array.prototype.filter.call(body.children, function (c) { return !c.matches('legend'); });
+        // a section without a heading whose first line names it (API OpenLibrary:) takes that name as its heading
+        if (body === fs && !titled(fs) && kids.length > 1 && isHead(kids[0])) {
+          fs.insertBefore(legendOf(kids[0].textContent), fs.firstChild); kids[0].remove();
+        }
+        Array.prototype.slice.call(body.children).forEach(function (k) {
+          if (!k.parentNode || !isHead(k)) { return; }
+          var sub = document.createElement('fieldset'), n = k.nextElementSibling, pre = n ? prefix(n) : '';
+          sub.appendChild(legendOf(k.textContent));
+          while (n && !isHead(n) && !(n.matches('fieldset') && titled(n)) && (!pre || !prefix(n) || prefix(n) === pre)) {
+            var nx = n.nextElementSibling; sub.appendChild(n); n = nx;
+          }
+          if (sub.children.length > 1) { k.replaceWith(sub); }
+        });
+        // Info Sources: the settings of a source without a name line (GoogleBooks, Goodreads) are named by their
+        // first field, without the "API" of "API GoogleBooks:"
+        if (src) {
+          Array.prototype.slice.call(body.querySelectorAll(':scope > fieldset')).forEach(function (s) {
+            if (titled(s) || !/_options$/.test(s.id)) { return; }
+            // its own name line (API OpenLibrary:) when it has one, else its first field
+            var first = s.firstElementChild, head = isHead(first) && s.children.length > 1, lb = head ? first : s.querySelector('label');
+            if (!lb) { return; }
+            s.insertBefore(legendOf(lb.textContent), s.firstChild);
+            if (head) { first.remove(); }
+          });
+        }
+        // a setting after the section of its source (the OpenLibrary dump after OpenLibrary) joins it
+        Array.prototype.slice.call(body.children).forEach(function (k) {
+          var prev = k.previousElementSibling;
+          if (!prev || !prev.matches('fieldset') || !titled(prev) || k.matches('legend')) { return; }
+          var p = prefix(k), pp = prev.id ? prev.id.split('_')[0] : prefix(prev);
+          if (p && p === pp) { (prev.querySelector(':scope > .section-body') || prev).appendChild(k); }
+        });
+      };
+      // a section and the sections inside it (a downloader, a notifier, the options under a switch) alike: the short
+      // settings in the cells of a grid, the rest across it
+      var gridOf = function (fs) {
+        var body = fs.querySelector(':scope > .section-body') || fs;
+        if (body.querySelector(':scope > .llc-cgrid')) { return; }
+        headings(body, fs);
+        var grid = document.createElement('div'); grid.className = 'llc-cgrid';
+        var add = function (n) {
+          if (n.nodeType !== 1) {
+            if (n.nodeType !== 3 || !n.textContent.trim()) { return; }
+            var s = document.createElement('span'); n.replaceWith(s); s.appendChild(n); n = s;
+          }
+          if (n.matches('legend, script, template, input[type="hidden"], br')) { return; }
+          // an empty box (a clearfix) takes no place
+          if (!n.textContent.trim() && !n.querySelector('input, select, textarea, button, img') && !n.matches('input, select, textarea, button')) { n.remove(); return; }
+          // a plain box around settings (the interface language, a notifier's language) is no setting of its own
+          if (n.matches('div') && !n.id && !n.className.replace(/\bcol-(xs-|sm-|md-|lg-)?\d+\b/g, '').trim() && n.children.length &&
+              Array.prototype.every.call(n.children, function (c) { return c.matches(UNIT); })) {
+            Array.prototype.slice.call(n.childNodes).forEach(add); n.remove(); return;
+          }
+          // an unused provider slot of Categories keeps its hidden heading and no place
+          if (n.querySelector(':scope > legend[hidden]')) { n.hidden = true; grid.appendChild(n); return; }
+          // a row of columns (two switches, Host | Port, a downloader's fields) gives each column a cell
+          if (n.matches('.row') && n.children.length && Array.prototype.every.call(n.children, function (c) { return /\bcol-/.test(c.className) || c.matches('.help-block'); })) {
+            var cb = n.matches('.checkbox'), pair = !!n.querySelector(':scope > .help-block'), first = true;
+            Array.prototype.slice.call(n.childNodes).forEach(function (c) {
+              if (c.nodeType === 1) {
+                uncol(c); if (cb && !c.matches('.help-block')) { c.classList.add('checkbox'); }
+                // fields with one help between them (Remote Dir | Local Dir) start a line together
+                if (pair && first && !c.matches('.help-block')) { c.classList.add('llc-cstart'); first = false; }
+              }
+              add(c);
+            });
+            n.remove(); return;
+          }
+          // a block holding a field and further settings after it (API Goodreads, then the sync switch and its
+          // options) is split: the field with its label and help takes a cell, the others follow on their own
+          if (n.matches('.form-group') && n.querySelector(':scope > .checkbox, :scope > fieldset') &&
+              n.querySelector(':scope > input, :scope > select, :scope > .input-group')) {
+            var lead = document.createElement('div'), kids = Array.prototype.slice.call(n.childNodes), seen = false, rest = [];
+            lead.className = 'form-group';
+            kids.forEach(function (c) {
+              var unit = c.nodeType === 1 && c.matches('.checkbox, fieldset, .form-group, .row');
+              if (!rest.length && !(seen && unit)) {
+                lead.appendChild(c);
+                if (c.nodeType === 1 && c.matches('input, select, .input-group')) { seen = true; }
+              } else { rest.push(c); }
+            });
+            n.replaceWith(lead); add(lead); rest.forEach(add);
+            return;
+          }
+          // a note bookstrap wrote after a setting ("WARNING: may contain the API key") stays with it
+          var last = grid.lastElementChild;
+          if (n.matches('span:not(.help-block), small') && !n.querySelector('input, select, textarea, button') && last && !last.matches('.llc-cwide')) {
+            last.appendChild(n); return;
+          }
+          if (/\bcol-/.test(n.className)) { uncol(n); }
+          if (!compact(n)) { n.classList.add('llc-cwide'); }
+          grid.appendChild(n);
+        };
+        Array.prototype.slice.call(body.childNodes).forEach(add);
+        // the named sections side by side are one width: all across when one of them needs it (Goodreads with its
+        // sync options next to GoogleBooks), else all in cells
+        var subs = grid.querySelectorAll(':scope > fieldset');
+        var named = Array.prototype.filter.call(subs, function (s) { return s.querySelector(':scope > legend'); });
+        if (named.some(function (s) { return s.classList.contains('llc-cwide'); })) { named.forEach(function (s) { s.classList.add('llc-cwide'); }); }
+        // Processing: the switches of a section sit together, after its fields, instead of between them. Only runs of
+        // plain cells are sorted (stable); a wide setting, a card or a pair that starts a line ends a run, so the
+        // order around them and the room the grid takes stay as they were
+        if (body.closest('#searchprocessing')) {
+          var cells = Array.prototype.slice.call(grid.children), run = [];
+          var plain = function (c) { return c.matches('.form-group, .checkbox') && !c.matches('.llc-cwide, .llc-cstart') && !c.hidden; };
+          var flush = function () {
+            var sw = run.filter(function (c) { return c.matches('.checkbox'); });
+            if (sw.length > 1 && sw.length < run.length) {
+              // the switches become one cell, one column of tight rows, so they are not spread over the tall rows
+              // of the fields
+              var blk = document.createElement('div'); blk.className = 'llc-swgrid';
+              run[run.length - 1].after(blk);
+              sw.forEach(function (c) { blk.appendChild(c); });
+            }
+            run = [];
+          };
+          cells.forEach(function (c) { if (plain(c)) { run.push(c); } else { flush(); } });
+          flush();
+        }
+        body.appendChild(grid);
+        grid.querySelectorAll(':scope > fieldset, :scope > * > fieldset').forEach(gridOf);
+      };
+      form.querySelectorAll('.tab-pane .llc-flow').forEach(function (flow) {
+        // a section left with nothing in it (Info Sources, once its sources went into cards) goes
+        flow.querySelectorAll(':scope > .llc-flow-item').forEach(function (item) {
+          if (!item.querySelector('input:not([type="hidden"]), select, textarea, button') && !item.textContent.replace(item.querySelector('legend') ? item.querySelector('legend').textContent : '', '').trim()) { item.remove(); }
+        });
+        flow.querySelectorAll(':scope > .llc-flow-item > fieldset').forEach(gridOf);
+        // links to the sections
+        var pane = flow.closest('.tab-pane'), cards = flow.querySelectorAll(':scope > .llc-flow-item > fieldset');
+        if (cards.length < 3 || pane.querySelector(':scope > .llc-toc')) { return; }
+        var toc = document.createElement('nav'), lead = document.createElement('span');
+        toc.className = 'llc-toc'; lead.textContent = TT.toc; toc.appendChild(lead);
+        cards.forEach(function (fs, i) {
+          var lg = fs.querySelector(':scope > legend'); if (!lg) { return; }
+          if (!fs.id) { fs.id = pane.id + '-s' + i; }
+          var a = document.createElement('a');
+          a.href = '#' + fs.id; a.textContent = lg.textContent.replace(/\s*:\s*$/, '').trim();
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            if (lg.classList.contains('section-collapsed')) { lg.click(); }
+            fs.scrollIntoView({behavior: 'smooth', block: 'start'});
+          });
+          toc.appendChild(a);
+        });
+        pane.insertBefore(toc, pane.firstChild);
+      });
+    }
+
+    // National libraries: the flags of the countries whose books each one is best for, after its name
+    var FLAGS = {
+      de: '<rect width="30" height="7" fill="#000"/><rect y="6.67" width="30" height="6.67" fill="#D00"/><rect y="13.33" width="30" height="6.67" fill="#FFCE00"/>',
+      pl: '<rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#DC143C"/>',
+      cz: '<rect width="30" height="10" fill="#fff"/><rect y="10" width="30" height="10" fill="#D7141A"/><path d="M0 0L15 10L0 20z" fill="#11457E"/>',
+      sk: '<rect width="30" height="7" fill="#fff"/><rect y="6.67" width="30" height="6.67" fill="#0B4EA2"/><rect y="13.33" width="30" height="6.67" fill="#EE1C25"/>' +
+          '<path d="M6.2 4.2h9v6.2q0 4.6-4.5 6.6q-4.5-2-4.5-6.6z" fill="#EE1C25" stroke="#fff" stroke-width=".7"/>' +
+          '<path d="M10.3 6h.8v7.6h-.8z M8.8 7.5h3.8v.8h-3.8z M8.2 9.5h5v.8h-5z" fill="#fff"/>' +
+          '<path d="M7.4 13.8q1.6-1.6 3.3 0q1.7-1.6 3.3 0q-1.4 1.9-3.3 2.6q-1.9-.7-3.3-2.6z" fill="#0B4EA2"/>'
+    };
+    var LIBFLAGS = {dnb_api: [['de'], ${_js('Recommended for books in German')}],
+                    bn_api: [['pl'], ${_js('Recommended for books in Polish')}],
+                    dbk_api: [['cz', 'sk'], ${_js('Recommended for books in Czech and Slovak')}],
+                    // sources for one kind of book: an icon of that kind
+                    audnexus: [['fa-headphones'], ${_js('For audiobooks')}],
+                    ran_api: [['fa-book-open'], ${_js('For Japanese light novels')}],
+                    // services with a logo of their own
+                    gr_api: [['goodreads'], 'Goodreads'],
+                    gb_api: [['google'], 'Google Books'],
+                    ol_api: [['openlibrary'], 'Open Library'],
+                    hc_api: [['hardcover'], 'Hardcover'],
+                    cv_apikey: [['comicvine'], 'ComicVine'],
+                    lt_devkey: [['librarything'], 'LibraryThing']};
+    // the letter badges of services with a logo of their own (the brand icon font is not shipped)
+    FLAGS.goodreads = '<rect width="30" height="20" rx="3" fill="#F4F1EA"/><text x="15" y="12.5" text-anchor="middle" font-family="Georgia, serif" font-size="15" font-weight="700" fill="#382110">g</text>';
+    FLAGS.google = '<rect width="30" height="20" rx="3" fill="#fff"/><text x="15" y="15.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#4285F4">G</text>';
+    FLAGS.openlibrary = '<rect width="30" height="20" rx="3" fill="#E1DCC5"/><text x="15" y="14.5" text-anchor="middle" font-family="Georgia, serif" font-size="11.5" font-weight="700" fill="#2D5F8B">OL</text>';
+    FLAGS.librarything = '<rect width="30" height="20" rx="3" fill="#F7EFD9"/><text x="15" y="14.5" text-anchor="middle" font-family="Georgia, serif" font-size="11.5" font-weight="700" fill="#8C2A1C">LT</text>';
+    FLAGS.comicvine = '<rect width="30" height="20" rx="3" fill="#E21F26"/><text x="15" y="14.5" text-anchor="middle" font-family="Arial, sans-serif" font-size="11.5" font-weight="700" fill="#fff">CV</text>';
+    FLAGS.hardcover ='<rect width="30" height="20" rx="3" fill="#6466F1"/><text x="15" y="15" text-anchor="middle" font-family="Arial, sans-serif" font-size="14" font-weight="700" fill="#fff">H</text>';
+    function llcFlags() {
+      Object.keys(LIBFLAGS).forEach(function (id) {
+        var cb = document.getElementById(id), fs = cb && cb.closest('fieldset'), lg = fs && fs.querySelector(':scope > legend');
+        // a source alone in a section about something else (LibraryThing in Covers): the mark goes after its field name
+        if (fs && fs.parentElement.matches('.llc-flow-item')) { lg = form.querySelector('label[for="' + id + '"]'); }
+        if (!lg || lg.querySelector('.llc-flags')) { return; }
+        var box = document.createElement('span');
+        box.className = 'llc-flags'; box.title = LIBFLAGS[id][1]; box.setAttribute('role', 'img'); box.setAttribute('aria-label', LIBFLAGS[id][1]);
+        box.innerHTML = LIBFLAGS[id][0].map(function (f) {
+          return FLAGS[f] ? '<svg viewBox="0 0 30 20" aria-hidden="true">' + FLAGS[f] + '</svg>' : '<i class="fa ' + f + '" aria-hidden="true"></i>';
+        }).join('');
+        lg.appendChild(box);
+      });
+    }
+
+    // GoogleBooks Country: the codes (SK, DE...) become the flag and the name of the country in the language of the
+    // page, sorted by name. Windows draws no flag emoji, only their letters, so there the flag is left out.
+    function llcCountries() {
+      var sel = document.getElementById('gb_country');
+      if (!sel || !window.Intl || !Intl.DisplayNames) { return; }
+      var names;
+      try { names = new Intl.DisplayNames([document.documentElement.lang || navigator.language, 'en'], {type: 'region'}); } catch (e) { return; }
+      var platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+      var flags = !/^win/i.test(platform);
+      var flag = function (code) { return String.fromCodePoint.apply(null, code.split('').map(function (c) { return 0x1F1E6 + c.charCodeAt(0) - 65; })); };
+      var opts = Array.prototype.filter.call(sel.options, function (o) { return /^[A-Z]{2}$/.test(o.value); });
+      opts.forEach(function (o) {
+        var name = ''; try { name = names.of(o.value) || ''; } catch (e) {}
+        o.dataset.name = name && name !== o.value ? name : o.value;
+        o.textContent = (flags ? flag(o.value) + ' ' : '') + o.dataset.name + (o.dataset.name !== o.value ? ' (' + o.value + ')' : '');
+      });
+      opts.sort(function (a, b) { return a.dataset.name.localeCompare(b.dataset.name); }).forEach(function (o) { sel.appendChild(o); });
+    }
+
+    // Categories: the settings of each Newznab and Torznab provider with an address, drawn when the page is made; with
+    // none of them there is only the general text, so the card says when its settings come
+    var TC = {none: ${_js('The categories of each Newznab and Torznab provider show here once its address is saved. Add one under Newznab or Torznab providers above, save, and LazyLibrarian reads its categories by itself.')},
+              add: ${_js('Go to the providers')}};
+    function llcCategories() {
+      var first = form.querySelector('#providers input[id$="_generalsearch"]'), card = first && first.closest('.llc-flow-item > fieldset');
+      if (!card) { return; }
+      var shown = Array.prototype.some.call(card.querySelectorAll('input[id$="_generalsearch"]'), function (i) { return !i.closest('[hidden]'); });
+      if (shown) { return; }
+      var body = card.querySelector(':scope > .section-body') || card, note = document.createElement('p'), a = document.createElement('a');
+      note.className = 'llc-needs';
+      note.innerHTML = '<i class="fa fa-info-circle" aria-hidden="true"></i>';
+      note.appendChild(document.createTextNode(TC.none + ' '));
+      a.href = '#providers'; a.textContent = TC.add;
+      a.addEventListener('click', function (e) { e.preventDefault(); window.scrollTo({top: 0, behavior: 'smooth'}); });
+      note.appendChild(a);
+      body.insertBefore(note, body.firstChild);
+      // the general text is about changing settings that are not there yet
+      var grid = body.querySelector(':scope > .llc-cgrid');
+      if (grid) { Array.prototype.forEach.call(grid.children, function (c) { if (!c.querySelector('input:not([type="hidden"]):not(.hidden)')) { c.hidden = true; } }); }
+    }
+
+    // Getting started: the three settings LazyLibrarian needs to find and download books, each ticked off once it is
+    // set; shown until all are set or the user hides it
+    var TG = {title: ${_js('Getting started')}, hide: ${_js('Hide')},
+              text: ${_js('To find and download books LazyLibrarian needs these three settings, the rest can stay as it is for now.')},
+              lib: ${_js('the folder of your books')}, prov: ${_js('at least one place to search')},
+              dl: ${_js('a download client')}, dlNote: ${_js('not needed for direct download sites')}};
+    function llcStart() {
+      var box = document.getElementById('llc-start');
+      try { if (localStorage.getItem('llc-start-hidden') === '1') { return; } } catch (e) {}
+      var name = function (id) { var li = ul && ul.querySelector('li[aria-controls="' + id + '"]'); return li ? li.textContent.trim() : ''; };
+      var steps = [
+        ['llc-library', TG.lib, '', function () { return ['ebook_dir', 'audio_dir'].some(function (id) { var f = document.getElementById(id); return f && f.value.trim(); }); }],
+        ['providers', TG.prov, '', function () { return Array.prototype.some.call(form.querySelectorAll('.llc-pcard'), function (c) { return c._llcEnable && c._llcEnable.checked; }); }],
+        ['downloadsettings', TG.dl, TG.dlNote, function () { return !!form.querySelector('input[id^="nzb_downloader_"]:checked, input[id^="tor_downloader_"]:checked, #use_synology:checked'); }]
+      ].filter(function (s) { return name(s[0]); });
+      if (!steps.length || steps.every(function (s) { return s[3](); })) { return; }
+      box.innerHTML = '<div class="llc-start-head"><i class="fa fa-flag-checkered" aria-hidden="true"></i><strong></strong>' +
+        '<button type="button" class="btn-close btn-sm"></button></div><p></p><ol class="llc-steps"></ol>';
+      box.querySelector('strong').textContent = TG.title;
+      box.querySelector('p').textContent = TG.text;
+      var close = box.querySelector('.btn-close');
+      close.setAttribute('aria-label', TG.hide); close.title = TG.hide;
+      close.addEventListener('click', function () { box.hidden = true; try { localStorage.setItem('llc-start-hidden', '1'); } catch (e) {} });
+      var list = box.querySelector('ol');
+      steps.forEach(function (s, i) {
+        var li = document.createElement('li'), a = document.createElement('a'), num = document.createElement('span'), txt = document.createElement('span');
+        num.className = 'llc-stepnum'; a.href = '#' + s[0]; a.textContent = name(s[0]);
+        a.addEventListener('click', function (e) { e.preventDefault(); show(ul.querySelector('li[aria-controls="' + s[0] + '"]')); window.scrollTo({top: 0}); });
+        txt.appendChild(a); txt.appendChild(document.createTextNode(': ' + s[1]));
+        if (s[2]) { var sm = document.createElement('small'); sm.textContent = s[2]; txt.appendChild(sm); }
+        li.appendChild(num); li.appendChild(txt); list.appendChild(li);
+        s.li = li; s.num = num; s.n = i + 1;
+      });
+      var paint = function () {
+        steps.forEach(function (s) {
+          var done = s[3]();
+          s.li.classList.toggle('done', done);
+          s.num.innerHTML = done ? '<i class="fa fa-check" aria-hidden="true"></i>' : String(s.n);
+        });
+      };
+      form.addEventListener('change', paint); form.addEventListener('input', paint);
+      paint();
+      box.hidden = false;
     }
     // the info source switches and API keys are saved at once and the page reloads (the list of primary sources
     // depends on them); they are no unsaved change, and the reload keeps the place on the page
@@ -480,6 +1083,50 @@
     // copied, so names, ids and the page scripts' handlers stay as they are.
     var TP = {enabled: ${_js('Enabled')}, provider: ${_js('Provider')}, fold: ${_js('Show or hide details')}};
     var TF = {words: ${_js('Word Lists')}, sizes: ${_js('Size Limits')}};
+    // the download types are a CSV of letters (E eBook, A audiobook, M magazine, C comic): an icon button for each instead
+    var TDL = [['E', 'fa-book', ${_js('eBooks')}], ['A', 'fa-headphones', ${_js('AudioBooks')}],
+               ['M', 'fa-newspaper', ${_js('Magazines')}], ['C', 'fa-images', ${_js('Comics')}]];
+<%
+    from lazylibrarian.configdefs import BASE_DEFAULTS, ARRAY_DEFS
+    from lazylibrarian.configtypes import ConfigDownloadTypes
+    # default download types by field prefix: kat (kat_dltypes), newznab (newznab_0_dltypes)...
+    dl_defaults = {item.key[:-len('_DLTYPES')].lower(): item.default for item in BASE_DEFAULTS
+                   if isinstance(item, ConfigDownloadTypes)}
+    for arr_name, arr_def in ARRAY_DEFS.items():
+        for item in arr_def[2]:
+            if isinstance(item, ConfigDownloadTypes):
+                dl_defaults[arr_name.lower()] = item.default
+%>
+    var TDL_DEF = ${js(dl_defaults)};
+    function llcTypeList(v) { return String(v || '').toUpperCase().split(/[\s,]+/).filter(Boolean); }
+    function llcSetTypes(input, list) {
+      input.value = ['A', 'C', 'E', 'M'].filter(function (k) { return list.indexOf(k) >= 0; }).join(',');
+      input.dispatchEvent(new Event('input', {bubbles: true}));
+      input.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    function llcTypeButtons(input, wrap, label) {
+      var box = document.createElement('div');
+      box.className = 'llc-dlt'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', label);
+      TDL.forEach(function (t) {
+        var b = document.createElement('button');
+        b.type = 'button'; b.title = t[2]; b.setAttribute('aria-label', t[2]);
+        b.innerHTML = '<i class="fa ' + t[1] + '" aria-hidden="true"></i>';
+        var paint = function () {
+          var on = llcTypeList(input.value).indexOf(t[0]) >= 0;
+          b.className = 'btn btn-sm rounded-pill ' + (on ? 'btn-primary' : 'btn-outline-secondary');
+          b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        };
+        b.addEventListener('click', function () {
+          var cur = llcTypeList(input.value), i = cur.indexOf(t[0]);
+          if (i >= 0) { cur.splice(i, 1); } else { cur.push(t[0]); }
+          llcSetTypes(input, cur);
+        });
+        input.addEventListener('input', paint); paint();
+        box.appendChild(b);
+      });
+      input.hidden = true;
+      wrap.appendChild(input); wrap.appendChild(box);
+    }
     function llcProviderCards() {
       form.querySelectorAll('fieldset > .col-md-4.form-group, fieldset > .col-md-6.form-group').forEach(function (block) {
         var groups = block.querySelectorAll(':scope > .input-group');
@@ -521,11 +1168,15 @@
         if (!fields.length) { return; }
         fields.forEach(function (f, i) {
           var wrap = document.createElement('div');
-          // numbers, counters and the short download types share a line, names, urls and keys get a whole one
-          var narrow = f.el.type === 'number' || f.el.readOnly || /_dltypes$/.test(f.el.id);
+          // numbers and counters share a line, names, urls, keys and the type buttons get a whole one
+          var narrow = f.el.type === 'number' || f.el.readOnly;
           wrap.className = 'llc-pf' + (narrow ? '' : ' llc-wide');
           var lb = document.createElement('label');
-          lb.textContent = f.label; if (f.el.id) { lb.htmlFor = f.el.id; }
+          lb.textContent = f.label;
+          if (/_dltypes$/.test(f.el.id)) {
+            wrap.appendChild(lb); llcTypeButtons(f.el, wrap, f.label); grid.appendChild(wrap); return;
+          }
+          if (f.el.id) { lb.htmlFor = f.el.id; }
           wrap.appendChild(lb);
           if (f.extra.length) {
             var ig = document.createElement('div'); ig.className = 'input-group input-group-sm';
@@ -550,6 +1201,15 @@
           head.insertBefore(on, title);
           var state = function () { block.classList.toggle('llc-off', !enable.checked); };
           enable.addEventListener('change', state); state();
+          // switched on: a provider with no download types gets its default ones, and the card opens to show them
+          enable.addEventListener('change', function () {
+            if (!enable.checked) { return; }
+            block.querySelectorAll('input[id$="_dltypes"]').forEach(function (t) {
+              var d = TDL_DEF[t.id.replace(/_dltypes$/, '').replace(/_\d+$/, '')];
+              if (d && !llcTypeList(t.value).length) { llcSetTypes(t, llcTypeList(d)); }
+            });
+            if (block.classList.contains('llc-pfold')) { fold(false); }
+          });
         }
         // whatever else the block holds (hidden labels, help) goes below the fields
         var rest = Array.prototype.slice.call(block.childNodes);
@@ -566,7 +1226,86 @@
         rest.forEach(function (n) { if (n.nodeType === 1 && !n.matches('label.sr-only')) { box.appendChild(n); } else if (n.nodeType === 1) { n.remove(); } });
         block.appendChild(box);
         block.classList.add('llc-pcard');
+        block._llcHead = head; block._llcEnable = enable;
       });
+    }
+
+    // Provider status: a badge in each card's header (OK, or Blocked when the provider failed and is skipped for a
+    // while), the time left, the reason and an Unblock button under it; blocks on sources that have no card
+    // (metadata sites and the like) are listed at the top of Providers. Refreshed every minute.
+    var TS = {ok: ${_js('OK')}, blocked: ${_js('Blocked')}, unblock: ${_js('Unblock')},
+              left: ${_js('Blocked for %(time)s')}, other: ${_js('Other blocked sources')},
+              min: ${_jsn('%(count)s minute', '%(count)s minutes')}, hr: ${_jsn('%(count)s hour', '%(count)s hours')}};
+    function llcLeft(s) {
+      var m = Math.ceil(s / 60);
+      return m < 120 ? llNgettext(TS.min, m) : llNgettext(TS.hr, Math.round(m / 60));
+    }
+    function llcBlockNote(b, refresh) {
+      var note = document.createElement('div'); note.className = 'llc-pblock';
+      var txt = document.createElement('span');
+      txt.textContent = TS.left.replace('%(time)s', llcLeft(b.remaining)) + (b.reason ? ': ' + b.reason : '');
+      var btn = document.createElement('button');
+      btn.type = 'button'; btn.className = 'btn btn-sm btn-outline-danger rounded-pill'; btn.textContent = TS.unblock;
+      btn.addEventListener('click', function () {
+        var body = new FormData(); body.append('key', b.key); btn.disabled = true;
+        fetch('unblock_provider', {method: 'POST', body: body, credentials: 'same-origin'}).then(refresh, refresh);
+      });
+      if (b.hint) {  // what to change, and where (block_hint in blockhints.py)
+        var hint = document.createElement('span'); hint.className = 'llc-phint'; hint.textContent = b.hint; txt.appendChild(hint);
+      }
+      note.appendChild(txt); note.appendChild(btn);
+      return note;
+    }
+    function llcProviderStatus() {
+      var cards = form.querySelectorAll('.llc-pcard'), data = null;
+      if (!cards.length) { return; }
+      function cardPrefix(card, prefixes) {
+        var best = '';
+        card.querySelectorAll('[id]').forEach(function (el) {
+          prefixes.forEach(function (p) { if ((el.id === p || el.id.indexOf(p + '_') === 0) && p.length > best.length) { best = p; } });
+        });
+        return best;
+      }
+      function paint() {
+        if (!data) { return; }
+        var prefixes = Object.keys(data.cards);
+        cards.forEach(function (card) {
+          var head = card._llcHead; if (!head) { return; }
+          if (card._llcPrefix === undefined) { card._llcPrefix = cardPrefix(card, prefixes); }
+          var old = head.querySelector('.llc-pstat'); if (old) { old.remove(); }
+          var oldNote = card.querySelector('.llc-pblock'); if (oldNote) { oldNote.remove(); }
+          if (!card._llcPrefix) { return; }
+          var b = data.cards[card._llcPrefix], on = !card._llcEnable || card._llcEnable.checked;
+          if (!b && !on) { return; }
+          var badge = document.createElement('span');
+          badge.className = 'llc-pstat ' + (b ? 'llc-pbad' : 'llc-pok');
+          // a dot, its words for screen readers and the tooltip
+          badge.setAttribute('role', 'img');
+          badge.title = b ? TS.left.replace('%(time)s', llcLeft(b.remaining)) + (b.reason ? ': ' + b.reason : '') : TS.ok;
+          badge.setAttribute('aria-label', b ? TS.blocked : TS.ok);
+          head.querySelector('.llc-ptitle').after(badge);
+          if (b) { head.after(llcBlockNote(b, load)); }
+          if (card._llcEnable && !card._llcWatch) { card._llcWatch = true; card._llcEnable.addEventListener('change', paint); }
+        });
+        var prov = document.getElementById('providers'); if (!prov) { return; }
+        var box = prov.querySelector('.llc-pother'); if (box) { box.remove(); }
+        if (!data.other.length) { return; }
+        box = document.createElement('div'); box.className = 'llc-pother';
+        var h = document.createElement('div'); h.className = 'llc-pother-h'; h.textContent = TS.other;
+        box.appendChild(h);
+        data.other.forEach(function (b) {
+          var row = llcBlockNote(b, load), name = document.createElement('strong');
+          name.textContent = b.key; row.insertBefore(name, row.firstChild);
+          box.appendChild(row);
+        });
+        prov.insertBefore(box, prov.firstChild);
+      }
+      function load() {
+        fetch('provider_status', {credentials: 'same-origin'}).then(function (r) { return r.json(); })
+          .then(function (json) { data = json; paint(); }).catch(function () {});
+      }
+      load();
+      setInterval(function () { if (!document.hidden) { load(); } }, 60000);
     }
 
     // "label | field | label | field | unit" input groups (Host/Port, Min/Max size, File/Directory permissions,
@@ -623,6 +1362,110 @@
       });
     }
 
+    // Buttons: bookstrap mixes filled, outlined and warning buttons of three sizes, beside, under or in the middle
+    // of the fields. Here every action button is a small outlined pill (Save is the one filled button), the buttons
+    // next to each other share one row, and a row stands under what it acts on: a field, or the whole section for
+    // a download client's Test. Buttons in a field (show/hide, Generate, Test of an apprise url) sit at its right end.
+    function llcActions() {
+      var pane = form.querySelector('.tab-content');
+      var isBtn = function (n) {
+        return n && n.nodeType === 1 && n.matches('.btn') && !n.matches('.llc-token, .accent-swatch, .llc-pcaret, .secret-toggle, .langchip') &&
+          !n.closest('.input-group, .llc-ph, legend, .llc-pblock, .searchlang-modes, .langpicker, .accent-picker, .help-block, .llc-actions, .llc-dlt');
+      };
+      var skippable = function (n) { return n && ((n.nodeType === 3 && !n.textContent.trim()) || (n.nodeType === 1 && n.matches('br'))); };
+      // an apprise notifier: "Name | field | S [] | D []" in one bar becomes the name field with the two switches
+      // under it, as in the other notifiers; the S and D get their words (Notify Snatch, Notify Download)
+      pane.querySelectorAll('input[id^="apprise_"][id$="_dispname"]').forEach(function (name) {
+        var g = name.closest('.input-group');
+        if (!g) { return; }
+        var first = g.querySelector('.input-group-text'), ff = document.createElement('div'), lb = document.createElement('label');
+        ff.className = 'form-group'; lb.className = 'control-label'; lb.htmlFor = name.id;
+        lb.textContent = first ? first.textContent.trim() : ''; ff.appendChild(lb); ff.appendChild(name);
+        var row = document.createElement('div'); row.className = 'row checkbox';
+        g.querySelectorAll('input[type="checkbox"]').forEach(function (cb) {
+          var tip = window.bootstrap && bootstrap.Tooltip.getInstance(cb); if (tip) { tip.dispose(); }
+          var col = document.createElement('div'), l = document.createElement('label');
+          col.className = 'col-6'; l.htmlFor = cb.id; l.className = 'control-label';
+          l.appendChild(cb); l.appendChild(document.createTextNode(' ' + (cb.getAttribute('title') || cb.getAttribute('data-bs-original-title') || '')));
+          cb.removeAttribute('title'); cb.removeAttribute('data-toggle');
+          col.appendChild(l); row.appendChild(col);
+        });
+        var block = g.parentElement;
+        g.replaceWith(ff); ff.after(row);
+        // each notifier in a box of its own, like the other notifiers' sections, so its fields read as one; the
+        // box goes inside the column, whose padding stays the gap between two boxes
+        var card = document.createElement('div'); card.className = 'llc-acard';
+        while (block.firstChild) { card.appendChild(block.firstChild); }
+        block.appendChild(card);
+      });
+      // a field's buttons: outlined like the show/hide eye, the apprise Test out of its box to the field's end
+      pane.querySelectorAll('.input-group .btn-primary, .input-group .btn-warning').forEach(function (b) {
+        b.classList.remove('btn-primary', 'btn-warning', 'active', 'btn-sm', 'button'); b.classList.add('btn-outline-secondary');
+        var box = b.parentElement;
+        if (box.matches('.input-group-text') && box.children.length === 1 && !box.textContent.replace(b.textContent, '').trim()) { box.replaceWith(b); }
+      });
+      pane.querySelectorAll('.input-group > .input-group-text').forEach(function (s) { if (!s.children.length && !s.textContent.trim()) { s.remove(); } });
+      // a field label bookstrap wrote as an input group box with no group around it (Telemetry server) is a label
+      pane.querySelectorAll('.form-group > .input-group-text').forEach(function (s) {
+        var input = s.nextElementSibling, lb = document.createElement('label');
+        lb.className = 'control-label'; lb.textContent = s.textContent.trim();
+        if (input && input.id) { lb.htmlFor = input.id; }
+        s.replaceWith(lb);
+      });
+      // runs of buttons become rows
+      pane.querySelectorAll('.btn').forEach(function (b) {
+        if (!isBtn(b)) { return; }
+        var run = [b], n = b.nextSibling;
+        while (n && (skippable(n) || isBtn(n))) { if (n.nodeType === 1 && n.matches('.btn')) { run.push(n); } n = n.nextSibling; }
+        var row = document.createElement('div'); row.className = 'llc-actions';
+        b.before(row);
+        run.forEach(function (x) {
+          x.classList.remove('btn-primary', 'btn-warning', 'btn-default', 'active', 'button'); x.classList.add('btn-sm', 'btn-outline-secondary');
+          var gap = x.nextSibling; if (skippable(gap) && gap.nodeType === 1) { gap.remove(); }
+          row.appendChild(x);
+        });
+        // the <br>s bookstrap put after them are spacing the row has already
+        while (skippable(row.nextSibling)) { var s = row.nextSibling; s.remove(); }
+      });
+      // a block holding nothing but a row of buttons joins the row just before it (Request oAuth1/2 + Test, Verify + Test)
+      var only = function (g) {
+        return g && g.matches('.form-group') && Array.prototype.every.call(g.children, function (c) { return c.matches('.llc-actions, br, .help-block[hidden]'); }) &&
+          g.querySelectorAll(':scope > .llc-actions').length === 1;
+      };
+      pane.querySelectorAll('.form-group > .llc-actions').forEach(function (row) {
+        var g = row.parentElement, prev = g.previousElementSibling;
+        if (!only(g) || !only(prev)) { return; }
+        var dst = prev.querySelector(':scope > .llc-actions');
+        while (row.firstChild) { dst.appendChild(row.firstChild); }
+        Array.prototype.slice.call(g.children).forEach(function (c) { if (c.matches('.help-block')) { prev.appendChild(c); } });
+        g.remove();
+      });
+      // a download client's buttons act on the whole section, as on a provider card: Open (its web page) and Test
+      // in the heading, out of the column beside a field
+      form.querySelectorAll('#downloadsettings .llc-actions').forEach(function (row) {
+        var test = row.querySelector('[id^="test_"]');
+        if (!test) { return; }
+        var fs = row.closest('fieldset'); if (!fs) { return; }
+        var body = fs.querySelector(':scope > .section-body') || fs, from = row.parentElement;
+        var legend = fs.querySelector(':scope > legend');
+        if (legend) {
+          // the heading names the client already, so the buttons only say what they do
+          row.querySelectorAll('a.btn[target="_blank"]').forEach(function (open) {
+            open.classList.add('rounded-pill', 'llc-ltest');
+            open.innerHTML = '<i class="fa fa-external-link-alt me-1" aria-hidden="true"></i>' + ${_js('Open')};
+            legend.appendChild(open);
+          });
+          test.classList.add('rounded-pill', 'llc-ltest');
+          test.textContent = ${_js('Test')};
+          legend.appendChild(test);
+        }
+        if (row.querySelector('.btn')) { body.insertBefore(row, body.firstChild); } else { row.remove(); }
+        while (from && from !== body && !from.querySelector('input, select, textarea, button, label, .help-block')) {
+          var up = from.parentElement; from.remove(); from = up;
+        }
+      });
+    }
+
     window.llcAfterReady = function () {
       llcModernize(form);
       // a <p> bookstrap opens between two rows (Genres) is closed by the browser at once; holding only whitespace
@@ -631,6 +1474,7 @@
         if (!p.children.length && !p.textContent.trim()) { p.remove(); }
       });
       llcProviderCards();
+      llcProviderStatus();
       // provider type headings (Newznab, Torznab, rss...) carry their own show switch, so bookstrap leaves them
       // unfoldable; here the switch keeps working and a click anywhere else on the heading folds the section
       form.querySelectorAll('#providers fieldset > legend').forEach(function (lg) {
@@ -640,8 +1484,13 @@
         if (lab) { cb.setAttribute('aria-label', lab.textContent.trim()); lab.removeAttribute('for'); }
         lg.insertAdjacentHTML('afterbegin', '<i class="fa fa-caret-down section-caret" aria-hidden="true"></i>');
         lg.classList.add('llc-lfold'); lg.tabIndex = 0; lg.setAttribute('role', 'button'); lg.setAttribute('aria-expanded', 'true');
+        // Open Prowlarr (in the lists it added indexers to) goes to the heading, as Open and Test of a download client
+        fs.querySelectorAll('.llc-prowlarr').forEach(function (box) {
+          box.querySelectorAll('a.btn').forEach(function (a) { a.classList.add('rounded-pill', 'llc-ltest'); lg.appendChild(a); });
+          box.remove();
+        });
         var flip = function (e) {
-          if (e.target === cb) { return; }
+          if (e.target === cb || e.target.closest('.btn')) { return; }
           if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') { return; }
           e.preventDefault();
           var c = !fs.classList.contains('llc-sfold');
@@ -810,17 +1659,41 @@
         var dl = document.getElementById('date_lang'), names = dl && dl.closest('fieldset');
         if (!bookFs || !names) { return; }
         var grp = function (el, sel) { return el ? el.closest(sel || '.form-group') : null; };
-        var card = function (title, nodes) {
+        var card = function (title, nodes, note) {
           nodes = nodes.filter(function (n) { return n; });
           if (!nodes.length) { return; }
           var fs = llcCard(title), b = fs.querySelector('.section-body');
+          if (note) { b.appendChild(note); }
           nodes.forEach(function (n) { b.appendChild(n); });
           bookFs.parentElement.appendChild(fs);
         };
+        // the word lists are filled by the language buttons of another card, say which and link to it
+        var picker = document.getElementById('monthlangpicker');
+        var langNote = function () {
+          if (!picker) { return null; }
+          var p = document.createElement('p'), a = document.createElement('a');
+          var parts = ${js(_('The words of each language are filled in by the language buttons in %(card)s. The lists can also be edited by hand.'))}.split('%(card)s');
+          var legend = names.querySelector('legend');
+          // shown as text, not turned into an (i) icon, so it is seen before looking for the buttons here
+          p.className = 'help-block help-keep';
+          p.style.margin = '0 0 .75rem';
+          a.href = '#monthlangpicker';
+          a.textContent = legend ? legend.textContent.trim() : '';
+          a.addEventListener('click', function (e) {
+            e.preventDefault();
+            picker.scrollIntoView({behavior: 'smooth', block: 'center'});
+            var chip = picker.querySelector('.langchip');
+            if (chip) { chip.focus({preventScroll: true}); }
+          });
+          p.appendChild(document.createTextNode(parts[0]));
+          p.appendChild(a);
+          p.appendChild(document.createTextNode(parts.slice(1).join('')));
+          return p;
+        };
         card(${_js('Language Detection')}, [grp(document.getElementById('google_trans_id'), '.checkbox'),
           grp(document.getElementById('ms_trans_id')), document.getElementById('lang_refresh_options')]);
-        card(${_js('Magazine Titles')}, ['pref_maglang', 'issue_nouns', 'volume_nouns', 'mag_nouns'].map(function (id) { return grp(document.getElementById(id)); }));
-        card(${_js('Sorting')}, ['name_postfix', 'name_definite', 'imp_nosplit'].map(function (id) { return grp(document.getElementById(id)); }));
+        card(${_js('Magazine Titles')}, ['pref_maglang', 'issue_nouns', 'volume_nouns', 'mag_nouns'].map(function (id) { return grp(document.getElementById(id)); }), langNote());
+        card(${_js('Sorting')}, ['name_prefix', 'name_postfix', 'multi_author_split', 'name_definite', 'imp_nosplit'].map(function (id) { return grp(document.getElementById(id)); }), langNote());
       })();
       // Processing in the order the work happens: when, with what status, what is imported, Calibre, where files go
       // and how they are named, conversions and the programs for them, the rest
@@ -943,6 +1816,7 @@
       // name patterns: each $variable in the help under the field becomes a button that inserts it at the cursor
       (function () {
         var TOK = /\$\$|\$[A-Za-z]+/g, insertTip = ${_js('Insert at the cursor')};
+        var insertHow = ${_js('The buttons under the field insert the details of the book at the cursor; any other text you type stays as it is.')};
         // what each variable stands for, shown on its button; the variable itself is in the tooltip
         var NAMES = {
           '$Author': ${_js('Author')}, '$SortAuthor': ${_js('Author, surname first')}, '$Title': ${_js('Title')},
@@ -965,21 +1839,70 @@
             if (!walker.currentNode.parentNode.closest('strong') && TOK.test(walker.currentNode.nodeValue)) { nodes.push(walker.currentNode); }
             TOK.lastIndex = 0;
           }
+          // the word before the first variable ("Options:", in any language) and the commas between them go, the
+          // buttons stand on their own; any other text ("Absolute path...", "any string") stays
           nodes.forEach(function (node) {
-            var text = node.nodeValue, frag = document.createDocumentFragment(), last = 0, m;
+            var text = node.nodeValue, frag = document.createDocumentFragment(), last = 0, m, count = 0;
             TOK.lastIndex = 0;
             while ((m = TOK.exec(text))) {
-              if (m.index > last) { frag.appendChild(document.createTextNode(text.slice(last, m.index))); }
+              var gap = text.slice(last, m.index);
+              if (!count) { gap = gap.replace(/[^\s.:;]+\s*:\s*$/, ''); } else if (/^[\s,;]*$/.test(gap)) { gap = ' '; }
+              if (gap) { frag.appendChild(document.createTextNode(gap)); }
+              count++;
               var b = document.createElement('button');
               b.type = 'button'; b.className = 'llc-token'; b.dataset.token = m[0];
               b.textContent = NAMES[m[0]] || m[0]; b.title = m[0] + ' · ' + insertTip;
               frag.appendChild(b);
               last = m.index + m[0].length;
             }
-            if (last < text.length) { frag.appendChild(document.createTextNode(text.slice(last))); }
+            var tail = text.slice(last).replace(/^[\s,;]+/, '');
+            if (tail) { frag.appendChild(document.createTextNode(' ' + tail)); }
             node.parentNode.replaceChild(frag, node);
           });
           if (!nodes.length) { return; }
+          // the buttons stay under the field; the words around them (where the folder may be, "any string", the
+          // limitations) go to the (i) of the field like any other help
+          var info = document.createElement('span'), afterToken = false, warns = [];
+          info.className = 'help-block';
+          Array.prototype.slice.call(help.childNodes).forEach(function (n) {
+            if (n.nodeType === 1 && n.matches('.llc-token')) { afterToken = true; return; }
+            if (n.nodeType === 3 && !n.textContent.trim()) { return; }
+            // "any string" after the variables is said by the sentence below in full
+            if (n.nodeType === 3 && afterToken) { n.remove(); afterToken = false; return; }
+            afterToken = false;
+            if (n.nodeType === 1 && n.matches('br')) { n.remove(); return; }
+            // a limitation ("Current limitation: has to include $Title") stays in sight, as a warning under the buttons
+            if (n.nodeType === 1 && n.matches('strong')) {
+              var warn = document.createElement('span');
+              warn.className = 'help-block help-keep text-warning llc-warn';
+              warn.innerHTML = '<i class="fa fa-exclamation-triangle" aria-hidden="true"></i> ';
+              // the sign says it is a limitation, the words "Current limitation:" (in any language) go
+              var said = n.textContent.replace(/\s+/g, ' ').trim().replace(/^[^:$]{1,40}:\s*/, '');
+              warn.appendChild(document.createTextNode(said.charAt(0).toUpperCase() + said.slice(1)));
+              n.remove(); warns.push(warn);
+              return;
+            }
+            if (info.childNodes.length) { info.appendChild(document.createElement('br')); }
+            info.appendChild(n);
+          });
+          var how = document.createElement('span');
+          how.textContent = insertHow;
+          info.insertBefore(how, info.firstChild);
+          if (info.childNodes.length > 1) { info.insertBefore(document.createElement('br'), how.nextSibling); }
+          help.after(info);
+          // under the field: the example of the pattern, then what it has to include, the buttons come after them
+          var ex = info.nextElementSibling;
+          while (ex && !ex.matches('small')) { ex = ex.nextElementSibling; }
+          var anchor = field.closest('.input-group') || field;
+          if (ex) { ex.style.display = 'block'; ex.style.margin = '.3rem 0 .4rem'; anchor.after(ex); anchor = ex; }
+          warns.reverse().forEach(function (w) { anchor.after(w); });
+          // "($Series variable)" in the label names the variable this pattern fills; the buttons say it already
+          var lab = field.id && form.querySelector('label[for="' + field.id + '"]');
+          if (lab) {
+            Array.prototype.forEach.call(lab.childNodes, function (n) {
+              if (n.nodeType === 3) { n.nodeValue = n.nodeValue.replace(/\s*\([^()]*\$[^()]*\)/g, ''); }
+            });
+          }
           help.addEventListener('click', function (e) {
             var b = e.target.closest('.llc-token');
             if (!b) { return; }
@@ -1009,6 +1932,7 @@
         if (t && t.nodeType === 3) { t.textContent = t.textContent.replace(/\s*:\s*$/, ''); }
       });
       llcFieldGrids();
+      llcActions();
       // the accent picker goes where the Bootswatch theme was; the theme select stays in the form, hidden, so its
       // value is saved unchanged
       var bso = document.getElementById('bookstrap_options'), tpl = document.getElementById('llc-accent-tpl');
@@ -1032,6 +1956,12 @@
         acc.addEventListener('input', paint);
         swatches.forEach(function (s) { s.classList.toggle('active', s.dataset.color.toLowerCase() === acc.value.toLowerCase()); });
       }
+      llcRegroup();
+      llcCardGrids();
+      llcFlags();
+      llcCountries();
+      llcCategories();
+      llcStart();
       var stored = null, back = null;
       try { stored = sessionStorage.getItem('llc-tab'); back = JSON.parse(sessionStorage.getItem('llc-scroll') || 'null'); sessionStorage.removeItem('llc-scroll'); } catch (e) {}
       var active = ul && ((stored && ul.querySelector('li[aria-controls="' + stored + '"]')) || ul.querySelector('li.active'));
@@ -1041,7 +1971,12 @@
       // help texts become (i) icons with a popover, next to their label or button, else next to the section heading
       form.querySelectorAll('.help-block:not(.help-keep)').forEach(function (help) {
         var anchor = null, prev = help.previousElementSibling;
-        while (prev && !anchor) { if (prev.matches('label, button, .control-label') && !prev.matches('.input-group-text')) { anchor = prev; } prev = prev.previousElementSibling; }
+        while (prev && !anchor) {
+          if (prev.matches('label, button, .control-label, .llc-actions') && !prev.matches('.input-group-text')) { anchor = prev; }
+          // under a field made from an input group (Cache expiry, Stalled downloads): the label of its first field
+          else if (prev.matches('.llc-fgrid')) { anchor = prev.querySelector('label'); }
+          prev = prev.previousElementSibling;
+        }
         if (!anchor) {
           var p = help.parentElement;
           while (p && p !== form && !anchor) { var lg = p.querySelector(':scope > legend'); if (lg) { anchor = lg; } p = p.parentElement; }
@@ -1054,7 +1989,8 @@
           icon.innerHTML = '<i class="fa fa-info-circle" aria-hidden="true"></i>';
           icon.setAttribute('aria-label', help.textContent.trim().slice(0, 120));
           icon.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); });
-          anchor.appendChild(icon);
+          // next to the heading's name, before a Test at its end
+          anchor.insertBefore(icon, anchor.querySelector(':scope > .llc-ltest'));
           icon._llcHelp = [];
         }
         icon._llcHelp.push(help.innerHTML);

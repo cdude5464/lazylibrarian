@@ -326,6 +326,20 @@ def _book_language(code: str) -> tuple:
     return None, None
 
 
+def book_language_label(value: str) -> str:
+    """ A BookLang value for display: each code or English name of a known language becomes
+        its translated name, anything else stays as it is. Keeps comma separated lists """
+    labels = []
+    for item in get_list(value or '', ','):
+        if not item:
+            continue
+        name, _ = _book_language(item)
+        label = i18n.gettext(name) if name else item
+        if label not in labels:
+            labels.append(label)
+    return ', '.join(labels)
+
+
 def language_filter_options(booklangs) -> list:
     """ The languages for the language filter of the eBook, AudioBook and author book lists, one each.
         booklangs are the BookLang values in the list (strings or rows with a BookLang column), which

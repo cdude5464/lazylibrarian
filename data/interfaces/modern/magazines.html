@@ -36,6 +36,18 @@
     .llm-gen { padding: 6px; } .llm-gen .t { font-size: .72rem; } .llm-title { font-size: .78rem; } .llm-sub, .llm-tags { display: none; }
     .llm-pill { font-size: .58rem; padding: 2px 6px; } .llm-act { font-size: .66rem; } .llm-check { width: 22px; height: 22px; }
   }
+  /* compact: smaller covers, title and pause badge only */
+  .llm-v-compact.llm-grid { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); gap: 14px 12px; }
+  .llm-v-compact .llm-sub, .llm-v-compact .llm-tags, .llm-v-compact .llm-act { display: none !important; }
+  .llm-v-compact .llm-title { font-size: .8rem; -webkit-line-clamp: 1; }
+  .llm-v-compact .llm-gen { padding: 7px; } .llm-v-compact .llm-gen .t { font-size: .8rem; }
+  .llm-v-compact .llm-count { font-size: .6rem; padding: 1px 6px; right: 4px; bottom: 4px; }
+  .llm-v-compact .llm-check { width: 22px; height: 22px; top: 4px; right: 4px; }
+  @media (max-width: 480px) {
+    .llm-v-compact.llm-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px 8px; }
+    .llm-v-compact .llm-title { font-size: .7rem; }
+    .llm-v-compact .llm-gen { padding: 5px; } .llm-v-compact .llm-gen .t { font-size: .6rem; }
+  }
   .llm-v-list.llm-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .llm-v-list .llm-card { display: grid; align-items: center; gap: 0 12px; padding: 6px 4px; border-bottom: 1px solid var(--bs-border-color-translucent);
                           grid-template-columns: 36px minmax(0, 1fr) auto; grid-template-areas: "cover title status" "cover sub status"; }
@@ -61,7 +73,7 @@
 %>
 <div x-data="llMags" x-init="start()">
   <div class="d-flex align-items-center gap-2 flex-wrap mb-3">
-    <h1 class="h3 mb-0 me-1">${title}</h1>
+    <h1 class="h3 mb-0 me-1">${title | h}</h1>
     <span class="text-body-secondary small" x-text="countText"></span>
     <span class="flex-grow-1"></span>
     <div class="input-group input-group-sm llm-filter">
@@ -69,26 +81,58 @@
       <input type="search" id="llm-q" class="form-control rounded-end-pill" x-model.debounce.300ms="q"
              placeholder="${_('Filter magazines') | h}" autocomplete="off" aria-label="${_('Filter magazines') | h}">
     </div>
-    <div class="btn-group btn-group-sm llm-views" role="group" aria-label="${_('View') | h}">
-      <button type="button" class="btn" :class="view === 'grid' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'grid'"
-              @click="setView('grid')" title="${_('Covers') | h}" aria-label="${_('Covers') | h}"><i class="fa fa-th-large" aria-hidden="true"></i></button>
-      <button type="button" class="btn" :class="view === 'list' ? 'btn-secondary' : 'btn-outline-secondary'" :aria-pressed="view === 'list'"
-              @click="setView('list')" title="${_('List') | h}" aria-label="${_('List') | h}"><i class="fa fa-list" aria-hidden="true"></i></button>
-    </div>
     <select id="llm-sort" class="form-select form-select-sm w-auto rounded-pill" x-model="sort" aria-label="${_('Sort') | h}">
       <option value="2:asc">${_('Title')}</option>
       <option value="5:desc">${_('Latest Issue')}</option>
       <option value="4:desc">${_('Added')}</option>
       <option value="3:desc">${_('Issues')}</option>
     </select>
+    <div class="dropdown llm-views">
+      <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
+              title="${_('View') | h}" aria-label="${_('View') | h}">
+        <i class="fa" :class="view === 'grid' ? 'fa-th-large' : view === 'compact' ? 'fa-th' : view === 'list' ? 'fa-list' : 'fa-th-large'" aria-hidden="true"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><button type="button" class="dropdown-item" :class="view === 'grid' && 'active'" @click="setView('grid')">
+          <i class="fa fa-fw me-2 fa-th-large" aria-hidden="true"></i>${_('Covers') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'compact' && 'active'" @click="setView('compact')">
+          <i class="fa fa-fw me-2 fa-th" aria-hidden="true"></i>${_('Compact') | h}
+        </button></li>
+        <li><button type="button" class="dropdown-item" :class="view === 'list' && 'active'" @click="setView('list')">
+          <i class="fa fa-fw me-2 fa-list" aria-hidden="true"></i>${_('List') | h}
+        </button></li>
+      </ul>
+    </div>
     %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
     <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="selecting ? stopSelect() : (selecting = true)"
             x-text="selecting ? T.done : T.select"></button>
+    <div class="dropdown dropup ll-selmenu" x-show="selecting" x-cloak>
+      <button type="button" class="btn btn-sm btn-ll rounded-pill dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false"
+              x-text="llNgettext(T.selected, selCount)"></button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        %if perm&lazylibrarian.perm_status:
+        <li><button type="button" class="dropdown-item" @click="bulk('Active')">${_('Active')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Paused')">${_('Paused')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Search')">${_('Search issues')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Scan')">${_('Scan issues')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('tag')">${_('Tag issues')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Reset')">${_('Reset')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Remove')">${_('Remove from library')}</button></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><button type="button" class="dropdown-item text-danger" @click="bulk('Delete')">${_('Delete from disk')}</button></li>
+        %endif
+        %if CONFIG['USER_ACCOUNTS']:
+        <li><button type="button" class="dropdown-item" @click="bulk('Subscribe')">${_('Subscribe')}</button></li>
+        <li><button type="button" class="dropdown-item" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button></li>
+        %endif
+      </ul>
+    </div>
     %endif
-    <button type="button" class="btn btn-sm btn-ll rounded-pill" data-bs-toggle="modal" data-bs-target="#llm-add">
-      <i class="fa fa-plus" aria-hidden="true"></i> ${_('Magazine')}
+    <button type="button" class="btn btn-sm btn-ll rounded-pill ll-top" data-bs-toggle="modal" data-bs-target="#llm-add">
+      <i class="fa fa-plus" aria-hidden="true"></i> ${_('Add')}
     </button>
-    <div class="dropdown">
+    <div class="dropdown ll-top">
       <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" data-bs-toggle="dropdown" aria-expanded="false"
               title="${_('More') | h}" aria-label="${_('More') | h}"><i class="fa fa-ellipsis-h" aria-hidden="true"></i></button>
       <ul class="dropdown-menu dropdown-menu-end">
@@ -98,7 +142,7 @@
         <li><hr class="dropdown-divider"></li>
         <li><a class="dropdown-item" href="force_search?source=magazines"><i class="fa fa-search fa-fw me-2" aria-hidden="true"></i>${_('Search')}</a></li>
         <li><a class="dropdown-item" href="force_process?source=magazines"><i class="fa fa-cogs fa-fw me-2" aria-hidden="true"></i>${_('Run Post-Processor')}</a></li>
-        <li><a class="dropdown-item" href="magazine_scan"><i class="fa fa-bolt fa-fw me-2" aria-hidden="true"></i>${_('Library Scan')}</a></li>
+        <li><a class="dropdown-item" href="magazine_scan"><i class="fa fa-bolt fa-fw me-2" aria-hidden="true"></i>${_('Scan magazines folder')}</a></li>
         <li><a class="dropdown-item" href="clean_magazine_library"><i class="fa fa-broom fa-fw me-2" aria-hidden="true"></i>${_('Library Clean')}</a></li>
         %endif
         %if CONFIG['USER_ACCOUNTS']:
@@ -139,7 +183,6 @@
           </template>
         </div>
         <div class="llm-status d-flex align-items-center gap-2 flex-wrap mt-auto pt-1">
-          <span class="badge rounded-pill llm-pill" :class="pillClass(m.status)" x-text="llStatus(m.status)"></span>
           <span class="badge rounded-pill llm-pill bg-secondary-subtle text-secondary-emphasis" x-show="m.magStatus === 'Paused'" x-text="llStatus('Paused')"></span>
           %if perm&lazylibrarian.perm_force:
           <template x-if="m.status === 'Wanted'"><button type="button" class="btn btn-link llm-act" data-do="search">${_('Search')}</button></template>
@@ -154,24 +197,6 @@
   </div>
   <div x-ref="sentinel" class="text-center text-body-secondary small py-4" x-text="done && mags.length ? T.allShown : ''"></div>
 
-  %if perm&lazylibrarian.perm_status or CONFIG['USER_ACCOUNTS']:
-  <div class="llm-bar d-flex align-items-center gap-2 flex-wrap" :class="!selecting && 'llm-bar-hidden'" role="region" aria-label="${_('Selected magazines') | h}">
-    <span class="fw-semibold me-auto" x-text="llNgettext(T.selected, selCount)"></span>
-    %if perm&lazylibrarian.perm_status:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Active')">${_('Active')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Paused')">${_('Paused')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Search')">${_('Search issues')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Scan')">${_('Scan issues')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('tag')">${_('Tag issues')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Reset')">${_('Reset')}</button>
-    %endif
-    %if CONFIG['USER_ACCOUNTS']:
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Subscribe')">${_('Subscribe')}</button>
-    <button type="button" class="btn btn-sm btn-outline-secondary rounded-pill" @click="bulk('Unsubscribe')">${_('Unsubscribe')}</button>
-    %endif
-    <button type="button" class="btn btn-sm btn-link" @click="stopSelect()">${_('Cancel')}</button>
-  </div>
-  %endif
 
   <div class="modal fade" id="llm-add" tabindex="-1" aria-labelledby="llm-add-title" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
@@ -210,7 +235,8 @@ document.addEventListener('alpine:init', function () {
     pickFirst: ${_js('Select at least one magazine first')}, failed: ${_js('Something went wrong, try again')},
     searching: ${_js('Searching...')},
     selected: ${_jsn('%(count)s selected', '%(count)s selected')},
-    mags: ${_jsn('%(count)s magazine', '%(count)s magazines')}
+    mags: ${_jsn('%(count)s magazine', '%(count)s magazines')},
+    confirmDel: ${_jsn('Are you sure you want to permanently delete the selected magazine and all its issues?', 'Are you sure you want to permanently delete the %(count)s selected magazines and all their issues?')}
   };
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) { h = (h * 31 + s.charCodeAt(i)) % 360; } return h; }
 
@@ -232,7 +258,7 @@ document.addEventListener('alpine:init', function () {
       get selCount() { return Object.keys(this.sel).length; },
       start: function () {
         var self = this;
-        try { var v = localStorage.getItem('llm-view'); if (v === 'grid' || v === 'list') { this.view = v; } } catch (e) {}
+        try { var v = localStorage.getItem('llm-view'); if (v === 'grid' || v === 'compact' || v === 'list') { this.view = v; } } catch (e) {}
         try {
           var saved = JSON.parse(sessionStorage.getItem('llm-mags') || 'null');
           if (saved) { this.q = saved.q || ''; this.sort = saved.sort || this.sort; }
@@ -287,10 +313,6 @@ document.addEventListener('alpine:init', function () {
           if (!self.done && self.$refs.sentinel.getBoundingClientRect().top < window.innerHeight + 400) { self.load(); }
         });
       },
-      pillClass: function (s) {
-        return {Open: 'text-bg-success', Have: 'bg-success-subtle text-success-emphasis', Active: 'text-bg-success', Wanted: 'text-bg-warning',
-                Snatched: 'text-bg-info', Paused: 'bg-secondary-subtle text-secondary-emphasis'}[s] || 'bg-secondary-subtle text-secondary-emphasis';
-      },
       open: function (m, e) {
         if (this.selecting) {
           e.preventDefault();
@@ -311,6 +333,7 @@ document.addEventListener('alpine:init', function () {
       bulk: function (action) {
         var ids = Object.keys(this.sel);
         if (!ids.length) { this.toast(T.pickFirst); return; }
+        if (action === 'Delete' && !window.confirm(llNgettext(T.confirmDel, ids.length))) { return; }
         var self = this;
         var body = new URLSearchParams({action: action});
         ids.forEach(function (id) { body.append(id, 'on'); });

@@ -675,6 +675,13 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
 
     preferred_source = valid_search_result_source(preferred_source)
     if preferred_source:
+        conflict = search_result_add_conflict(
+            {'source': preferred_source, 'bookid': bookid, 'bookname': title,
+             'authorid': authorid, 'authorname': authorname},
+            existing_ebook_status, existing_audio_status)
+        if conflict:
+            return conflict
+    if preferred_source:
         source_candidates = [preferred_source]
     else:
         source_candidates = [CONFIG['BOOK_API'], 'GoogleBooks', 'OpenLibrary', 'HardCover']
@@ -856,6 +863,23 @@ def search_result_library_conflict(db, result):
         return None
     return {key: match[key] for key in ('AuthorID', 'BookID', 'BookName', 'Status', 'AudioStatus', 'blocked', 'reason')
             if key in match}
+
+
+def search_result_add_conflict(result, ebook_status=None, audio_status=None):
+    """Revalidate the displayed refusal before individual or bulk metadata adds."""
+    db = database.DBConnection()
+    try:
+        if search_result_library_book(db, result):
+            return None
+        conflict = search_result_library_conflict(db, result)
+    finally:
+        db.close()
+    if conflict and (_is_blocked_add_result(conflict) or
+                     (ebook_status and conflict.get('Status') == 'Have') or
+                     (audio_status and conflict.get('AudioStatus') == 'Have')):
+        conflict.update(blocked=True, reason=conflict.get('reason', 'existing owned format'))
+        return conflict
+    return None
 
 
 def fold(s):
@@ -4934,17 +4958,11 @@ class WebInterface:
             if requested_source and title and authorname:
                 submitted_result = {'source': requested_source, 'bookid': bookid, 'bookname': title,
                                     'authorid': authorid, 'authorname': authorname}
-                db = database.DBConnection()
-                try:
-                    known = search_result_library_book(db, submitted_result)
-                    conflict = None if known else search_result_library_conflict(db, submitted_result)
-                finally:
-                    db.close()
+                conflict = search_result_add_conflict(submitted_result, existing_ebook_status,
+                                                      existing_audio_status)
                 # Apply the same refusal before refetching metadata can normalize
                 # away an edition suffix and overwrite a canonical Have row/alias.
-                if conflict and (_is_blocked_add_result(conflict) or
-                                 (existing_ebook_status and conflict.get('Status') == 'Have') or
-                                 (existing_audio_status and conflict.get('AudioStatus') == 'Have')):
+                if conflict:
                     cherrypy.response.status = 409
                     return serve_template(templatename='addbook_conflict.html',
                                           title=i18n.gettext('Review existing library entry'),

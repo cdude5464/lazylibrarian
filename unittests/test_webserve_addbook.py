@@ -1108,6 +1108,12 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
             metadata.assert_not_called(); search.assert_not_called()
             self.assertEqual('12930', render.call_args.kwargs['conflict']['BookID'])
         self.assertEqual(409, cherrypy.response.status); cherrypy.response.status = 200
+        with mock.patch.object(interface, 'check_permitted'), mock.patch.object(webServe, 'search_for') as metadata:
+            result = interface.mark_results_ajax(
+                action='AddBook', **{'9834117': '2493|Lois+Lowry|Messenger+%28The+Giver%2C+%233%29|GoodReads'})
+            metadata.assert_not_called()
+            self.assertEqual(0, result['passed'])
+            self.assertEqual(1, result['failed'])
         db = DBConnection()
         try:
             self.assertEqual(('12930', 'Have', 'Ignored'), tuple(db.match(

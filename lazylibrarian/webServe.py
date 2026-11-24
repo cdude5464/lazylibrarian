@@ -6380,6 +6380,16 @@ class WebInterface:
                     lazylibrarian.INFOSOURCES.get(provider_source, {}).get('book_key') or configured_bookid_key()
                 )
                 status_lookup_key = provider_bookid_key if requested_source else 'BookID'
+                if requested_source and result_title and result_author_name:
+                    conflict = search_result_add_conflict(
+                        {'source': requested_source, 'bookid': itm,
+                         'bookname': unquote_plus(result_title), 'authorid': result_author_id,
+                         'authorname': unquote_plus(result_author_name)},
+                        existing_wantbook, existing_wantaudio)
+                    if conflict:
+                        logger.warning(f"Blocked bulk Add Book for {itm}: {conflict['reason']}")
+                        failed += 1
+                        continue
                 match = update_existing_book_status(itm, existing_wantbook, existing_wantaudio,
                                                     preferred_key=status_lookup_key, title=unquote_plus(result_title),
                                                     authorid=result_author_id, include_configured=False)

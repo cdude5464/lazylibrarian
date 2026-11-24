@@ -1139,6 +1139,29 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
         finally:
             db.close()
 
+    def test_bulk_review_precedes_raw_canonical_id_collision(self):
+        from lazylibrarian import webServe
+        db = DBConnection()
+        try:
+            self._insert_author(db, '2493', 'Lois Lowry')
+            self._insert_book(db, '9834117', 'Messenger', authorid='2493', status='Have',
+                              audio_status='Ignored', gr_id='12930')
+        finally:
+            db.close()
+        interface = webServe.WebInterface()
+        with mock.patch.object(interface, 'check_permitted'), \
+             mock.patch.object(webServe, 'search_for') as metadata:
+            result = interface.mark_results_ajax(
+                action='AddBook', **{'9834117': '2493|Lois+Lowry|Messenger+%28The+Giver%2C+%233%29|GoodReads'})
+        self.assertEqual((0, 1), (result['passed'], result['failed']))
+        metadata.assert_not_called()
+        db = DBConnection()
+        try:
+            self.assertEqual(('12930', 'Have', 'Ignored'), tuple(db.match(
+                "SELECT gr_id,Status,AudioStatus FROM books WHERE BookID='9834117'")))
+        finally:
+            db.close()
+
     def test_search_status_uses_exact_source_alias_and_canonical_id(self):
         from lazylibrarian import webServe
 

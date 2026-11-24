@@ -300,8 +300,14 @@ def _book_row_title_conflicts(row, title):
     return fuzz.token_set_ratio(existing, candidate) >= 90
 
 
-def _blocked_add_result(reason):
-    return {'blocked': True, 'reason': reason}
+def _blocked_add_result(reason, existing=None, authorid=None):
+    result = {'blocked': True, 'reason': reason}
+    if authorid:
+        result['AuthorID'] = authorid
+    if existing:
+        result.update({key: existing[key] for key in
+                       ('BookID', 'AuthorID', 'BookName', 'Status', 'AudioStatus')})
+    return result
 
 
 def _is_blocked_add_result(result):
@@ -644,13 +650,15 @@ def _find_existing_author_title_match(db, authorid, title, ebook_status=None, au
             audio_status=audio_status, title=title, authorid=authorid, allow_ignored=False)
         if existing:
             return existing
-        return _blocked_add_result('ambiguous or ignored exact title match')
+        return _blocked_add_result('ambiguous or ignored exact title match',
+                                   existing=exact[0] if len(exact) == 1 else None, authorid=authorid)
 
     conflicts = [row for row in rows if _book_row_title_conflicts(row, title)]
     if conflicts:
         logger.warning(
             f"Refusing to insert possible duplicate search-result title [{title}] for author [{authorid}]")
-        return _blocked_add_result('possible duplicate title')
+        return _blocked_add_result('possible duplicate title',
+                                   existing=conflicts[0] if len(conflicts) == 1 else None, authorid=authorid)
 
     return None
 
@@ -770,7 +778,9 @@ def _add_search_result_book_to_db(bookid, ebook_status, audio_status, title=None
                         db, existing, source_key, book['bookid'], ebook_status=existing_ebook_status,
                         audio_status=existing_audio_status)
                 if rows:
-                    return _blocked_add_result(f"ambiguous or ignored {source_key} match")
+                    return _blocked_add_result(f"ambiguous or ignored {source_key} match",
+                                               existing=rows[0] if len(rows) == 1 else None,
+                                               authorid=book['authorid'])
             existing = _find_existing_author_title_match(
                 db, book['authorid'], book['bookname'], ebook_status=existing_ebook_status,
                 audio_status=existing_audio_status)
@@ -814,6 +824,38 @@ def search_result_library_book(db, result):
     if len(matches) != 1:
         return None
     return {key: matches[0][key] for key in ('BookID', 'Status', 'AudioStatus')}
+
+
+def search_result_library_author(db, result):
+    """Read-only author resolution, scoped to the provider and exact author name."""
+    source = result.get('source') or CONFIG['BOOK_API']
+    key = lazylibrarian.INFOSOURCES.get(source, {}).get('author_key')
+    if key == 'authorid':
+        key = 'AuthorID'
+    name = _normalize_duplicate_title(result.get('authorname'))
+    if not name or key not in {'AuthorID', 'gr_id', 'ol_id', 'hc_id', 'dnb_id', 'ran_id', 'bn_id', 'dbk_id'}:
+        return None
+    select = 'SELECT AuthorID,AuthorName,Status FROM authors '
+    rows = db.select(select + f'WHERE {key}=?', (result.get('authorid'),)) if result.get('authorid') else []
+    if not rows:
+        rows = db.select(select + 'WHERE AuthorName=? COLLATE NOCASE', (result.get('authorname'),))
+    matches = [r for r in rows if _normalize_duplicate_title(r['AuthorName']) == name]
+    if len(matches) != 1:
+        return None
+    return {'AuthorID': matches[0]['AuthorID'], 'Status': matches[0]['Status']}
+
+
+def search_result_library_conflict(db, result):
+    """Expose the add guard's review target without merging alternate editions."""
+    author = search_result_library_author(db, result)
+    if not author or not result.get('bookname'):
+        return None
+    match = _find_existing_author_title_match(db, author['AuthorID'], result['bookname'],
+                                             ebook_status='Wanted', audio_status='Wanted')
+    if not match:
+        return None
+    return {key: match[key] for key in ('AuthorID', 'BookID', 'BookName', 'Status', 'AudioStatus', 'blocked', 'reason')
+            if key in match}
 
 
 def fold(s):
@@ -3511,7 +3553,10 @@ class WebInterface:
         db = database.DBConnection()
         try:
             for result in sortedlist:
+                result['library_author'] = search_result_library_author(db, result)
                 result['library_book'] = search_result_library_book(db, result)
+                result['library_conflict'] = (None if result['library_book'] else
+                                              search_result_library_conflict(db, result))
         finally:
             db.close()
         lazylibrarian.SEARCHING = 0
@@ -4886,6 +4931,24 @@ class WebInterface:
         else:
             status_lookup_key = provider_bookid_key if (requested_source or not title) else 'BookID'
             include_configured_lookup = not requested_source and not title
+            if requested_source and title and authorname:
+                submitted_result = {'source': requested_source, 'bookid': bookid, 'bookname': title,
+                                    'authorid': authorid, 'authorname': authorname}
+                db = database.DBConnection()
+                try:
+                    known = search_result_library_book(db, submitted_result)
+                    conflict = None if known else search_result_library_conflict(db, submitted_result)
+                finally:
+                    db.close()
+                # Apply the same refusal before refetching metadata can normalize
+                # away an edition suffix and overwrite a canonical Have row/alias.
+                if conflict and (_is_blocked_add_result(conflict) or
+                                 (existing_ebook_status and conflict.get('Status') == 'Have') or
+                                 (existing_audio_status and conflict.get('AudioStatus') == 'Have')):
+                    cherrypy.response.status = 409
+                    return serve_template(templatename='addbook_conflict.html',
+                                          title=i18n.gettext('Review existing library entry'),
+                                          requested_title=title, conflict=conflict)
             match = update_existing_book_status(bookid, existing_ebook_status, existing_audio_status,
                                                 preferred_key=status_lookup_key, title=title,
                                                 authorid=authorid,
@@ -4905,10 +4968,10 @@ class WebInterface:
                     if _is_blocked_add_result(match):
                         logger.warning(f"Blocked Add Book for {bookid}: {match['reason']}")
                         _cleanup_empty_new_author(authorid, author_existed)
-                        raise cherrypy.HTTPError(
-                            409, i18n.gettext(
-                                "Unable to add this book because it conflicts with an existing library entry. "
-                                "Check the author's library page for the intended edition."))
+                        cherrypy.response.status = 409
+                        return serve_template(templatename='addbook_conflict.html',
+                                              title=i18n.gettext('Review existing library entry'),
+                                              requested_title=title, conflict=match)
                     real_bookid = match['BookID']
                     author_id = match['AuthorID']
             this_source = lazylibrarian.INFOSOURCES[provider_source]

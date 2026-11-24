@@ -75,11 +75,22 @@
                     else:
                         starimg = '0-stars.png'
 
-                    if authorlist and result['authorid'] in authorlist:
+                    known_author = result.get('library_author')
+                    author_loading = bool(known_author and known_author.get('Status') == 'Loading')
+                    if author_loading:
+                        destination = "#"
+                        value = _('Loading')
+                        but_class = "btn-warning"
+                    elif known_author:
+                        destination = "author_page?authorid=" + quote_plus(known_author['AuthorID'])
+                        value = _('Have Author')
+                        but_class = "btn-info"
+                    elif 'library_author' not in result and authorlist and result['authorid'] in authorlist:
                         destination = "author_page?authorid="+result['authorid']
                         value = _('Have Author')
                         but_class = "btn-info"
-                    elif loadlist and result['authorid'] in loadlist:
+                    elif 'library_author' not in result and loadlist and result['authorid'] in loadlist:
+                        author_loading = True
                         destination = "#"
                         value = _('Loading')
                         but_class = "btn-warning"
@@ -104,7 +115,7 @@
                         "&source=" + quote_plus(result.get('source') or '')
                     )
 
-                    if value == "Loading":
+                    if author_loading:
                         value2 = value
                         destination2 = "#"
                         but_class2 = "btn-info hidden"
@@ -156,6 +167,14 @@
                         else:
                             destination3 = "#"
                             but_class3 = "btn-default"
+                    elif result.get('library_conflict') and result['library_conflict'].get('AuthorID'):
+                        review_link = "author_page?authorid=" + quote_plus(result['library_conflict']['AuthorID'])
+                        destination2 = review_link
+                        destination3 = review_link
+                        value2 = _('Review existing')
+                        value3 = _('Review existing')
+                        but_class2 = "btn-warning"
+                        but_class3 = "btn-warning"
                     else:
                         destination2 = "add_book?library=eBook&bookid="+quote_plus(result['bookid'])
                         if result['authorid']:

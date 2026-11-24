@@ -1,0 +1,20 @@
+<%inherit file="modern_base.html" />
+<%!
+    from urllib.parse import urlencode
+    page_id = 'response'
+%>
+<%def name="body()">
+<div class="container py-4">
+  <h1>${title | h}</h1>
+  <p>${requested_title | h}</p>
+  <p>${_('A similar title is already in your library. Review the existing record before adding another edition. No book was added or changed.') | h}</p>
+  %if conflict.get('BookName'):
+  <p>${_('Existing title') | h}: <strong>${conflict['BookName'] | h}</strong>
+    — ${_('eBook') | h}: ${conflict.get('Status', '') | h}; ${_('AudioBook') | h}: ${conflict.get('AudioStatus', '') | h}</p>
+  %endif
+  %if conflict.get('AuthorID'):
+  <a class="btn btn-primary" href="author_page?${urlencode({'authorid': conflict['AuthorID']}) | h}">${_('Review existing') | h}</a>
+  %endif
+  <button type="button" class="btn btn-secondary" onclick="window.history.back()">${_('Back to search') | h}</button>
+</div>
+</%def>

@@ -64,6 +64,9 @@
                                       ([('authorid', result['authorid'])] if result['authorid'] else []))
         add_label = _('Add Book') if library == 'eBook' else _('Add Audio')
         if status is None:
+            conflict = result.get('library_conflict')
+            if conflict and conflict.get('AuthorID'):
+                return ['review', _('Review existing'), 'author_page?' + urlencode({'authorid': conflict['AuthorID']})]
             return ['add', add_label, add]
         status = status or 'Unknown'
         if 'Open' in status:
@@ -77,9 +80,14 @@
     rows = []
     for result in (searchresults or []):
         aid = result['authorid']
-        if aid and aid in authors:
+        known_author = result.get('library_author')
+        if known_author and known_author.get('Status') == 'Loading':
+            author_act = ['loading', _('Loading'), '']
+        elif known_author:
+            author_act = ['have', _('Have Author'), 'author_page?' + urlencode({'authorid': known_author['AuthorID']})]
+        elif 'library_author' not in result and aid and aid in authors:
             author_act = ['have', _('Have Author'), 'author_page?' + urlencode({'authorid': aid})]
-        elif aid and aid in loading:
+        elif 'library_author' not in result and aid and aid in loading:
             author_act = ['loading', _('Loading'), '']
         elif aid:
             author_act = ['add', _('Add Author'), 'add_author_id?' + urlencode({'authorid': aid, 'authorname': result['authorname']})]
@@ -251,13 +259,13 @@ document.addEventListener('alpine:init', function () {
   // eBook and AudioBook buttons: what each kind looks like
   var LOOK = {
     add: ['btn-ll', 'fa-plus'], have: ['btn-outline-secondary', 'fa-user'], open: ['btn-outline-warning', 'fa-book-open'],
-    wanted: ['btn-outline-success', 'fa-search'], loading: ['text-bg-warning', 'fa-circle-notch fa-spin'],
+    wanted: ['btn-outline-success', 'fa-search'], review: ['btn-outline-warning', 'fa-book-open'], loading: ['text-bg-warning', 'fa-circle-notch fa-spin'],
     status: ['bg-secondary-subtle text-secondary-emphasis', 'fa-check']
   };
   function act(key, a, icon) {
     if (!a) { return null; }
     var look = LOOK[a[0]] || LOOK.status;
-    var label = (a[0] === 'add' || a[0] === 'have' || a[0] === 'loading') ? a[1] : llStatus(a[1]);
+    var label = (a[0] === 'add' || a[0] === 'have' || a[0] === 'review' || a[0] === 'loading') ? a[1] : llStatus(a[1]);
     return {key: key, kind: a[0], label: label, href: a[2], cls: look[0], icon: a[0] === 'status' || a[0] === 'wanted' || a[0] === 'open' ? icon : look[1], busy: false};
   }
   function fold(s) { return String(s || '').toLowerCase().normalize('NFD').replace(/\p{M}/gu, ''); }
@@ -290,7 +298,12 @@ document.addEventListener('alpine:init', function () {
         var self = this;
         try { var s = sessionStorage.getItem('llsr-sort'); if (s) { this.sort = s; } } catch (e) {}
         this.$watch('sort', function (v) { try { sessionStorage.setItem('llsr-sort', v); } catch (e) {} });
-        window.addEventListener('pageshow', function () { self.searching = false; });
+        window.addEventListener('pageshow', function () {
+          self.searching = false;
+          self.all.forEach(function (row) {
+            row.acts.forEach(function (action) { action.busy = false; });
+          });
+        });
       },
       toggle: function (r) {
         var s = Object.assign({}, this.sel);

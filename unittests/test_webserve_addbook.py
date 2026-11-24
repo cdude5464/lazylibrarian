@@ -1041,14 +1041,97 @@ class WebServeAddBookTest(LLTestCaseWithConfigandDIRS):
             mock.patch.object(interface, 'check_permitted'),
             mock.patch.object(webServe, 'search_for', side_effect=self._mock_search(result)),
             mock.patch.object(interface, 'start_book_search') as search,
-            self.assertRaises(cherrypy.HTTPError) as error,
+            mock.patch.object(webServe, 'serve_template', return_value='friendly conflict') as render,
         ):
-            interface.add_book(bookid='GB1', library='eBook', title=title, authorid='author-1',
-                               authorname='Matt Dinniman', source='GoogleBooks')
+            response = interface.add_book(bookid='GB1', library='eBook', title=title, authorid='author-1',
+                                          authorname='Matt Dinniman', source='GoogleBooks')
 
-        self.assertEqual(409, error.exception.code)
-        self.assertIn('conflicts with an existing library entry', str(error.exception))
+        self.assertEqual(409, cherrypy.response.status)
+        self.assertEqual('friendly conflict', response)
+        self.assertEqual('addbook_conflict.html', render.call_args.kwargs['templatename'])
+        self.assertEqual('graphic', render.call_args.kwargs['conflict']['BookID'])
+        cherrypy.response.status = 200
         search.assert_not_called()
+
+    def test_alternate_goodreads_messenger_uses_review_without_alias_or_status_mutation(self):
+        from lazylibrarian import webServe
+        db = DBConnection()
+        try:
+            self._insert_author(db, 'OL221009A', 'Lois Lowry')
+            db.upsert('authors', {'gr_id': '2493'}, {'AuthorID': 'OL221009A'})
+            self._insert_book(db, '12930', 'Messenger', authorid='OL221009A', status='Have',
+                              audio_status='Ignored', gr_id='12930', gb_id='vriUNAEACAAJ')
+            result = self._goodreads_result(bookid='9834117', title='Messenger (The Giver, #3)',
+                                            authorid='2493', authorname='Lois Lowry')
+            self.assertIsNone(webServe.search_result_library_book(db, result))
+            review = webServe.search_result_library_conflict(db, result)
+            self.assertEqual(('12930', 'Have'), (review['BookID'], review['Status']))
+            self.assertEqual({'AuthorID': 'OL221009A', 'Status': 'Paused'},
+                             webServe.search_result_library_author(db, result))
+            row = db.match("SELECT gr_id,Status,AudioStatus FROM books WHERE BookID='12930'")
+            self.assertEqual(('12930', 'Have', 'Ignored'), tuple(row))
+        finally:
+            db.close()
+
+    def test_review_author_requires_unique_exact_name_and_scoped_identity(self):
+        from lazylibrarian import webServe
+        db = DBConnection()
+        try:
+            self._insert_author(db, 'canonical', 'Lois Lowry')
+            result = self._google_result(authorid='canonical', authorname='Lois Lowry')
+            self.assertEqual('canonical', webServe.search_result_library_author(db, result)['AuthorID'])
+            result['authorname'] = 'Different Writer'
+            self.assertIsNone(webServe.search_result_library_author(db, result))
+            result['authorid'] = 'different'; result['authorname'] = 'Lois Lowry'
+            self._insert_author(db, 'duplicate', 'LOIS LOWRY')
+            self.assertIsNone(webServe.search_result_library_author(db, result))
+        finally:
+            db.close()
+
+    def test_stale_messenger_add_refuses_before_provider_normalization_or_mutation(self):
+        from lazylibrarian import webServe
+        db = DBConnection()
+        try:
+            self._insert_author(db, 'OL221009A', 'Lois Lowry')
+            self._insert_book(db, '12930', 'Messenger', authorid='OL221009A', status='Have',
+                              audio_status='Ignored', gr_id='12930')
+        finally:
+            db.close()
+        interface = webServe.WebInterface()
+        with mock.patch.object(interface, 'check_permitted'), \
+             mock.patch.object(webServe, 'search_for') as metadata, \
+             mock.patch.object(webServe, 'serve_template', return_value='review') as render, \
+             mock.patch.object(interface, 'start_book_search') as search:
+            self.assertEqual('review', interface.add_book(
+                bookid='9834117', library='eBook', title='Messenger (The Giver, #3)',
+                authorid='2493', authorname='Lois Lowry', source='GoodReads'))
+            metadata.assert_not_called(); search.assert_not_called()
+            self.assertEqual('12930', render.call_args.kwargs['conflict']['BookID'])
+        self.assertEqual(409, cherrypy.response.status); cherrypy.response.status = 200
+        db = DBConnection()
+        try:
+            self.assertEqual(('12930', 'Have', 'Ignored'), tuple(db.match(
+                "SELECT gr_id,Status,AudioStatus FROM books WHERE BookID='12930'")))
+            self.assertEqual(1, db.match('SELECT count(*) AS n FROM books')['n'])
+        finally:
+            db.close()
+
+    def test_review_conflicts_do_not_merge_graphic_volumes_ignored_or_language_editions(self):
+        from lazylibrarian import webServe
+        db = DBConnection()
+        try:
+            self._insert_author(db)
+            cases = [('Novel, Vol. 2 (Graphic Novel)', 'Novel, Vol. 3 (Graphic Novel)'),
+                     ('Novel (French Edition)', 'Novel'), ('Novel', 'Novel (Omnibus)')]
+            for existing, requested in cases:
+                db.action('DELETE FROM books')
+                self._insert_book(db, 'existing', existing, status='Ignored')
+                result = self._google_result(title=requested)
+                self.assertIsNone(webServe.search_result_library_book(db, result))
+                self.assertEqual('author-1', webServe.search_result_library_conflict(db, result)['AuthorID'])
+                self.assertEqual('Ignored', db.match("SELECT Status FROM books WHERE BookID='existing'")['Status'])
+        finally:
+            db.close()
 
     def test_search_status_uses_exact_source_alias_and_canonical_id(self):
         from lazylibrarian import webServe
